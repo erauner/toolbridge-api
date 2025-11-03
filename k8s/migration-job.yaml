@@ -17,11 +17,27 @@ spec:
       # Wait for postgres to be ready
       - name: wait-for-postgres
         image: postgres:16-alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: toolbridge-secret
+              key: postgres-password
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: DB_USER
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: DB_NAME
         command:
           - sh
           - -c
           - |
-            until pg_isready -h toolbridge-postgres -U toolbridge; do
+            until PGPASSWORD=$POSTGRES_PASSWORD psql -h toolbridge-postgres -U $DB_USER -d $DB_NAME -c 'SELECT 1' > /dev/null 2>&1; do
               echo "Waiting for postgres..."
               sleep 2
             done

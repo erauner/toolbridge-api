@@ -53,12 +53,18 @@ spec:
           mountPath: /var/lib/postgresql/data
         readinessProbe:
           exec:
-            command: ["pg_isready", "-U", "toolbridge"]
+            command:
+            - sh
+            - -c
+            - PGPASSWORD=$POSTGRES_PASSWORD psql -U toolbridge -d toolbridge -c 'SELECT 1' > /dev/null
           initialDelaySeconds: 5
           periodSeconds: 5
         livenessProbe:
           exec:
-            command: ["pg_isready", "-U", "toolbridge"]
+            command:
+            - sh
+            - -c
+            - PGPASSWORD=$POSTGRES_PASSWORD psql -U toolbridge -d toolbridge -c 'SELECT 1' > /dev/null
           initialDelaySeconds: 30
           periodSeconds: 10
       volumes:
