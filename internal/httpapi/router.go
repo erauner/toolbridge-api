@@ -95,8 +95,12 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		r.Post("/v1/sync/comments/push", s.PushComments)
 		r.Get("/v1/sync/comments/pull", s.PullComments)
 
-		// TODO: Chats, ChatMessages
-		// Will follow the same pattern as Notes
+		// Chats
+		r.Post("/v1/sync/chats/push", s.PushChats)
+		r.Get("/v1/sync/chats/pull", s.PullChats)
+
+		// TODO: ChatMessages
+		// Will follow the same pattern as Comments
 	})
 
 	log.Info().Msg("HTTP routes registered")
