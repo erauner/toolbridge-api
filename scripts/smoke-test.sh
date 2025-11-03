@@ -10,6 +10,7 @@ NOTE_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 TASK_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 COMMENT_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 CHAT_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+MESSAGE_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
 echo "Running smoke tests against $API_URL"
 echo "   User: $USER"
@@ -17,6 +18,7 @@ echo "   Note UID: $NOTE_UID"
 echo "   Task UID: $TASK_UID"
 echo "   Comment UID: $COMMENT_UID"
 echo "   Chat UID: $CHAT_UID"
+echo "   Message UID: $MESSAGE_UID"
 echo ""
 
 # Color output
@@ -405,6 +407,88 @@ else
     test_fail "Chat delete failed: version is $CHAT_DELETE_VERSION (expected 2)"
 fi
 
+# Test 19: Push a chat message
+test_step "Pushing chat message"
+# First, recreate the chat since we deleted it (use version 2 and newer timestamp to satisfy LWW)
+CHAT_CREATE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chats/push" \
+    -H "X-Debug-Sub: $USER" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"items\": [{
+            \"uid\": \"$CHAT_UID\",
+            \"title\": \"Chat for Messages\",
+            \"updatedTs\": \"2025-11-03T11:00:00Z\",
+            \"sync\": {
+                \"version\": 2,
+                \"isDeleted\": false
+            }
+        }]
+    }")
+
+MESSAGE_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat-messages/push" \
+    -H "X-Debug-Sub: $USER" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"items\": [{
+            \"uid\": \"$MESSAGE_UID\",
+            \"content\": \"Smoke test message\",
+            \"chatUid\": \"$CHAT_UID\",
+            \"updatedTs\": \"2025-11-03T11:01:00Z\",
+            \"sync\": {
+                \"version\": 1,
+                \"isDeleted\": false
+            }
+        }]
+    }")
+
+MESSAGE_VERSION=$(echo "$MESSAGE_PUSH_RESP" | jq -r '.[0].version')
+
+if [ "$MESSAGE_VERSION" -eq 1 ]; then
+    test_pass "Message pushed (version 1)"
+else
+    test_fail "Message push failed: version is $MESSAGE_VERSION (expected 1)"
+fi
+
+# Test 20: Pull the message
+test_step "Pulling chat message"
+MESSAGE_PULL_RESP=$(curl -s "$API_URL/v1/sync/chat-messages/pull?limit=100" \
+    -H "X-Debug-Sub: $USER")
+
+FOUND_MESSAGE=$(echo "$MESSAGE_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$MESSAGE_UID\") | .content")
+
+if [ "$FOUND_MESSAGE" = "Smoke test message" ]; then
+    test_pass "Message found in pull response"
+else
+    test_fail "Message not found in pull response"
+fi
+
+# Test 21: Delete message (soft delete)
+test_step "Deleting chat message (soft delete)"
+MESSAGE_DELETE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat-messages/push" \
+    -H "X-Debug-Sub: $USER" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"items\": [{
+            \"uid\": \"$MESSAGE_UID\",
+            \"content\": \"Smoke test message\",
+            \"chatUid\": \"$CHAT_UID\",
+            \"updatedTs\": \"2025-11-03T11:02:00Z\",
+            \"sync\": {
+                \"version\": 1,
+                \"isDeleted\": true,
+                \"deletedAt\": \"2025-11-03T11:02:00Z\"
+            }
+        }]
+    }")
+
+MESSAGE_DELETE_VERSION=$(echo "$MESSAGE_DELETE_RESP" | jq -r '.[0].version')
+
+if [ "$MESSAGE_DELETE_VERSION" -eq 2 ]; then
+    test_pass "Message deleted (version incremented to 2)"
+else
+    test_fail "Message delete failed: version is $MESSAGE_DELETE_VERSION (expected 2)"
+fi
+
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✓ All smoke tests passed!${NC}"
@@ -431,6 +515,10 @@ echo "    • Parent validation: ✓"
 echo "  Chats:"
 echo "    • Push chat: ✓"
 echo "    • Pull chat: ✓"
+echo "    • Soft delete: ✓"
+echo "  Chat Messages:"
+echo "    • Push message: ✓"
+echo "    • Pull message: ✓"
 echo "    • Soft delete: ✓"
 echo "  General:"
 echo "    • Health check: ✓"
