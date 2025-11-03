@@ -32,21 +32,21 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-function log_info() {
+log_info() {
     echo -e "${GREEN}✓${NC} $1"
 }
 
-function log_warn() {
+log_warn() {
     echo -e "${YELLOW}▶${NC} $1"
 }
 
-function log_error() {
+log_error() {
     echo -e "${RED}✗${NC} $1"
     exit 1
 }
 
 # Function to run psql commands
-function run_psql() {
+run_psql() {
     if [ "$IN_DOCKER" = true ]; then
         # Inside Docker - use psql with DATABASE_URL
         psql "$DATABASE_URL" "$@"
@@ -57,15 +57,14 @@ function run_psql() {
 }
 
 # Function to check if database is ready
-function check_db() {
+# Uses psql instead of pg_isready to properly test authentication
+check_db() {
     if [ "$IN_DOCKER" = true ]; then
-        # Inside Docker - parse DATABASE_URL and use pg_isready
-        # Extract host from DATABASE_URL (format: postgres://user:pass@host:port/db)
-        DB_HOST_PARSED=$(echo "$DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
-        pg_isready -h "$DB_HOST_PARSED" -U toolbridge > /dev/null 2>&1
+        # Inside Docker - use psql with DATABASE_URL to test connection + auth
+        psql "$DATABASE_URL" -c 'SELECT 1' > /dev/null 2>&1
     else
-        # Locally - use docker exec
-        docker exec toolbridge-postgres pg_isready -U "$DB_USER" > /dev/null 2>&1
+        # Locally - use docker exec with psql to test connection + auth
+        docker exec toolbridge-postgres psql -U "$DB_USER" -d "$DB_NAME" -c 'SELECT 1' > /dev/null 2>&1
     fi
 }
 
