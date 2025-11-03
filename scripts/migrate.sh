@@ -1,9 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 # Migration script for ToolBridge API
 # Applies all pending SQL migrations in order
 # Works both locally (using docker exec) and inside Docker (using psql directly)
+# POSIX-compatible (works with sh, bash, dash, ash)
 
 # Configuration
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-migrations}"

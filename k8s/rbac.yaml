@@ -1,0 +1,35 @@
+---
+# ServiceAccount for the API deployment
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: toolbridge-api
+  namespace: toolbridge
+
+---
+# Role to read Job status (needed by init container)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: toolbridge-job-reader
+  namespace: toolbridge
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch"]
+
+---
+# Bind the role to the service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: toolbridge-api-job-reader
+  namespace: toolbridge
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: toolbridge-job-reader
+subjects:
+- kind: ServiceAccount
+  name: toolbridge-api
+  namespace: toolbridge

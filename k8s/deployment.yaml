@@ -15,6 +15,9 @@ spec:
       labels:
         app: toolbridge-api
     spec:
+      # Use service account with permissions to read Job status
+      serviceAccountName: toolbridge-api
+
       # Wait for migrations to complete before starting
       initContainers:
       - name: wait-for-migrations

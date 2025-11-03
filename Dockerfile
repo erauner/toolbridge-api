@@ -41,10 +41,13 @@ RUN addgroup -g 1000 app && \
 
 USER app
 
-# Health check (PORT defaults to 8080)
+# Health check
+# Note: Server binds to HTTP_ADDR (default :8081), but we set it to :8080 in deployment configs
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-8080}/healthz || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
 
-EXPOSE ${PORT:-8080}
+# Expose standard HTTP port
+# Note: Actual bind address is controlled by HTTP_ADDR environment variable
+EXPOSE 8080
 
 ENTRYPOINT ["/app/server"]
