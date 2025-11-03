@@ -8,11 +8,13 @@ API_URL="${API_URL:-http://localhost:8081}"
 USER="smoke-test-user-$$"  # Unique user per run
 NOTE_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 TASK_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+COMMENT_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
 echo "Running smoke tests against $API_URL"
 echo "   User: $USER"
 echo "   Note UID: $NOTE_UID"
 echo "   Task UID: $TASK_UID"
+echo "   Comment UID: $COMMENT_UID"
 echo ""
 
 # Color output
@@ -277,6 +279,61 @@ else
     test_fail "Task delete failed: version is $TASK_DELETE_VERSION (expected 2)"
 fi
 
+# Test 13: Push a comment (on note)
+test_step "Pushing comment on note (version 1)"
+COMMENT_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/comments/push" \
+    -H "X-Debug-Sub: $USER" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"items\": [{
+            \"uid\": \"$COMMENT_UID\",
+            \"content\": \"Smoke Test Comment\",
+            \"parentType\": \"note\",
+            \"parentUid\": \"$NOTE_UID\",
+            \"updatedTs\": \"2025-11-03T10:00:00Z\",
+            \"sync\": {
+                \"version\": 1,
+                \"isDeleted\": false
+            }
+        }]
+    }")
+
+COMMENT_VERSION=$(echo "$COMMENT_PUSH_RESP" | jq -r '.[0].version')
+COMMENT_ERROR=$(echo "$COMMENT_PUSH_RESP" | jq -r '.[0].error')
+
+if [ "$COMMENT_ERROR" != "null" ] && [ "$COMMENT_ERROR" != "" ]; then
+    test_fail "Comment push failed: $COMMENT_ERROR"
+fi
+
+if [ "$COMMENT_VERSION" -eq 1 ]; then
+    test_pass "Comment pushed (version=$COMMENT_VERSION)"
+else
+    test_fail "Comment push returned unexpected version: $COMMENT_VERSION"
+fi
+
+# Test 14: Pull the comment
+test_step "Pulling comments"
+COMMENT_PULL_RESP=$(curl -s "$API_URL/v1/sync/comments/pull?limit=100" \
+    -H "X-Debug-Sub: $USER")
+
+FOUND_COMMENT=$(echo "$COMMENT_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$COMMENT_UID\") | .content")
+
+if [ "$FOUND_COMMENT" = "Smoke Test Comment" ]; then
+    test_pass "Comment pulled successfully (found in upserts)"
+else
+    test_fail "Comment not found in pull response"
+fi
+
+# Test 15: Validate parent relationship
+test_step "Validating comment parent relationship"
+COMMENT_PARENT=$(echo "$COMMENT_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$COMMENT_UID\") | .parentType")
+
+if [ "$COMMENT_PARENT" = "note" ]; then
+    test_pass "Comment parent relationship preserved"
+else
+    test_fail "Comment parent relationship not preserved: $COMMENT_PARENT"
+fi
+
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✓ All smoke tests passed!${NC}"
@@ -296,6 +353,10 @@ echo "  Tasks:"
 echo "    • Push task: ✓"
 echo "    • Pull task: ✓"
 echo "    • Soft delete: ✓"
+echo "  Comments:"
+echo "    • Push comment: ✓"
+echo "    • Pull comment: ✓"
+echo "    • Parent validation: ✓"
 echo "  General:"
 echo "    • Health check: ✓"
 echo ""
