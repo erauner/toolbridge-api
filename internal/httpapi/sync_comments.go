@@ -57,11 +57,11 @@ func (s *Server) PushComments(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Validate parent exists (critical for referential integrity)
+		// Validate parent exists AND is not soft-deleted (critical for referential integrity)
 		var parentExists bool
 		if ext.ParentType == "note" {
 			err := tx.QueryRow(ctx,
-				`SELECT EXISTS(SELECT 1 FROM note WHERE owner_id = $1 AND uid = $2)`,
+				`SELECT EXISTS(SELECT 1 FROM note WHERE owner_id = $1 AND uid = $2 AND deleted_at_ms IS NULL)`,
 				userID, *ext.ParentUID).Scan(&parentExists)
 			if err != nil {
 				log.Error().Err(err).Str("parent_uid", ext.ParentUID.String()).Msg("failed to check note existence")
@@ -75,7 +75,7 @@ func (s *Server) PushComments(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if ext.ParentType == "task" {
 			err := tx.QueryRow(ctx,
-				`SELECT EXISTS(SELECT 1 FROM task WHERE owner_id = $1 AND uid = $2)`,
+				`SELECT EXISTS(SELECT 1 FROM task WHERE owner_id = $1 AND uid = $2 AND deleted_at_ms IS NULL)`,
 				userID, *ext.ParentUID).Scan(&parentExists)
 			if err != nil {
 				log.Error().Err(err).Str("parent_uid", ext.ParentUID.String()).Msg("failed to check task existence")

@@ -305,6 +305,98 @@ func TestPushComments_Integration(t *testing.T) {
 	}
 }
 
+func TestPushCommentsOnDeletedParent_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pool := getTestDB(t)
+	defer pool.Close()
+
+	// Clean up tables before test
+	_, _ = pool.Exec(context.Background(), "DELETE FROM comment")
+	_, _ = pool.Exec(context.Background(), "DELETE FROM task")
+	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
+
+	srv := &Server{DB: pool}
+	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
+
+	// Create a note
+	noteUID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+	pushBody, _ := json.Marshal(pushReq{
+		Items: []map[string]any{
+			{
+				"uid":       noteUID,
+				"title":     "Note to be deleted",
+				"updatedTs": "2025-11-03T10:00:00Z",
+				"sync":      map[string]any{"version": float64(1)},
+			},
+		},
+	})
+	req := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(pushBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Debug-Sub", "test-user")
+	router.ServeHTTP(httptest.NewRecorder(), req)
+
+	// Soft delete the note
+	deleteBody, _ := json.Marshal(pushReq{
+		Items: []map[string]any{
+			{
+				"uid":       noteUID,
+				"title":     "Note to be deleted",
+				"updatedTs": "2025-11-03T10:01:00Z",
+				"sync": map[string]any{
+					"version":   float64(1),
+					"isDeleted": true,
+					"deletedAt": "2025-11-03T10:01:00Z",
+				},
+			},
+		},
+	})
+	deleteReq := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(deleteBody))
+	deleteReq.Header.Set("Content-Type", "application/json")
+	deleteReq.Header.Set("X-Debug-Sub", "test-user")
+	router.ServeHTTP(httptest.NewRecorder(), deleteReq)
+
+	// Try to create a comment on the soft-deleted note (should fail)
+	commentBody, _ := json.Marshal(pushReq{
+		Items: []map[string]any{
+			{
+				"uid":        "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
+				"content":    "Comment on deleted note",
+				"parentType": "note",
+				"parentUid":  noteUID,
+				"updatedTs":  "2025-11-03T10:02:00Z",
+				"sync": map[string]any{
+					"version": float64(1),
+				},
+			},
+		},
+	})
+
+	commentReq := httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(commentBody))
+	commentReq.Header.Set("Content-Type", "application/json")
+	commentReq.Header.Set("X-Debug-Sub", "test-user")
+	commentRec := httptest.NewRecorder()
+	router.ServeHTTP(commentRec, commentReq)
+
+	var acks []pushAck
+	if err := json.NewDecoder(commentRec.Body).Decode(&acks); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Should get an error about parent not found
+	if len(acks) != 1 {
+		t.Fatalf("Expected 1 ack, got %d", len(acks))
+	}
+	if acks[0].Error == "" {
+		t.Error("Expected error for comment on deleted parent, got none")
+	}
+	if acks[0].Error != "" {
+		t.Logf("Got expected error: %s", acks[0].Error)
+	}
+}
+
 func TestPullComments_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
