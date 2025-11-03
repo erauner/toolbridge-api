@@ -62,7 +62,7 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO note (uid, owner_id, updated_at_ms, deleted_at_ms, version, payload_json)
 			VALUES ($1, $2, $3, $4, GREATEST($5, 1), $6)
-			ON CONFLICT (uid) DO UPDATE SET
+			ON CONFLICT (owner_id, uid) DO UPDATE SET
 				payload_json   = EXCLUDED.payload_json,
 				updated_at_ms  = EXCLUDED.updated_at_ms,
 				deleted_at_ms  = EXCLUDED.deleted_at_ms,
@@ -90,8 +90,8 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 		var serverVersion int
 		var serverMs int64
 		if err := tx.QueryRow(ctx,
-			`SELECT version, updated_at_ms FROM note WHERE uid = $1`,
-			ext.UID).Scan(&serverVersion, &serverMs); err != nil {
+			`SELECT version, updated_at_ms FROM note WHERE uid = $1 AND owner_id = $2`,
+			ext.UID, userID).Scan(&serverVersion, &serverMs); err != nil {
 			log.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to read note after upsert")
 			acks = append(acks, pushAck{
 				UID:       ext.UID.String(),

@@ -14,19 +14,20 @@ CREATE TABLE app_user (
 -- Notes table
 -- Uses typed sync columns + payload_json for fast delta sync with flexible schema
 CREATE TABLE note (
-  uid            UUID PRIMARY KEY,
+  uid            UUID NOT NULL,
   owner_id       UUID NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
   updated_at_ms  BIGINT NOT NULL,            -- Unix milliseconds for cursor-based pagination
   deleted_at_ms  BIGINT,                     -- NULL = alive, non-NULL = tombstone
   version        INT NOT NULL DEFAULT 1,     -- Server-controlled version for conflict detection
   payload_json   JSONB NOT NULL,             -- Original client JSON (preserved as-is)
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (owner_id, uid)                -- Composite key for tenant isolation
 );
 
 -- Indexes for efficient delta sync queries
 CREATE INDEX note_owner_updated_idx ON note (owner_id, updated_at_ms);
 CREATE INDEX note_owner_deleted_idx ON note (owner_id, deleted_at_ms) WHERE deleted_at_ms IS NOT NULL;
-CREATE INDEX note_owner_uid_idx ON note (owner_id, uid);
+-- note_owner_uid_idx is now redundant (covered by PRIMARY KEY (owner_id, uid))
 
 -- Composite index for cursor-based pagination (updated_at_ms, uid)
 CREATE INDEX note_cursor_idx ON note (updated_at_ms, uid);

@@ -16,13 +16,19 @@ const CtxUserID ctxKey = "uid"
 // JWTCfg holds JWT authentication configuration
 type JWTCfg struct {
 	HS256Secret string // HMAC secret for HS256 tokens
+	DevMode     bool   // Allow X-Debug-Sub header (DANGEROUS: only for local dev)
 }
 
 // Middleware creates HTTP middleware for JWT authentication
 // Supports two modes:
 // 1. Production: Bearer token with JWT validation
-// 2. Development: X-Debug-Sub header (bypasses JWT for local testing)
+// 2. Development: X-Debug-Sub header (ONLY when DevMode=true)
 func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
+	// Log warning if dev mode is enabled
+	if cfg.DevMode {
+		log.Warn().Msg("SECURITY WARNING: DevMode enabled - X-Debug-Sub header will bypass JWT authentication")
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract token from Authorization header
@@ -31,8 +37,15 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 				tok = h[7:]
 			}
 
-			// Quick dev path: accept X-Debug-Sub for local testing
-			sub := r.Header.Get("X-Debug-Sub")
+			sub := ""
+
+			// Development mode: accept X-Debug-Sub ONLY if DevMode is enabled and no token present
+			if cfg.DevMode && tok == "" {
+				sub = r.Header.Get("X-Debug-Sub")
+				if sub != "" {
+					log.Debug().Str("sub", sub).Msg("using X-Debug-Sub header (dev mode)")
+				}
+			}
 
 			// Validate JWT token if present
 			if tok != "" {

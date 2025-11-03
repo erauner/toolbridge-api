@@ -49,8 +49,11 @@ func main() {
 	// HTTP server setup
 	srv := &httpapi.Server{DB: pool}
 
+	// JWT configuration
+	// DevMode ONLY enabled when ENV=dev (allows X-Debug-Sub header)
 	jwtCfg := auth.JWTCfg{
 		HS256Secret: env("JWT_HS256_SECRET", "dev-secret-change-in-production"),
+		DevMode:     env("ENV", "dev") == "dev",
 	}
 
 	httpAddr := env("HTTP_ADDR", ":8081")

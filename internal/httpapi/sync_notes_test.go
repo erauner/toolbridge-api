@@ -45,7 +45,7 @@ func TestPushNotes_Integration(t *testing.T) {
 	defer pool.Close()
 
 	srv := &Server{DB: pool}
-	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret"})
+	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	tests := []struct {
 		name       string
@@ -180,7 +180,7 @@ func TestPullNotes_Integration(t *testing.T) {
 	defer pool.Close()
 
 	srv := &Server{DB: pool}
-	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret"})
+	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// First, push some notes
 	pushBody, _ := json.Marshal(pushReq{
@@ -286,7 +286,7 @@ func TestPushPullRoundTrip_Integration(t *testing.T) {
 	defer pool.Close()
 
 	srv := &Server{DB: pool}
-	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret"})
+	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Push a note
 	original := map[string]any{
@@ -355,7 +355,7 @@ func TestSoftDelete_Integration(t *testing.T) {
 	defer pool.Close()
 
 	srv := &Server{DB: pool}
-	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret"})
+	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Push a note
 	pushBody, _ := json.Marshal(pushReq{
