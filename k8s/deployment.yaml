@@ -26,10 +26,18 @@ spec:
           - sh
           - -c
           - |
-            until kubectl get job toolbridge-migrate -n toolbridge -o jsonpath='{.status.succeeded}' | grep -q "1"; do
-              echo "Waiting for migrations to complete..."
-              sleep 5
-            done
+            # Check if migration Job exists
+            if kubectl get job toolbridge-migrate -n toolbridge > /dev/null 2>&1; then
+              # Job exists - wait for it to succeed
+              echo "Migration job found - waiting for completion..."
+              until kubectl get job toolbridge-migrate -n toolbridge -o jsonpath='{.status.succeeded}' | grep -q "1"; do
+                echo "Waiting for migrations to complete..."
+                sleep 5
+              done
+            else
+              # Job doesn't exist - assume it already completed and was cleaned up by TTL
+              echo "Migration job not found - assuming migrations already complete (TTL cleanup)"
+            fi
             echo "Migrations complete!"
       containers:
       - name: api
