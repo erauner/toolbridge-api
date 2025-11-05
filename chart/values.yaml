@@ -100,6 +100,7 @@ ingress:
     name: envoy-public
     namespace: network
   hostname: ""  # Set via override, e.g., toolbridge-api.example.com
+  annotations: {}  # Optional annotations for HTTPRoute (e.g., external-dns)
 
 # Certificate configuration
 certificate:

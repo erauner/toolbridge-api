@@ -5,6 +5,10 @@ metadata:
   name: {{ include "toolbridge-api.fullname" . }}
   labels:
     {{- include "toolbridge-api.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   parentRefs:
     - name: {{ .Values.ingress.gateway.name }}
