@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "toolbridge-api.fullname" . }}
+  labels:
+    {{- include "toolbridge-api.labels" . | nindent 4 }}
+  annotations:
+    secret.reloader.stakater.com/reload: {{ include "toolbridge-api.secretName" . | quote }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "toolbridge-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "toolbridge-api.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "toolbridge-api.serviceAccountName" . }}
+
+      {{- if .Values.migration.enabled }}
+      # Wait for migrations to complete before starting
+      initContainers:
+      - name: wait-for-migrations
+        image: bitnami/kubectl:latest
+        command:
+          - sh
+          - -c
+          - |
+            # Check if migration Job exists
+            NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+            if kubectl get job {{ include "toolbridge-api.fullname" . }}-migrate -n $NAMESPACE > /dev/null 2>&1; then
+              # Job exists - wait for it to succeed
+              echo "Migration job found - waiting for completion..."
+              until kubectl get job {{ include "toolbridge-api.fullname" . }}-migrate -n $NAMESPACE -o jsonpath='{.status.succeeded}' | grep -q "1"; do
+                echo "Waiting for migrations to complete..."
+                sleep 5
+              done
+            else
+              # Job doesn't exist - assume it already completed and was cleaned up by TTL
+              echo "Migration job not found - assuming migrations already complete (TTL cleanup)"
+            fi
+            echo "Migrations complete!"
+      {{- end }}
+
+      containers:
+      - name: api
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # Simple environment variables from ConfigMap
+        - name: ENV
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: ENV
+        - name: HTTP_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: HTTP_ADDR
+
+        # Database connection parts
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_USER
+        - name: DB_SSLMODE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_SSLMODE
+
+        # Sensitive values from Secret
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: password
+        - name: JWT_HS256_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: jwt-secret
+
+        # Complete DATABASE_URL from secret
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: database-url
+
+        # Health checks
+        livenessProbe:
+          {{- toYaml .Values.api.livenessProbe | nindent 10 }}
+
+        readinessProbe:
+          {{- toYaml .Values.api.readinessProbe | nindent 10 }}
+
+        resources:
+          {{- toYaml .Values.api.resources | nindent 10 }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

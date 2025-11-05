@@ -1,0 +1,19 @@
+{{- if .Values.certificate.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "toolbridge-api.fullname" . }}-tls
+  labels:
+    {{- include "toolbridge-api.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "toolbridge-api.fullname" . }}-tls
+  issuerRef:
+    name: {{ .Values.certificate.issuerRef.name }}
+    kind: {{ .Values.certificate.issuerRef.kind }}
+  dnsNames:
+    {{- if .Values.certificate.dnsNames }}
+    {{- toYaml .Values.certificate.dnsNames | nindent 4 }}
+    {{- else }}
+    - {{ .Values.ingress.hostname | required "ingress.hostname or certificate.dnsNames is required when certificate is enabled" | quote }}
+    {{- end }}
+{{- end }}

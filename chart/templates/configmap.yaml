@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "toolbridge-api.fullname" . }}-config
+  labels:
+    {{- include "toolbridge-api.labels" . | nindent 4 }}
+data:
+  ENV: {{ .Values.api.env | quote }}
+  HTTP_ADDR: {{ .Values.api.httpAddr | quote }}
+  DB_HOST: {{ .Values.config.dbHost | quote }}
+  DB_PORT: {{ .Values.config.dbPort | quote }}
+  DB_NAME: {{ .Values.config.dbName | quote }}
+  DB_USER: {{ .Values.config.dbUser | quote }}
+  DB_SSLMODE: {{ .Values.config.dbSslMode | quote }}

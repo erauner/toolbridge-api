@@ -1,0 +1,18 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "toolbridge-api.fullname" . }}
+  labels:
+    {{- include "toolbridge-api.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.ingress.gateway.name }}
+      namespace: {{ .Values.ingress.gateway.namespace }}
+  hostnames:
+    - {{ .Values.ingress.hostname | required "ingress.hostname is required when ingress is enabled" | quote }}
+  rules:
+    - backendRefs:
+        - name: {{ include "toolbridge-api.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

@@ -1,4 +1,4 @@
-.PHONY: help dev test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down clean
+.PHONY: help dev test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean
 
 # Docker configuration
 DOCKER_REGISTRY ?= ghcr.io
@@ -7,6 +7,11 @@ IMAGE_NAME ?= toolbridge-api
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 FULL_IMAGE_NAME = $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(IMAGE_NAME)
 PLATFORMS ?= linux/amd64,linux/arm64
+
+# Helm configuration
+CHART_NAME ?= toolbridge-api
+CHART_VERSION ?= $(shell grep '^version:' chart/Chart.yaml | awk '{print $$2}')
+HELM_REGISTRY ?= oci://$(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/charts
 
 # Default target
 help:
@@ -35,6 +40,12 @@ help:
 	@echo "Docker Variables:"
 	@echo "  VERSION=vX.Y.Z        - Set image version (default: git describe)"
 	@echo "  PLATFORMS=linux/amd64 - Override target platforms"
+	@echo ""
+	@echo "Helm Chart:"
+	@echo "  make helm-lint        - Lint Helm chart"
+	@echo "  make helm-package     - Package chart as .tgz"
+	@echo "  make helm-push        - Push chart to OCI registry"
+	@echo "  make helm-release     - Package and push chart (VERSION=vX.Y.Z)"
 	@echo ""
 	@echo "Database:"
 	@echo "  make migrate          - Run migrations against local DB"
@@ -220,3 +231,38 @@ clean:
 deps:
 	go mod download
 	go mod tidy
+
+# Helm chart management
+
+# Lint Helm chart
+helm-lint:
+	@echo "Linting Helm chart..."
+	helm lint ./chart
+	@echo "✓ Helm chart is valid"
+
+# Package Helm chart
+helm-package:
+	@echo "Packaging Helm chart..."
+	@echo "Chart: $(CHART_NAME)"
+	@echo "Version: $(CHART_VERSION)"
+	helm package ./chart
+	@echo "✓ Packaged $(CHART_NAME)-$(CHART_VERSION).tgz"
+
+# Push Helm chart to OCI registry
+helm-push:
+	@echo "Pushing Helm chart to OCI registry..."
+	@echo "Registry: $(HELM_REGISTRY)"
+	@echo "Chart: $(CHART_NAME)"
+	@echo "Version: $(CHART_VERSION)"
+	helm push $(CHART_NAME)-$(CHART_VERSION).tgz $(HELM_REGISTRY)
+	@echo "✓ Pushed $(HELM_REGISTRY)/$(CHART_NAME):$(CHART_VERSION)"
+
+# Package and push Helm chart (one-step release)
+helm-release: helm-lint helm-package helm-push
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "✓ Released Helm chart $(CHART_NAME):$(CHART_VERSION)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "Install with:"
+	@echo "  helm install $(CHART_NAME) $(HELM_REGISTRY)/$(CHART_NAME) --version $(CHART_VERSION)"

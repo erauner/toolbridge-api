@@ -1,0 +1,98 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "toolbridge-api.fullname" . }}-migrate
+  labels:
+    {{- include "toolbridge-api.labels" . | nindent 4 }}
+spec:
+  # Keep completed jobs for debugging
+  ttlSecondsAfterFinished: {{ .Values.migration.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "toolbridge-api.fullname" . }}-migrate
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+      # Wait for postgres to be ready
+      - name: wait-for-postgres
+        image: {{ .Values.migration.waitForPostgres.image }}
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: password
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_PORT
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_USER
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_NAME
+        command:
+          - sh
+          - -c
+          - |
+            until PGPASSWORD=$POSTGRES_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c 'SELECT 1' > /dev/null 2>&1; do
+              echo "Waiting for postgres..."
+              sleep 2
+            done
+            echo "Postgres is ready!"
+      containers:
+      - name: migrate
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        command: ["/bin/sh", "/app/scripts/migrate.sh"]
+        env:
+        # Database password (matches CloudNativePG bootstrap)
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: password
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_USER
+        - name: DB_SSLMODE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DB_SSLMODE
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: database-url
+{{- end }}
