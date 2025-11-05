@@ -46,6 +46,7 @@ Selector labels
 {{- define "toolbridge-api.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "toolbridge-api.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
