@@ -283,7 +283,33 @@ else
     test_fail "Task delete failed: version is $TASK_DELETE_VERSION (expected 2)"
 fi
 
-# Test 13: Push a comment (on note)
+# Test 13: Create a new note for comment testing (original note was deleted)
+test_step "Creating new note for comment testing"
+COMMENT_NOTE_UID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+COMMENT_NOTE_RESP=$(curl -s -X POST "$API_URL/v1/sync/notes/push" \
+    -H "X-Debug-Sub: $USER" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"items\": [{
+            \"uid\": \"$COMMENT_NOTE_UID\",
+            \"title\": \"Note for Comment Test\",
+            \"content\": \"This note is used for comment testing\",
+            \"updatedTs\": \"2025-11-03T11:00:00Z\",
+            \"sync\": {
+                \"version\": 1,
+                \"isDeleted\": false
+            }
+        }]
+    }")
+
+COMMENT_NOTE_VERSION=$(echo "$COMMENT_NOTE_RESP" | jq -r '.[0].version')
+if [ "$COMMENT_NOTE_VERSION" -eq 1 ]; then
+    test_pass "Comment parent note created (version=1)"
+else
+    test_fail "Failed to create parent note for comment: version=$COMMENT_NOTE_VERSION"
+fi
+
+# Test 14: Push a comment (on new note)
 test_step "Pushing comment on note (version 1)"
 COMMENT_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/comments/push" \
     -H "X-Debug-Sub: $USER" \
@@ -293,8 +319,8 @@ COMMENT_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/comments/push" \
             \"uid\": \"$COMMENT_UID\",
             \"content\": \"Smoke Test Comment\",
             \"parentType\": \"note\",
-            \"parentUid\": \"$NOTE_UID\",
-            \"updatedTs\": \"2025-11-03T10:00:00Z\",
+            \"parentUid\": \"$COMMENT_NOTE_UID\",
+            \"updatedTs\": \"2025-11-03T11:00:00Z\",
             \"sync\": {
                 \"version\": 1,
                 \"isDeleted\": false

@@ -34,9 +34,9 @@ type pushAck struct {
 
 // pullResp is the response body for pull endpoints
 type pullResp struct {
-	Upserts    []map[string]any   `json:"upserts"`
-	Deletes    []map[string]any   `json:"deletes"`
-	NextCursor *string            `json:"nextCursor,omitempty"`
+	Upserts    []map[string]any `json:"upserts"`
+	Deletes    []map[string]any `json:"deletes"`
+	NextCursor *string          `json:"nextCursor,omitempty"`
 }
 
 // writeJSON writes a JSON response with the given status code
