@@ -18,8 +18,9 @@ spec:
       httpStatusCodes:
       - 503  # Service Unavailable
       triggers:
-      - connect-failure  # Retry on connection refused
-      - refused-stream   # Retry on HTTP/2 refused stream
+      - connect-failure         # Retry on TCP connection refused
+      - refused-stream          # Retry on HTTP/2 refused stream
+      - retriable-status-codes  # Required for httpStatusCodes to work
     perRetry:
       timeout: {{ .Values.ingress.retry.perRetryTimeout }}
   timeout:
