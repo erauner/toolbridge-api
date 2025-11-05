@@ -2,8 +2,8 @@ apiVersion: v2
 name: toolbridge-api
 description: A Helm chart for ToolBridge API - Cross-device MCP server bridge
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
+version: 0.1.2
+appVersion: "0.1.2"
 keywords:
   - mcp
   - toolbridge

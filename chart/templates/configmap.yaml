@@ -7,7 +7,7 @@ metadata:
 data:
   ENV: {{ .Values.api.env | quote }}
   HTTP_ADDR: {{ .Values.api.httpAddr | quote }}
-  DB_HOST: {{ .Values.config.dbHost | quote }}
+  DB_HOST: {{ .Values.config.dbHost | default (include "toolbridge-api.database.serviceName" .) | quote }}
   DB_PORT: {{ .Values.config.dbPort | quote }}
   DB_NAME: {{ .Values.config.dbName | quote }}
   DB_USER: {{ .Values.config.dbUser | quote }}

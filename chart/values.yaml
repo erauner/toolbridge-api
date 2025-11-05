@@ -124,7 +124,7 @@ secrets:
 
 # ConfigMap configuration
 config:
-  dbHost: toolbridge-postgres-rw
+  dbHost: ""  # Auto-computed as {{ releaseName }}-postgres-rw (e.g., toolbridge-api-postgres-rw). Override if needed.
   dbPort: "5432"
   dbName: toolbridge
   dbUser: toolbridge
