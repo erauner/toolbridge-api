@@ -45,7 +45,7 @@ api:
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
-    failureThreshold: 2
+    failureThreshold: 3  # More lenient to avoid marking pods unready on transient failures
 
 # Database configuration
 postgresql:
@@ -101,6 +101,19 @@ ingress:
     namespace: network
   hostname: ""  # Set via override, e.g., toolbridge-api.example.com
   annotations: {}  # Optional annotations for HTTPRoute (e.g., external-dns)
+
+  # Retry configuration for BackendTrafficPolicy
+  retry:
+    numRetries: 3  # Retry up to 3 times on connection failures
+    perRetryTimeout: 2s  # Timeout for each retry attempt
+
+  # Timeout configuration
+  timeout:
+    request: 30s  # Overall request timeout
+
+  # Load balancer configuration
+  loadBalancer:
+    type: RoundRobin  # RoundRobin, LeastRequest, or Random
 
 # Certificate configuration
 certificate:

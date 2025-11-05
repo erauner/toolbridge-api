@@ -1,0 +1,30 @@
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ include "toolbridge-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "toolbridge-api.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ include "toolbridge-api.fullname" . }}
+  retry:
+    numRetries: {{ .Values.ingress.retry.numRetries }}
+    retryOn:
+      httpStatusCodes:
+      - 503  # Service Unavailable
+      triggers:
+      - connect-failure  # Retry on connection refused
+      - refused-stream   # Retry on HTTP/2 refused stream
+    perRetry:
+      timeout: {{ .Values.ingress.retry.perRetryTimeout }}
+  timeout:
+    http:
+      requestTimeout: {{ .Values.ingress.timeout.request }}
+  loadBalancer:
+    type: {{ .Values.ingress.loadBalancer.type }}
+{{- end }}
