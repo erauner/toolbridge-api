@@ -1,23 +1,21 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
 )
 
 // setupChatMessageTest creates a chat for testing chat messages
-func setupChatMessageTest(t *testing.T, router http.Handler) string {
+func setupChatMessageTest(t *testing.T, router http.Handler, sessionID string) string {
 	t.Helper()
 
 	// Create a chat
 	chatUID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chats/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       chatUID,
@@ -26,11 +24,7 @@ func setupChatMessageTest(t *testing.T, router http.Handler) string {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req := httptest.NewRequest("POST", "/v1/sync/chats/push", bytes.NewReader(pushBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	return chatUID
 }
@@ -50,8 +44,11 @@ func TestPushChatMessages_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent chat
-	chatUID := setupChatMessageTest(t, router)
+	chatUID := setupChatMessageTest(t, router, sessionID)
 
 	tests := []struct {
 		name       string
@@ -182,13 +179,7 @@ func TestPushChatMessages_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body, _ := json.Marshal(tt.body)
-			req := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-Debug-Sub", "test-user")
-
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
+			rec := makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", tt.body, sessionID)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("Status = %d, want %d", rec.Code, tt.wantStatus)
@@ -221,9 +212,12 @@ func TestPushChatMessagesOnDeletedParent_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Create a chat
 	chatUID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chats/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       chatUID,
@@ -232,14 +226,10 @@ func TestPushChatMessagesOnDeletedParent_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req := httptest.NewRequest("POST", "/v1/sync/chats/push", bytes.NewReader(pushBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Soft delete the chat
-	deleteBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chats/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       chatUID,
@@ -252,14 +242,10 @@ func TestPushChatMessagesOnDeletedParent_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-	deleteReq := httptest.NewRequest("POST", "/v1/sync/chats/push", bytes.NewReader(deleteBody))
-	deleteReq.Header.Set("Content-Type", "application/json")
-	deleteReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), deleteReq)
+	}, sessionID)
 
 	// Try to create a message on the soft-deleted chat (should fail)
-	messageBody, _ := json.Marshal(pushReq{
+	messageRec := makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -271,13 +257,7 @@ func TestPushChatMessagesOnDeletedParent_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-
-	messageReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(messageBody))
-	messageReq.Header.Set("Content-Type", "application/json")
-	messageReq.Header.Set("X-Debug-Sub", "test-user")
-	messageRec := httptest.NewRecorder()
-	router.ServeHTTP(messageRec, messageReq)
+	}, sessionID)
 
 	var acks []pushAck
 	if err := json.NewDecoder(messageRec.Body).Decode(&acks); err != nil {
@@ -311,9 +291,12 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Create a chat
 	chatUID := "b2c3d4e5-f6a7-8901-bcde-f2345678901a"
-	chatBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chats/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       chatUID,
@@ -323,15 +306,11 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req := httptest.NewRequest("POST", "/v1/sync/chats/push", bytes.NewReader(chatBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Create a message on the chat
 	messageUID := "d3e4f5a6-b7c8-9012-cdef-3456789012ab"
-	messageBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       messageUID,
@@ -341,14 +320,10 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req = httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(messageBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Delete the parent chat
-	deleteChatBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chats/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       chatUID,
@@ -361,14 +336,10 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-	req = httptest.NewRequest("POST", "/v1/sync/chats/push", bytes.NewReader(deleteChatBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Now delete the message (should succeed even though parent is deleted)
-	deleteMessageBody, _ := json.Marshal(pushReq{
+	rec := makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       messageUID,
@@ -382,13 +353,7 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-
-	req = httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(deleteMessageBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	}, sessionID)
 
 	if rec.Code != 200 {
 		t.Fatalf("Expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -430,11 +395,14 @@ func TestPullChatMessages_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent chat
-	chatUID := setupChatMessageTest(t, router)
+	chatUID := setupChatMessageTest(t, router, sessionID)
 
 	// Push some messages
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -451,12 +419,7 @@ func TestPullChatMessages_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	}, sessionID)
 
 	tests := []struct {
 		name       string
@@ -497,11 +460,7 @@ func TestPullChatMessages_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/v1/sync/chat_messages/pull"+tt.query, nil)
-			req.Header.Set("X-Debug-Sub", "test-user")
-
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
+			rec := makeRequestWithSession(t, router, "GET", "/v1/sync/chat_messages/pull"+tt.query, nil, sessionID)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("Status = %d, want %d", rec.Code, tt.wantStatus)
@@ -534,8 +493,11 @@ func TestPushPullRoundTrip_ChatMessages_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent chat
-	chatUID := setupChatMessageTest(t, router)
+	chatUID := setupChatMessageTest(t, router, sessionID)
 
 	// Push a message
 	original := map[string]any{
@@ -552,17 +514,10 @@ func TestPushPullRoundTrip_ChatMessages_Integration(t *testing.T) {
 		},
 	}
 
-	pushBody, _ := json.Marshal(pushReq{Items: []map[string]any{original}})
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", pushReq{Items: []map[string]any{original}}, sessionID)
 
 	// Pull it back
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/chat_messages/pull?limit=100", nil)
-	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	pullRec := httptest.NewRecorder()
-	router.ServeHTTP(pullRec, pullHttpReq)
+	pullRec := makeRequestWithSession(t, router, "GET", "/v1/sync/chat_messages/pull?limit=100", nil, sessionID)
 
 	var pullResp pullResp
 	if err := json.NewDecoder(pullRec.Body).Decode(&pullResp); err != nil {
@@ -614,11 +569,14 @@ func TestSoftDelete_ChatMessages_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent chat
-	chatUID := setupChatMessageTest(t, router)
+	chatUID := setupChatMessageTest(t, router, sessionID)
 
 	// Push a message
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -628,15 +586,10 @@ func TestSoftDelete_ChatMessages_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1), "isDeleted": false},
 			},
 		},
-	})
-
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	}, sessionID)
 
 	// Delete the message
-	deleteBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/chat_messages/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -650,18 +603,10 @@ func TestSoftDelete_ChatMessages_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-
-	deleteReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(deleteBody))
-	deleteReq.Header.Set("Content-Type", "application/json")
-	deleteReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), deleteReq)
+	}, sessionID)
 
 	// Pull and verify it's in deletes array
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/chat_messages/pull?limit=100", nil)
-	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	pullRec := httptest.NewRecorder()
-	router.ServeHTTP(pullRec, pullHttpReq)
+	pullRec := makeRequestWithSession(t, router, "GET", "/v1/sync/chat_messages/pull?limit=100", nil, sessionID)
 
 	var pullResp pullResp
 	json.NewDecoder(pullRec.Body).Decode(&pullResp)

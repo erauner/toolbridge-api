@@ -1,23 +1,21 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
 )
 
 // setupCommentTest creates a note and task for testing comments
-func setupCommentTest(t *testing.T, router http.Handler) (noteUID, taskUID string) {
+func setupCommentTest(t *testing.T, router http.Handler, sessionID string) (noteUID, taskUID string) {
 	t.Helper()
 
 	// Create a note
 	noteUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       noteUID,
@@ -26,15 +24,11 @@ func setupCommentTest(t *testing.T, router http.Handler) (noteUID, taskUID strin
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(pushBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Create a task
 	taskUID = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
-	pushBody, _ = json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/tasks/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       taskUID,
@@ -43,11 +37,7 @@ func setupCommentTest(t *testing.T, router http.Handler) (noteUID, taskUID strin
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req = httptest.NewRequest("POST", "/v1/sync/tasks/push", bytes.NewReader(pushBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	return noteUID, taskUID
 }
@@ -68,8 +58,11 @@ func TestPushComments_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent entities
-	noteUID, taskUID := setupCommentTest(t, router)
+	noteUID, taskUID := setupCommentTest(t, router, sessionID)
 
 	tests := []struct {
 		name       string
@@ -281,13 +274,7 @@ func TestPushComments_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body, _ := json.Marshal(tt.body)
-			req := httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-Debug-Sub", "test-user")
-
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
+			rec := makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", tt.body, sessionID)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("Status = %d, want %d", rec.Code, tt.wantStatus)
@@ -321,9 +308,12 @@ func TestPushCommentsOnDeletedParent_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Create a note
 	noteUID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       noteUID,
@@ -332,14 +322,10 @@ func TestPushCommentsOnDeletedParent_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(pushBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Soft delete the note
-	deleteBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       noteUID,
@@ -352,14 +338,10 @@ func TestPushCommentsOnDeletedParent_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-	deleteReq := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(deleteBody))
-	deleteReq.Header.Set("Content-Type", "application/json")
-	deleteReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), deleteReq)
+	}, sessionID)
 
 	// Try to create a comment on the soft-deleted note (should fail)
-	commentBody, _ := json.Marshal(pushReq{
+	commentRec := makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":        "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -372,13 +354,7 @@ func TestPushCommentsOnDeletedParent_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-
-	commentReq := httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(commentBody))
-	commentReq.Header.Set("Content-Type", "application/json")
-	commentReq.Header.Set("X-Debug-Sub", "test-user")
-	commentRec := httptest.NewRecorder()
-	router.ServeHTTP(commentRec, commentReq)
+	}, sessionID)
 
 	var acks []pushAck
 	if err := json.NewDecoder(commentRec.Body).Decode(&acks); err != nil {
@@ -413,9 +389,12 @@ func TestDeleteCommentAfterParentDeleted_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Create a note
 	noteUID := "b2c3d4e5-f6a7-8901-bcde-f2345678901a"
-	noteBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       noteUID,
@@ -425,15 +404,11 @@ func TestDeleteCommentAfterParentDeleted_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(noteBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Create a comment on the note
 	commentUID := "d3e4f5a6-b7c8-9012-cdef-3456789012ab"
-	commentBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":        commentUID,
@@ -444,14 +419,10 @@ func TestDeleteCommentAfterParentDeleted_Integration(t *testing.T) {
 				"sync":       map[string]any{"version": float64(1)},
 			},
 		},
-	})
-	req = httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(commentBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Delete the parent note
-	deleteNoteBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       noteUID,
@@ -464,14 +435,10 @@ func TestDeleteCommentAfterParentDeleted_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-	req = httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(deleteNoteBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), req)
+	}, sessionID)
 
 	// Now delete the comment (should succeed even though parent is deleted)
-	deleteCommentBody, _ := json.Marshal(pushReq{
+	rec := makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":        commentUID,
@@ -486,13 +453,7 @@ func TestDeleteCommentAfterParentDeleted_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-
-	req = httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(deleteCommentBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Debug-Sub", "test-user")
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	}, sessionID)
 
 	if rec.Code != 200 {
 		t.Fatalf("Expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -535,11 +496,14 @@ func TestPullComments_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent entities
-	noteUID, _ := setupCommentTest(t, router)
+	noteUID, _ := setupCommentTest(t, router, sessionID)
 
 	// Push some comments
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":        "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -558,12 +522,7 @@ func TestPullComments_Integration(t *testing.T) {
 				"sync":       map[string]any{"version": float64(1)},
 			},
 		},
-	})
-
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	}, sessionID)
 
 	tests := []struct {
 		name       string
@@ -604,11 +563,7 @@ func TestPullComments_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/v1/sync/comments/pull"+tt.query, nil)
-			req.Header.Set("X-Debug-Sub", "test-user")
-
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
+			rec := makeRequestWithSession(t, router, "GET", "/v1/sync/comments/pull"+tt.query, nil, sessionID)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("Status = %d, want %d", rec.Code, tt.wantStatus)
@@ -642,8 +597,11 @@ func TestPushPullRoundTrip_Comments_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent entities
-	noteUID, _ := setupCommentTest(t, router)
+	noteUID, _ := setupCommentTest(t, router, sessionID)
 
 	// Push a comment
 	original := map[string]any{
@@ -661,17 +619,10 @@ func TestPushPullRoundTrip_Comments_Integration(t *testing.T) {
 		},
 	}
 
-	pushBody, _ := json.Marshal(pushReq{Items: []map[string]any{original}})
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", pushReq{Items: []map[string]any{original}}, sessionID)
 
 	// Pull it back
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/comments/pull?limit=100", nil)
-	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	pullRec := httptest.NewRecorder()
-	router.ServeHTTP(pullRec, pullHttpReq)
+	pullRec := makeRequestWithSession(t, router, "GET", "/v1/sync/comments/pull?limit=100", nil, sessionID)
 
 	var pullResp pullResp
 	if err := json.NewDecoder(pullRec.Body).Decode(&pullResp); err != nil {
@@ -727,11 +678,14 @@ func TestSoftDelete_Comments_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Setup parent entities
-	noteUID, _ := setupCommentTest(t, router)
+	noteUID, _ := setupCommentTest(t, router, sessionID)
 
 	// Push a comment
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":        "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -742,15 +696,10 @@ func TestSoftDelete_Comments_Integration(t *testing.T) {
 				"sync":       map[string]any{"version": float64(1), "isDeleted": false},
 			},
 		},
-	})
-
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	}, sessionID)
 
 	// Delete the comment
-	deleteBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/comments/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":        "c1d2e3f4-a1b2-3c4d-5e6f-7a8b9c0d1e2f",
@@ -765,18 +714,10 @@ func TestSoftDelete_Comments_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-
-	deleteReq := httptest.NewRequest("POST", "/v1/sync/comments/push", bytes.NewReader(deleteBody))
-	deleteReq.Header.Set("Content-Type", "application/json")
-	deleteReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), deleteReq)
+	}, sessionID)
 
 	// Pull and verify it's in deletes array
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/comments/pull?limit=100", nil)
-	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	pullRec := httptest.NewRecorder()
-	router.ServeHTTP(pullRec, pullHttpReq)
+	pullRec := makeRequestWithSession(t, router, "GET", "/v1/sync/comments/pull?limit=100", nil, sessionID)
 
 	var pullResp pullResp
 	json.NewDecoder(pullRec.Body).Decode(&pullResp)
