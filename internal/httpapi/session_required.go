@@ -1,0 +1,48 @@
+package httpapi
+
+import (
+	"net/http"
+
+	"github.com/rs/zerolog/log"
+)
+
+// SessionRequired middleware enforces that a valid sync session is active
+// This should be applied to all sync entity endpoints (push/pull)
+// but NOT to /info or session management endpoints
+func SessionRequired(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get session ID from context (set by SessionMiddleware)
+		sessionID := GetSessionID(r.Context())
+
+		if sessionID == "" {
+			log.Warn().
+				Str("path", r.URL.Path).
+				Str("method", r.Method).
+				Msg("Request to sync endpoint without X-Sync-Session header")
+
+			writeError(w, r, http.StatusPreconditionRequired,
+				"X-Sync-Session header required. Please call POST /v1/sync/sessions to begin a session.")
+			return
+		}
+
+		// Validate that the session exists and is not expired
+		session, ok := sessionStore.GetSession(sessionID)
+		if !ok {
+			log.Warn().
+				Str("sessionId", sessionID).
+				Str("path", r.URL.Path).
+				Msg("Invalid or expired sync session")
+
+			writeError(w, r, http.StatusPreconditionRequired,
+				"Invalid or expired sync session. Please call POST /v1/sync/sessions to begin a new session.")
+			return
+		}
+
+		// Optional: Touch/extend session TTL on each request
+		// For now, we keep strict TTL without extension
+		_ = session
+
+		// Session is valid, proceed with request
+		next.ServeHTTP(w, r)
+	})
+}

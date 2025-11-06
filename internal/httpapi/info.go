@@ -13,12 +13,29 @@ type ServerInfo struct {
 	RecommendedBatch int                          `json:"recommendedBatch"`
 	Locking          LockingCapability            `json:"locking"`
 	MinClientVersion string                       `json:"minClientVersion"`
+	RateLimit        *RateLimitInfo               `json:"rateLimit,omitempty"`
+	Hints            *SyncHints                   `json:"hints,omitempty"`
+}
+
+// RateLimitInfo describes the server's rate limiting policy
+type RateLimitInfo struct {
+	WindowSeconds int `json:"windowSeconds"` // e.g. 60
+	MaxRequests   int `json:"maxRequests"`   // per window
+	Burst         int `json:"burst"`         // token bucket size
+}
+
+// SyncHints provides recommendations for client behavior
+type SyncHints struct {
+	RecommendedBatch int `json:"recommendedBatch"` // safe batch size
+	BackoffMsOn429   int `json:"backoffMsOn429"`   // default backoff if Retry-After missing
 }
 
 // EntityCapability describes capabilities for a specific entity type
 type EntityCapability struct {
 	MaxLimit int  `json:"maxLimit"`
-	Enabled  bool `json:"enabled"`
+	Enabled  bool `json:"enabled"` // deprecated, kept for backward compatibility
+	Push     bool `json:"push"`    // push operations enabled
+	Pull     bool `json:"pull"`    // pull operations enabled
 }
 
 // LockingCapability describes sync locking/session support
@@ -32,28 +49,38 @@ type LockingCapability struct {
 // This endpoint can be called without authentication to allow capability discovery
 func (s *Server) Info(w http.ResponseWriter, r *http.Request) {
 	info := ServerInfo{
-		APIVersion: "1.0",
+		APIVersion: "1.1",
 		ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
 		Entities: map[string]EntityCapability{
 			"notes": {
 				MaxLimit: 1000,
 				Enabled:  true,
+				Push:     true,
+				Pull:     true,
 			},
 			"tasks": {
 				MaxLimit: 1000,
 				Enabled:  true,
+				Push:     true,
+				Pull:     true,
 			},
 			"comments": {
 				MaxLimit: 1000,
 				Enabled:  true,
+				Push:     true,
+				Pull:     true,
 			},
 			"chats": {
 				MaxLimit: 1000,
 				Enabled:  true,
+				Push:     true,
+				Pull:     true,
 			},
 			"chat_messages": {
 				MaxLimit: 1000,
 				Enabled:  true,
+				Push:     true,
+				Pull:     true,
 			},
 		},
 		RecommendedBatch: 500,
@@ -62,6 +89,15 @@ func (s *Server) Info(w http.ResponseWriter, r *http.Request) {
 			Mode:      "session",
 		},
 		MinClientVersion: "0.1.0",
+		RateLimit: &RateLimitInfo{
+			WindowSeconds: 60,
+			MaxRequests:   600,
+			Burst:         120,
+		},
+		Hints: &SyncHints{
+			RecommendedBatch: 500,
+			BackoffMsOn429:   1500,
+		},
 	}
 
 	writeJSON(w, http.StatusOK, info)

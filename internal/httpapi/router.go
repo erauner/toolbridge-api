@@ -105,30 +105,40 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(s.DB, jwt))
 
-		// Session management
+		// Session management (no session or rate limit required for these)
 		r.Post("/v1/sync/sessions", s.BeginSession)
 		r.Get("/v1/sync/sessions/{id}", s.GetSession)
 		r.Delete("/v1/sync/sessions/{id}", s.EndSession)
 
-		// Notes
-		r.Post("/v1/sync/notes/push", s.PushNotes)
-		r.Get("/v1/sync/notes/pull", s.PullNotes)
+		// Entity sync endpoints require active session and are rate limited
+		r.Group(func(r chi.Router) {
+			r.Use(SessionRequired) // Enforce X-Sync-Session header
+			r.Use(RateLimitMiddleware(RateLimitInfo{
+				WindowSeconds: 60,
+				MaxRequests:   600,
+				Burst:         120,
+			}))
 
-		// Tasks
-		r.Post("/v1/sync/tasks/push", s.PushTasks)
-		r.Get("/v1/sync/tasks/pull", s.PullTasks)
+			// Notes
+			r.Post("/v1/sync/notes/push", s.PushNotes)
+			r.Get("/v1/sync/notes/pull", s.PullNotes)
 
-		// Comments
-		r.Post("/v1/sync/comments/push", s.PushComments)
-		r.Get("/v1/sync/comments/pull", s.PullComments)
+			// Tasks
+			r.Post("/v1/sync/tasks/push", s.PushTasks)
+			r.Get("/v1/sync/tasks/pull", s.PullTasks)
 
-		// Chats
-		r.Post("/v1/sync/chats/push", s.PushChats)
-		r.Get("/v1/sync/chats/pull", s.PullChats)
+			// Comments
+			r.Post("/v1/sync/comments/push", s.PushComments)
+			r.Get("/v1/sync/comments/pull", s.PullComments)
 
-		// Chat Messages
-		r.Post("/v1/sync/chat_messages/push", s.PushChatMessages)
-		r.Get("/v1/sync/chat_messages/pull", s.PullChatMessages)
+			// Chats
+			r.Post("/v1/sync/chats/push", s.PushChats)
+			r.Get("/v1/sync/chats/pull", s.PullChats)
+
+			// Chat Messages
+			r.Post("/v1/sync/chat_messages/push", s.PushChatMessages)
+			r.Get("/v1/sync/chat_messages/pull", s.PullChatMessages)
+		})
 	})
 
 	log.Info().Msg("HTTP routes registered")
