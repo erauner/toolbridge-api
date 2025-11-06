@@ -7,7 +7,12 @@ image:
   tag: "v0.1.0"
 
 # Number of API replicas
-replicaCount: 2
+# NOTE: Currently limited to 1 due to in-memory session/rate-limit storage
+# Sessions and rate limiters are stored in-memory per pod, not shared across replicas.
+# With replicaCount > 1, users will experience intermittent 428 errors when their
+# session isn't found (requests hit different pods).
+# TODO: Increase to 2+ after implementing Redis-backed session storage (see Plans/redis-distributed-state.md)
+replicaCount: 1
 
 # Service account
 serviceAccount:

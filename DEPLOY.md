@@ -595,6 +595,29 @@ Before deploying to production:
 - [ ] Test disaster recovery procedures
 - [ ] Document runbook for operations team
 
+### Known Limitations (Phase 7)
+
+⚠️ **Single Replica Requirement:**
+
+The current implementation (Phase 7) uses in-memory storage for:
+- Sync session management
+- Rate limiting state
+
+**Impact:**
+- Helm chart is configured with `replicaCount: 1` (single replica only)
+- Sessions and rate limiters are NOT shared between pods
+- Scaling to multiple replicas will cause intermittent sync failures
+
+**Workarounds:**
+1. **Single Replica** (current default): Keep `replicaCount: 1`
+2. **Vertical Scaling**: Increase CPU/memory limits for the single pod
+3. **Redis Implementation** (future): See `Plans/redis-distributed-state.md` for horizontal scaling roadmap
+
+**Future Work:**
+- Phase 8+ will implement Redis-backed distributed storage
+- This will enable horizontal scaling with `replicaCount: 2+`
+- See `Plans/redis-distributed-state.md` for implementation details
+
 ---
 
 ## Additional Resources
