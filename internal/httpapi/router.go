@@ -79,6 +79,9 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		w.Write([]byte("ok"))
 	})
 
+	// Server info / capability discovery (unauthenticated)
+	r.Get("/v1/sync/info", s.Info)
+
 	// All sync endpoints require authentication
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(s.DB, jwt))
