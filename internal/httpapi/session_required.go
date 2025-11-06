@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/erauner12/toolbridge-api/internal/auth"
 	"github.com/rs/zerolog/log"
 )
 
@@ -38,11 +39,22 @@ func SessionRequired(next http.Handler) http.Handler {
 			return
 		}
 
-		// Optional: Touch/extend session TTL on each request
-		// For now, we keep strict TTL without extension
-		_ = session
+		// Validate that the session belongs to the authenticated user
+		authenticatedUserID := auth.UserID(r.Context())
+		if session.UserID != authenticatedUserID {
+			log.Warn().
+				Str("sessionId", sessionID).
+				Str("sessionUserId", session.UserID).
+				Str("authenticatedUserId", authenticatedUserID).
+				Str("path", r.URL.Path).
+				Msg("Session does not belong to authenticated user")
 
-		// Session is valid, proceed with request
+			writeError(w, r, http.StatusForbidden,
+				"Session does not belong to authenticated user.")
+			return
+		}
+
+		// Session is valid and belongs to the authenticated user, proceed with request
 		next.ServeHTTP(w, r)
 	})
 }
