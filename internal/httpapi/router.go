@@ -72,6 +72,7 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(SessionMiddleware) // Track X-Sync-Session header
 
 	// Health check (unauthenticated)
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +86,11 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 	// All sync endpoints require authentication
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(s.DB, jwt))
+
+		// Session management
+		r.Post("/v1/sync/sessions", s.BeginSession)
+		r.Get("/v1/sync/sessions/{id}", s.GetSession)
+		r.Delete("/v1/sync/sessions/{id}", s.EndSession)
 
 		// Notes
 		r.Post("/v1/sync/notes/push", s.PushNotes)
