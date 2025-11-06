@@ -20,7 +20,7 @@ func TestSessionRequired_UserMismatch(t *testing.T) {
 	// Clean up tables
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// User A creates a session
@@ -77,7 +77,7 @@ func TestSessionRequired_SameUser(t *testing.T) {
 	// Clean up tables
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// User creates a session

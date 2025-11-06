@@ -10,7 +10,7 @@ type ServerInfo struct {
 	APIVersion       string                       `json:"apiVersion"`
 	ServerTime       string                       `json:"serverTime"`
 	Entities         map[string]EntityCapability  `json:"entities"`
-	RecommendedBatch int                          `json:"recommendedBatch"`
+	RecommendedBatch int                          `json:"recommendedBatch,omitempty"` // Deprecated: use Hints.RecommendedBatch
 	Locking          LockingCapability            `json:"locking"`
 	MinClientVersion string                       `json:"minClientVersion"`
 	RateLimit        *RateLimitInfo               `json:"rateLimit,omitempty"`
@@ -33,9 +33,9 @@ type SyncHints struct {
 // EntityCapability describes capabilities for a specific entity type
 type EntityCapability struct {
 	MaxLimit int  `json:"maxLimit"`
-	Enabled  bool `json:"enabled"` // deprecated, kept for backward compatibility
-	Push     bool `json:"push"`    // push operations enabled
-	Pull     bool `json:"pull"`    // pull operations enabled
+	Enabled  bool `json:"enabled,omitempty"` // deprecated, kept for backward compatibility
+	Push     bool `json:"push"`              // push operations enabled
+	Pull     bool `json:"pull"`              // pull operations enabled
 }
 
 // LockingCapability describes sync locking/session support
@@ -54,46 +54,36 @@ func (s *Server) Info(w http.ResponseWriter, r *http.Request) {
 		Entities: map[string]EntityCapability{
 			"notes": {
 				MaxLimit: 1000,
-				Enabled:  true,
 				Push:     true,
 				Pull:     true,
 			},
 			"tasks": {
 				MaxLimit: 1000,
-				Enabled:  true,
 				Push:     true,
 				Pull:     true,
 			},
 			"comments": {
 				MaxLimit: 1000,
-				Enabled:  true,
 				Push:     true,
 				Pull:     true,
 			},
 			"chats": {
 				MaxLimit: 1000,
-				Enabled:  true,
 				Push:     true,
 				Pull:     true,
 			},
 			"chat_messages": {
 				MaxLimit: 1000,
-				Enabled:  true,
 				Push:     true,
 				Pull:     true,
 			},
 		},
-		RecommendedBatch: 500,
 		Locking: LockingCapability{
 			Supported: true,
 			Mode:      "session",
 		},
 		MinClientVersion: "0.1.0",
-		RateLimit: &RateLimitInfo{
-			WindowSeconds: 60,
-			MaxRequests:   600,
-			Burst:         120,
-		},
+		RateLimit:        &s.RateLimitConfig,
 		Hints: &SyncHints{
 			RecommendedBatch: 500,
 			BackoffMsOn429:   1500,

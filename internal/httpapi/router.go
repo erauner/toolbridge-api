@@ -14,7 +14,15 @@ import (
 
 // Server holds dependencies for HTTP handlers
 type Server struct {
-	DB *pgxpool.Pool
+	DB              *pgxpool.Pool
+	RateLimitConfig RateLimitInfo // Centralized rate limit configuration
+}
+
+// DefaultRateLimitConfig provides the default rate limiting configuration
+var DefaultRateLimitConfig = RateLimitInfo{
+	WindowSeconds: 60,  // 1 minute window
+	MaxRequests:   600, // 600 requests per window (sustained rate)
+	Burst:         120, // Allow burst of 120 requests
 }
 
 // Common request/response types for sync endpoints
@@ -113,11 +121,7 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		// Entity sync endpoints require active session and are rate limited
 		r.Group(func(r chi.Router) {
 			r.Use(SessionRequired) // Enforce X-Sync-Session header
-			r.Use(RateLimitMiddleware(RateLimitInfo{
-				WindowSeconds: 60,
-				MaxRequests:   600,
-				Burst:         120,
-			}))
+			r.Use(RateLimitMiddleware(s.RateLimitConfig))
 
 			// Notes
 			r.Post("/v1/sync/notes/push", s.PushNotes)

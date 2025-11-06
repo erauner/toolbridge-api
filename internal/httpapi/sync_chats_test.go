@@ -42,7 +42,7 @@ func TestPushChats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -174,7 +174,7 @@ func TestPullChats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -274,7 +274,7 @@ func TestPushPullRoundTrip_Chats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -339,7 +339,7 @@ func TestSoftDelete_Chats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite

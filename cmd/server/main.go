@@ -47,7 +47,10 @@ func main() {
 	defer pool.Close()
 
 	// HTTP server setup
-	srv := &httpapi.Server{DB: pool}
+	srv := &httpapi.Server{
+		DB:              pool,
+		RateLimitConfig: httpapi.DefaultRateLimitConfig,
+	}
 
 	// JWT configuration
 	// DevMode ONLY enabled when ENV is explicitly set to "dev" (allows X-Debug-Sub header)

@@ -62,8 +62,10 @@ func NewTokenBucket(capacity int, refillRate float64) *TokenBucket {
 }
 
 // Allow checks if a token is available and consumes it if so
-// Returns (allowed bool, tokensRemaining int, resetTime time.Time)
-func (tb *TokenBucket) Allow() (bool, int, time.Time) {
+// Returns (allowed bool, tokensRemaining int, nextTokenTime time.Time, fullResetTime time.Time)
+// - nextTokenTime: when the next token will be available (use for Retry-After)
+// - fullResetTime: when the bucket will be completely full (use for X-RateLimit-Reset)
+func (tb *TokenBucket) Allow() (bool, int, time.Time, time.Time) {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 
@@ -76,17 +78,22 @@ func (tb *TokenBucket) Allow() (bool, int, time.Time) {
 	}
 	tb.lastRefill = now
 
-	// Calculate reset time (when bucket will be full again)
+	// Calculate full reset time (when bucket will be completely full)
 	tokensNeeded := tb.capacity - tb.tokens
-	resetTime := now.Add(time.Duration(tokensNeeded/tb.refillRate) * time.Second)
+	fullResetTime := now.Add(time.Duration(tokensNeeded/tb.refillRate) * time.Second)
 
 	if tb.tokens >= 1.0 {
 		tb.tokens -= 1.0
-		return true, int(tb.tokens), resetTime
+		// Next token available immediately (we just consumed one but more available)
+		return true, int(tb.tokens), now, fullResetTime
 	}
 
-	// Calculate retry-after (seconds until next token available)
-	return false, 0, resetTime
+	// Calculate when next token will be available (not when bucket is full)
+	tokensUntilNext := 1.0 - tb.tokens
+	secondsUntilNext := tokensUntilNext / tb.refillRate
+	nextTokenTime := now.Add(time.Duration(secondsUntilNext) * time.Second)
+
+	return false, 0, nextTokenTime, fullResetTime
 }
 
 // RateLimiter manages per-user token buckets
@@ -135,7 +142,8 @@ func (rl *RateLimiter) getBucket(userID string) *TokenBucket {
 }
 
 // Allow checks if the user is allowed to make a request
-func (rl *RateLimiter) Allow(userID string) (bool, int, time.Time) {
+// Returns (allowed bool, remaining int, nextTokenTime time.Time, fullResetTime time.Time)
+func (rl *RateLimiter) Allow(userID string) (bool, int, time.Time, time.Time) {
 	bucket := rl.getBucket(userID)
 	return bucket.Allow()
 }
@@ -179,16 +187,17 @@ func RateLimitMiddleware(config RateLimitInfo) func(http.Handler) http.Handler {
 			}
 
 			// Check rate limit
-			allowed, remaining, resetTime := limiter.Allow(userID)
+			allowed, remaining, nextTokenTime, fullResetTime := limiter.Allow(userID)
 
 			// Set rate limit headers
 			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(config.MaxRequests))
 			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
-			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetTime.Unix(), 10))
+			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(fullResetTime.Unix(), 10))
+			w.Header().Set("X-RateLimit-Burst", strconv.Itoa(config.Burst))
 
 			if !allowed {
-				// Calculate Retry-After in seconds
-				retryAfter := int(time.Until(resetTime).Seconds())
+				// Calculate Retry-After in seconds (time until next token available)
+				retryAfter := int(time.Until(nextTokenTime).Seconds())
 				if retryAfter < 1 {
 					retryAfter = 1
 				}

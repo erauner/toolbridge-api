@@ -22,7 +22,7 @@ func TestPushTasks_Integration(t *testing.T) {
 		t.Fatalf("Failed to clean tasks table: %v", err)
 	}
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -160,7 +160,7 @@ func TestPullTasks_Integration(t *testing.T) {
 		t.Fatalf("Failed to clean tasks table: %v", err)
 	}
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -266,7 +266,7 @@ func TestPushPullRoundTrip_Tasks_Integration(t *testing.T) {
 		t.Fatalf("Failed to clean tasks table: %v", err)
 	}
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -338,7 +338,7 @@ func TestSoftDelete_Tasks_Integration(t *testing.T) {
 		t.Fatalf("Failed to clean tasks table: %v", err)
 	}
 
-	srv := &Server{DB: pool}
+	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
