@@ -100,8 +100,8 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		r.Get("/v1/sync/chats/pull", s.PullChats)
 
 		// Chat Messages
-		r.Post("/v1/sync/chat-messages/push", s.PushChatMessages)
-		r.Get("/v1/sync/chat-messages/pull", s.PullChatMessages)
+		r.Post("/v1/sync/chat_messages/push", s.PushChatMessages)
+		r.Get("/v1/sync/chat_messages/pull", s.PullChatMessages)
 	})
 
 	log.Info().Msg("HTTP routes registered")

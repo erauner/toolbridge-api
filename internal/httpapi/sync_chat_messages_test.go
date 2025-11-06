@@ -183,7 +183,7 @@ func TestPushChatMessages_Integration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
-			req := httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(body))
+			req := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Debug-Sub", "test-user")
 
@@ -273,7 +273,7 @@ func TestPushChatMessagesOnDeletedParent_Integration(t *testing.T) {
 		},
 	})
 
-	messageReq := httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(messageBody))
+	messageReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(messageBody))
 	messageReq.Header.Set("Content-Type", "application/json")
 	messageReq.Header.Set("X-Debug-Sub", "test-user")
 	messageRec := httptest.NewRecorder()
@@ -342,7 +342,7 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 			},
 		},
 	})
-	req = httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(messageBody))
+	req = httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(messageBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Debug-Sub", "test-user")
 	router.ServeHTTP(httptest.NewRecorder(), req)
@@ -384,7 +384,7 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 		},
 	})
 
-	req = httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(deleteMessageBody))
+	req = httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(deleteMessageBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Debug-Sub", "test-user")
 	rec := httptest.NewRecorder()
@@ -453,7 +453,7 @@ func TestPullChatMessages_Integration(t *testing.T) {
 		},
 	})
 
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(pushBody))
+	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(pushBody))
 	pushHttpReq.Header.Set("Content-Type", "application/json")
 	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
 	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
@@ -497,7 +497,7 @@ func TestPullChatMessages_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/v1/sync/chat-messages/pull"+tt.query, nil)
+			req := httptest.NewRequest("GET", "/v1/sync/chat_messages/pull"+tt.query, nil)
 			req.Header.Set("X-Debug-Sub", "test-user")
 
 			rec := httptest.NewRecorder()
@@ -553,13 +553,13 @@ func TestPushPullRoundTrip_ChatMessages_Integration(t *testing.T) {
 	}
 
 	pushBody, _ := json.Marshal(pushReq{Items: []map[string]any{original}})
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(pushBody))
+	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(pushBody))
 	pushHttpReq.Header.Set("Content-Type", "application/json")
 	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
 	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
 
 	// Pull it back
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/chat-messages/pull?limit=100", nil)
+	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/chat_messages/pull?limit=100", nil)
 	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
 	pullRec := httptest.NewRecorder()
 	router.ServeHTTP(pullRec, pullHttpReq)
@@ -630,7 +630,7 @@ func TestSoftDelete_ChatMessages_Integration(t *testing.T) {
 		},
 	})
 
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(pushBody))
+	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(pushBody))
 	pushHttpReq.Header.Set("Content-Type", "application/json")
 	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
 	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
@@ -652,13 +652,13 @@ func TestSoftDelete_ChatMessages_Integration(t *testing.T) {
 		},
 	})
 
-	deleteReq := httptest.NewRequest("POST", "/v1/sync/chat-messages/push", bytes.NewReader(deleteBody))
+	deleteReq := httptest.NewRequest("POST", "/v1/sync/chat_messages/push", bytes.NewReader(deleteBody))
 	deleteReq.Header.Set("Content-Type", "application/json")
 	deleteReq.Header.Set("X-Debug-Sub", "test-user")
 	router.ServeHTTP(httptest.NewRecorder(), deleteReq)
 
 	// Pull and verify it's in deletes array
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/chat-messages/pull?limit=100", nil)
+	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/chat_messages/pull?limit=100", nil)
 	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
 	pullRec := httptest.NewRecorder()
 	router.ServeHTTP(pullRec, pullHttpReq)
