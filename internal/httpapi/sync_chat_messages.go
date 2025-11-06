@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// PushChatMessages handles POST /v1/sync/chat-messages/push
+// PushChatMessages handles POST /v1/sync/chat_messages/push
 // Implements Last-Write-Wins (LWW) conflict resolution with idempotent pushes
 // Validates parent chat exists before upserting
 func (s *Server) PushChatMessages(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +156,7 @@ func (s *Server) PushChatMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, acks)
 }
 
-// PullChatMessages handles GET /v1/sync/chat-messages/pull?cursor=<opaque>&limit=<int>
+// PullChatMessages handles GET /v1/sync/chat_messages/pull?cursor=<opaque>&limit=<int>
 // Returns upserts and deletes in deterministic order using cursor-based pagination
 func (s *Server) PullChatMessages(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserID(r.Context())

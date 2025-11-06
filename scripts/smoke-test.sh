@@ -451,7 +451,7 @@ CHAT_CREATE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chats/push" \
         }]
     }")
 
-MESSAGE_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat-messages/push" \
+MESSAGE_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat_messages/push" \
     -H "X-Debug-Sub: $USER" \
     -H "Content-Type: application/json" \
     -d "{
@@ -477,7 +477,7 @@ fi
 
 # Test 20: Pull the message
 test_step "Pulling chat message"
-MESSAGE_PULL_RESP=$(curl -s "$API_URL/v1/sync/chat-messages/pull?limit=100" \
+MESSAGE_PULL_RESP=$(curl -s "$API_URL/v1/sync/chat_messages/pull?limit=100" \
     -H "X-Debug-Sub: $USER")
 
 FOUND_MESSAGE=$(echo "$MESSAGE_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$MESSAGE_UID\") | .content")
@@ -490,7 +490,7 @@ fi
 
 # Test 21: Delete message (soft delete)
 test_step "Deleting chat message (soft delete)"
-MESSAGE_DELETE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat-messages/push" \
+MESSAGE_DELETE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat_messages/push" \
     -H "X-Debug-Sub: $USER" \
     -H "Content-Type: application/json" \
     -d "{
