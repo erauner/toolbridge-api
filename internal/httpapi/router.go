@@ -48,6 +48,23 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	}
 }
 
+// errorResponse represents a standardized error response with correlation ID
+type errorResponse struct {
+	Error         string `json:"error"`
+	CorrelationID string `json:"correlation_id"`
+}
+
+// writeError writes an error response with correlation ID from context
+func writeError(w http.ResponseWriter, r *http.Request, code int, message string) {
+	correlationID := GetCorrelationID(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(errorResponse{
+		Error:         message,
+		CorrelationID: correlationID,
+	})
+}
+
 // parseLimit parses a limit query param with default and max
 func parseLimit(q string, def, max int) int {
 	if q == "" {
@@ -70,6 +87,7 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 	// Middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(CorrelationMiddleware) // Track X-Correlation-ID header for request tracing
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(SessionMiddleware) // Track X-Sync-Session header
