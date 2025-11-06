@@ -15,10 +15,14 @@ import (
 func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserID(r.Context())
 	ctx := r.Context()
+	// Use contextual logger with correlation ID
+	logger := log.Ctx(ctx)
+
+	logger.Info().Str("user_id", userID).Str("entity_type", "notes").Msg("sync_push_started")
 
 	var req pushReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Warn().Err(err).Msg("invalid push request body")
+		logger.Warn().Err(err).Msg("invalid push request body")
 		writeJSON(w, 400, []pushAck{{Error: "invalid json"}})
 		return
 	}
@@ -28,7 +32,7 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 	// Use transaction for atomicity (all-or-nothing per batch)
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to begin transaction")
+		logger.Error().Err(err).Msg("failed to begin transaction")
 		writeJSON(w, 500, []pushAck{{Error: "transaction error"}})
 		return
 	}
@@ -38,7 +42,7 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 		// Extract sync metadata from client JSON
 		ext, err := syncx.ExtractCommon(item)
 		if err != nil {
-			log.Warn().Err(err).Interface("item", item).Msg("failed to extract sync metadata")
+			logger.Warn().Err(err).Interface("item", item).Msg("failed to extract sync metadata")
 			acks = append(acks, pushAck{Error: err.Error()})
 			continue
 		}
@@ -46,7 +50,7 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 		// Serialize payload back to JSON for storage
 		payloadJSON, err := json.Marshal(item)
 		if err != nil {
-			log.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to marshal payload")
+			logger.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to marshal payload")
 			acks = append(acks, pushAck{
 				UID:       ext.UID.String(),
 				Version:   ext.Version,
@@ -76,7 +80,7 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 		`, ext.UID, userID, ext.UpdatedAtMs, ext.DeletedAtMs, ext.Version, payloadJSON)
 
 		if err != nil {
-			log.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to upsert note")
+			logger.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to upsert note")
 			acks = append(acks, pushAck{
 				UID:       ext.UID.String(),
 				Version:   ext.Version,
@@ -92,7 +96,7 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 		if err := tx.QueryRow(ctx,
 			`SELECT version, updated_at_ms FROM note WHERE uid = $1 AND owner_id = $2`,
 			ext.UID, userID).Scan(&serverVersion, &serverMs); err != nil {
-			log.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to read note after upsert")
+			logger.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to read note after upsert")
 			acks = append(acks, pushAck{
 				UID:       ext.UID.String(),
 				Version:   ext.Version,
@@ -111,10 +115,15 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		log.Error().Err(err).Msg("failed to commit transaction")
+		logger.Error().Err(err).Msg("failed to commit transaction")
 		writeJSON(w, 500, []pushAck{{Error: "commit failed"}})
 		return
 	}
+
+	logger.Info().
+		Str("user_id", userID).
+		Int("success_count", len(acks)).
+		Msg("sync_push_completed: notes")
 
 	writeJSON(w, 200, acks)
 }
@@ -124,6 +133,8 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) PullNotes(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserID(r.Context())
 	ctx := r.Context()
+	// Use contextual logger with correlation ID
+	logger := log.Ctx(ctx)
 
 	// Parse query params
 	limit := parseLimit(r.URL.Query().Get("limit"), 500, 1000)
@@ -132,6 +143,12 @@ func (s *Server) PullNotes(w http.ResponseWriter, r *http.Request) {
 		// No cursor = start from beginning (epoch)
 		cur = syncx.Cursor{Ms: 0, UID: uuid.Nil}
 	}
+
+	logger.Info().
+		Str("user_id", userID).
+		Int("limit", limit).
+		Str("cursor", r.URL.Query().Get("cursor")).
+		Msg("sync_pull_started: notes")
 
 	// Query notes ordered by (updated_at_ms, uid) for deterministic pagination
 	rows, err := s.DB.Query(ctx, `
@@ -144,8 +161,8 @@ func (s *Server) PullNotes(w http.ResponseWriter, r *http.Request) {
 	`, userID, cur.Ms, cur.UID, limit)
 
 	if err != nil {
-		log.Error().Err(err).Msg("failed to query notes")
-		writeJSON(w, 500, map[string]any{"error": "query failed"})
+		logger.Error().Err(err).Msg("failed to query notes")
+		writeError(w, r, 500, "query failed")
 		return
 	}
 	defer rows.Close()
@@ -162,8 +179,8 @@ func (s *Server) PullNotes(w http.ResponseWriter, r *http.Request) {
 		var uid string
 
 		if err := rows.Scan(&payload, &deletedAtMs, &ms, &uid); err != nil {
-			log.Error().Err(err).Msg("failed to scan note row")
-			writeJSON(w, 500, map[string]any{"error": "scan failed"})
+			logger.Error().Err(err).Msg("failed to scan note row")
+			writeError(w, r, 500, "scan failed")
 			return
 		}
 
@@ -182,8 +199,8 @@ func (s *Server) PullNotes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Error().Err(err).Msg("row iteration error")
-		writeJSON(w, 500, map[string]any{"error": "iteration failed"})
+		logger.Error().Err(err).Msg("row iteration error")
+		writeError(w, r, 500, "iteration failed")
 		return
 	}
 
@@ -194,6 +211,13 @@ func (s *Server) PullNotes(w http.ResponseWriter, r *http.Request) {
 		encoded := syncx.EncodeCursor(syncx.Cursor{Ms: lastMs, UID: uid})
 		nextCursor = &encoded
 	}
+
+	logger.Info().
+		Str("user_id", userID).
+		Int("upsert_count", len(upserts)).
+		Int("delete_count", len(deletes)).
+		Bool("has_next_page", nextCursor != nil).
+		Msg("sync_pull_completed: notes")
 
 	writeJSON(w, 200, pullResp{
 		Upserts:    upserts,
