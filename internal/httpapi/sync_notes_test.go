@@ -1,10 +1,8 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -46,6 +44,9 @@ func TestPushNotes_Integration(t *testing.T) {
 
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
+
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
 
 	tests := []struct {
 		name       string
@@ -147,13 +148,7 @@ func TestPushNotes_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body, _ := json.Marshal(tt.body)
-			req := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-Debug-Sub", "test-user")
-
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
+			rec := makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", tt.body, sessionID)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("Status = %d, want %d", rec.Code, tt.wantStatus)
@@ -182,8 +177,11 @@ func TestPullNotes_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// First, push some notes
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       "c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f",
@@ -198,12 +196,7 @@ func TestPullNotes_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1)},
 			},
 		},
-	})
-
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	}, sessionID)
 
 	tests := []struct {
 		name       string
@@ -255,11 +248,7 @@ func TestPullNotes_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/v1/sync/notes/pull"+tt.query, nil)
-			req.Header.Set("X-Debug-Sub", "test-user")
-
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
+			rec := makeRequestWithSession(t, router, "GET", "/v1/sync/notes/pull"+tt.query, nil, sessionID)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("Status = %d, want %d", rec.Code, tt.wantStatus)
@@ -288,6 +277,9 @@ func TestPushPullRoundTrip_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Push a note
 	original := map[string]any{
 		"uid":       "c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f",
@@ -302,17 +294,10 @@ func TestPushPullRoundTrip_Integration(t *testing.T) {
 		},
 	}
 
-	pushBody, _ := json.Marshal(pushReq{Items: []map[string]any{original}})
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{Items: []map[string]any{original}}, sessionID)
 
 	// Pull it back
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/notes/pull?limit=100", nil)
-	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	pullRec := httptest.NewRecorder()
-	router.ServeHTTP(pullRec, pullHttpReq)
+	pullRec := makeRequestWithSession(t, router, "GET", "/v1/sync/notes/pull?limit=100", nil, sessionID)
 
 	var pullResp pullResp
 	if err := json.NewDecoder(pullRec.Body).Decode(&pullResp); err != nil {
@@ -357,8 +342,11 @@ func TestSoftDelete_Integration(t *testing.T) {
 	srv := &Server{DB: pool}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
+	// Create a session for this test suite
+	sessionID := createTestSession(t, router)
+
 	// Push a note
-	pushBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       "c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f",
@@ -367,15 +355,10 @@ func TestSoftDelete_Integration(t *testing.T) {
 				"sync":      map[string]any{"version": float64(1), "isDeleted": false},
 			},
 		},
-	})
-
-	pushHttpReq := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(pushBody))
-	pushHttpReq.Header.Set("Content-Type", "application/json")
-	pushHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), pushHttpReq)
+	}, sessionID)
 
 	// Delete the note
-	deleteBody, _ := json.Marshal(pushReq{
+	makeRequestWithSession(t, router, "POST", "/v1/sync/notes/push", pushReq{
 		Items: []map[string]any{
 			{
 				"uid":       "c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f",
@@ -388,18 +371,10 @@ func TestSoftDelete_Integration(t *testing.T) {
 				},
 			},
 		},
-	})
-
-	deleteReq := httptest.NewRequest("POST", "/v1/sync/notes/push", bytes.NewReader(deleteBody))
-	deleteReq.Header.Set("Content-Type", "application/json")
-	deleteReq.Header.Set("X-Debug-Sub", "test-user")
-	router.ServeHTTP(httptest.NewRecorder(), deleteReq)
+	}, sessionID)
 
 	// Pull and verify it's in deletes array
-	pullHttpReq := httptest.NewRequest("GET", "/v1/sync/notes/pull?limit=100", nil)
-	pullHttpReq.Header.Set("X-Debug-Sub", "test-user")
-	pullRec := httptest.NewRecorder()
-	router.ServeHTTP(pullRec, pullHttpReq)
+	pullRec := makeRequestWithSession(t, router, "GET", "/v1/sync/notes/pull?limit=100", nil, sessionID)
 
 	var pullResp pullResp
 	json.NewDecoder(pullRec.Body).Decode(&pullResp)
