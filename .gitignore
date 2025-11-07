@@ -41,3 +41,4 @@ postgres-data/
 # Temporary files
 tmp/
 *.tmp
+.repoprompt/

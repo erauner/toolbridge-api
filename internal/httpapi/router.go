@@ -118,10 +118,11 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		r.Get("/v1/sync/sessions/{id}", s.GetSession)
 		r.Delete("/v1/sync/sessions/{id}", s.EndSession)
 
-		// Entity sync endpoints require active session and are rate limited
+		// Entity sync endpoints require active session, rate limiting, and epoch validation
 		r.Group(func(r chi.Router) {
 			r.Use(SessionRequired) // Enforce X-Sync-Session header
 			r.Use(RateLimitMiddleware(s.RateLimitConfig))
+			r.Use(EpochRequired(s.DB)) // NEW: Validate epoch on all entity operations
 
 			// Notes
 			r.Post("/v1/sync/notes/push", s.PushNotes)
@@ -142,6 +143,15 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 			// Chat Messages
 			r.Post("/v1/sync/chat_messages/push", s.PushChatMessages)
 			r.Get("/v1/sync/chat_messages/pull", s.PullChatMessages)
+		})
+
+		// Wipe & state routes require auth + session, but NO epoch check
+		// (otherwise you can't wipe when epoch is mismatched!)
+		r.Group(func(r chi.Router) {
+			r.Use(SessionRequired)
+
+			r.Post("/v1/sync/wipe", s.WipeAccount)
+			r.Get("/v1/sync/state", s.GetSyncState)
 		})
 	})
 

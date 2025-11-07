@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )
 
@@ -17,6 +19,7 @@ type Session struct {
 	UserID    string    `json:"userId"`
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	Epoch     int       `json:"epoch"` // Tenant epoch for wipe/reset coordination
 }
 
 // SessionStore manages active sync sessions
@@ -33,7 +36,7 @@ var sessionStore = &SessionStore{
 }
 
 // CreateSession generates a new session ID for the user
-func (s *SessionStore) CreateSession(userID string) Session {
+func (s *SessionStore) CreateSession(userID string, epoch int) Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -42,6 +45,7 @@ func (s *SessionStore) CreateSession(userID string) Session {
 		UserID:    userID,
 		CreatedAt: time.Now().UTC(),
 		ExpiresAt: time.Now().UTC().Add(s.ttl),
+		Epoch:     epoch,
 	}
 
 	s.sessions[session.ID] = session
@@ -83,6 +87,23 @@ func (s *SessionStore) DeleteSession(sessionID string) bool {
 	return exists
 }
 
+// DeleteUserSessions removes all sessions for a given user.
+// Returns the number of sessions deleted.
+// Used when wiping account data to invalidate all device sessions.
+func (s *SessionStore) DeleteUserSessions(userID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := 0
+	for id, sess := range s.sessions {
+		if sess.UserID == userID {
+			delete(s.sessions, id)
+			count++
+		}
+	}
+	return count
+}
+
 // cleanupExpiredLocked removes expired sessions (caller must hold write lock)
 func (s *SessionStore) cleanupExpiredLocked() {
 	now := time.Now().UTC()
@@ -104,14 +125,46 @@ func (s *Server) BeginSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := sessionStore.CreateSession(userID)
+	// Load or create owner_state row (lazy initialization)
+	var epoch int
+	err := s.DB.QueryRow(r.Context(), `
+		INSERT INTO owner_state(owner_id, epoch, created_at, updated_at)
+		VALUES ($1, 1, NOW(), NOW())
+		ON CONFLICT (owner_id) DO NOTHING
+		RETURNING epoch
+	`, userID).Scan(&epoch)
+
+	if err != nil {
+		// If insert did nothing (row exists), select epoch
+		if err == pgx.ErrNoRows {
+			err = s.DB.QueryRow(r.Context(),
+				`SELECT epoch FROM owner_state WHERE owner_id = $1`,
+				userID,
+			).Scan(&epoch)
+			if err != nil {
+				log.Error().Err(err).Str("userId", userID).Msg("Failed to load epoch")
+				writeError(w, r, http.StatusInternalServerError, "Failed to load epoch")
+				return
+			}
+		} else {
+			log.Error().Err(err).Str("userId", userID).Msg("Failed to initialize epoch")
+			writeError(w, r, http.StatusInternalServerError, "Failed to initialize epoch")
+			return
+		}
+	}
+
+	// Create session with epoch
+	session := sessionStore.CreateSession(userID, epoch)
 
 	log.Info().
 		Str("sessionId", session.ID).
 		Str("userId", userID).
+		Int("epoch", epoch).
 		Time("expiresAt", session.ExpiresAt).
 		Msg("sync session created")
 
+	// Return session with epoch in header
+	w.Header().Set("X-Sync-Epoch", strconv.Itoa(epoch))
 	writeJSON(w, http.StatusCreated, session)
 }
 
