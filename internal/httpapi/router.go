@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
+	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,9 @@ import (
 type Server struct {
 	DB              *pgxpool.Pool
 	RateLimitConfig RateLimitInfo // Centralized rate limit configuration
+	// Services
+	NoteSvc *syncservice.NoteService
+	// TODO: Add other entity services (TaskSvc, CommentSvc, etc.)
 }
 
 // DefaultRateLimitConfig provides the default rate limiting configuration

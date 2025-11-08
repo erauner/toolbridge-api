@@ -11,6 +11,7 @@ import (
 	"github.com/erauner12/toolbridge-api/internal/auth"
 	"github.com/erauner12/toolbridge-api/internal/db"
 	"github.com/erauner12/toolbridge-api/internal/httpapi"
+	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -50,6 +51,9 @@ func main() {
 	srv := &httpapi.Server{
 		DB:              pool,
 		RateLimitConfig: httpapi.DefaultRateLimitConfig,
+		// Initialize services
+		NoteSvc: syncservice.NewNoteService(pool),
+		// TODO: Add other entity services (TaskSvc, CommentSvc, etc.)
 	}
 
 	// JWT configuration

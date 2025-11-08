@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package toolbridge.sync.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/erauner12/toolbridge-api/gen/go/sync/v1;syncv1";
+
+// ===================================================================
+// Core Service: Handles sessions, discovery, and account management
+// ===================================================================
+service SyncService {
+  // Get server capabilities (replicates /v1/sync/info)
+  rpc GetServerInfo(GetServerInfoRequest) returns (ServerInfo) {}
+
+  // Start a new sync session (replicates POST /v1/sync/sessions)
+  rpc BeginSession(BeginSessionRequest) returns (SyncSession) {}
+
+  // End a sync session (replicates DELETE /v1/sync/sessions/{id})
+  rpc EndSession(EndSessionRequest) returns (EndSessionResponse) {}
+
+  // Wipe account data (replicates POST /v1/sync/wipe)
+  rpc WipeAccount(WipeAccountRequest) returns (WipeResult) {}
+
+  // Get user sync state (replicates GET /v1/sync/state)
+  rpc GetSyncState(GetSyncStateRequest) returns (UserSyncState) {}
+}
+
+// ===================================================================
+// Entity Services: One service per entity for clear separation
+// ===================================================================
+
+service NoteSyncService {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Pull(PullRequest) returns (PullResponse) {}
+}
+
+service TaskSyncService {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Pull(PullRequest) returns (PullResponse) {}
+}
+
+service CommentSyncService {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Pull(PullRequest) returns (PullResponse) {}
+}
+
+service ChatSyncService {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Pull(PullRequest) returns (PullResponse) {}
+}
+
+service ChatMessageSyncService {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Pull(PullRequest) returns (PullResponse) {}
+}
+
+// ===================================================================
+// Generic Push/Pull Messages (Batch-oriented for Phase 1)
+// ===================================================================
+
+// For Phase 1, we use Struct to pass JSON-like objects, matching
+// the existing `List<Map<String, dynamic>>` pattern without
+// tightly coupling to a specific entity schema.
+message PushRequest {
+  // A batch of items, each a JSON-like object.
+  repeated google.protobuf.Struct items = 1;
+}
+
+message PushResponse {
+  repeated PushAck acks = 1;
+}
+
+message PushAck {
+  string uid = 1;
+  int32 version = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  string error = 4; // empty on success
+}
+
+message PullRequest {
+  string cursor = 1;
+  int32 limit = 2;
+}
+
+message PullResponse {
+  repeated google.protobuf.Struct upserts = 1;
+  repeated google.protobuf.Struct deletes = 2; // { "uid": "...", "deletedAt": "..." }
+  string next_cursor = 3;
+}
+
+// ===================================================================
+// Core Service Messages (Mirrors models in sync_api.dart)
+// ===================================================================
+
+message GetServerInfoRequest {}
+
+message ServerInfo {
+  string api_version = 1;
+  google.protobuf.Timestamp server_time = 2;
+  map<string, EntityCapability> entities = 3;
+  LockingCapability locking = 4;
+  string min_client_version = 5;
+  RateLimitInfo rate_limit = 6;
+  SyncHints hints = 7;
+}
+
+message EntityCapability {
+  int32 max_limit = 1;
+  bool push = 2;
+  bool pull = 3;
+}
+
+message LockingCapability {
+  bool supported = 1;
+  string mode = 2; // "session" or "none"
+}
+
+message RateLimitInfo {
+  int32 window_seconds = 1;
+  int32 max_requests = 2;
+  int32 burst = 3;
+}
+
+message SyncHints {
+  int32 recommended_batch = 1;
+  int32 backoff_ms_on_429 = 2;
+}
+
+message BeginSessionRequest {}
+
+message SyncSession {
+  string id = 1;
+  string user_id = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  int32 epoch = 5;
+}
+
+message EndSessionRequest {
+  string session_id = 1;
+}
+
+message EndSessionResponse {}
+
+message WipeAccountRequest {
+  string confirm = 1;
+  string mode = 2;
+}
+
+message WipeResult {
+  int32 epoch = 1;
+  map<string, int32> deleted = 2;
+}
+
+message GetSyncStateRequest {}
+
+message UserSyncState {
+  int32 epoch = 1;
+  google.protobuf.Timestamp last_wipe_at = 2;
+  string last_wipe_by = 3;
+}

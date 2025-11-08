@@ -4,8 +4,12 @@ import (
 	"net/http"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
+	"github.com/erauner12/toolbridge-api/internal/session"
 	"github.com/rs/zerolog/log"
 )
+
+// Use the global shared session store
+var sessionStore = session.GetStore()
 
 // SessionRequired middleware enforces that a valid sync session is active
 // This should be applied to all sync entity endpoints (push/pull)

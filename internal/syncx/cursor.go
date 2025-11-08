@@ -67,3 +67,8 @@ func RFC3339(ms int64) string {
 func NowMs() int64 {
 	return time.Now().UTC().UnixMilli()
 }
+
+// MsToTime converts Unix milliseconds to time.Time
+func MsToTime(ms int64) time.Time {
+	return time.UnixMilli(ms).UTC()
+}

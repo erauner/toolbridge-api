@@ -3,116 +3,16 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
-	"sync"
-	"time"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
+	"github.com/erauner12/toolbridge-api/internal/session"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )
 
-// Session represents an active sync session
-type Session struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"userId"`
-	CreatedAt time.Time `json:"createdAt"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	Epoch     int       `json:"epoch"` // Tenant epoch for wipe/reset coordination
-}
-
-// SessionStore manages active sync sessions
-type SessionStore struct {
-	mu       sync.RWMutex
-	sessions map[string]Session // key: sessionId
-	ttl      time.Duration
-}
-
-// Global session store (in-memory for now)
-var sessionStore = &SessionStore{
-	sessions: make(map[string]Session),
-	ttl:      30 * time.Minute, // Sessions expire after 30 minutes
-}
-
-// CreateSession generates a new session ID for the user
-func (s *SessionStore) CreateSession(userID string, epoch int) Session {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	session := Session{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		CreatedAt: time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(s.ttl),
-		Epoch:     epoch,
-	}
-
-	s.sessions[session.ID] = session
-
-	// Clean up expired sessions opportunistically
-	s.cleanupExpiredLocked()
-
-	return session
-}
-
-// GetSession retrieves a session by ID
-func (s *SessionStore) GetSession(sessionID string) (Session, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	session, exists := s.sessions[sessionID]
-	if !exists {
-		return Session{}, false
-	}
-
-	// Check if expired
-	if time.Now().UTC().After(session.ExpiresAt) {
-		return Session{}, false
-	}
-
-	return session, true
-}
-
-// DeleteSession removes a session
-func (s *SessionStore) DeleteSession(sessionID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, exists := s.sessions[sessionID]
-	if exists {
-		delete(s.sessions, sessionID)
-	}
-
-	return exists
-}
-
-// DeleteUserSessions removes all sessions for a given user.
-// Returns the number of sessions deleted.
-// Used when wiping account data to invalidate all device sessions.
-func (s *SessionStore) DeleteUserSessions(userID string) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	count := 0
-	for id, sess := range s.sessions {
-		if sess.UserID == userID {
-			delete(s.sessions, id)
-			count++
-		}
-	}
-	return count
-}
-
-// cleanupExpiredLocked removes expired sessions (caller must hold write lock)
-func (s *SessionStore) cleanupExpiredLocked() {
-	now := time.Now().UTC()
-	for id, session := range s.sessions {
-		if now.After(session.ExpiresAt) {
-			delete(s.sessions, id)
-		}
-	}
-}
+// Use the global shared session store
+var sessionStore = session.GetStore()
 
 // HTTP Handlers
 
