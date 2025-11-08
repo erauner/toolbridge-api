@@ -24,7 +24,7 @@ func NewTaskService(db *pgxpool.Pool) *TaskService {
 // PushTaskItem handles the push logic for a single task item within a transaction
 // Returns a PushAck with either success or error information
 func (s *TaskService) PushTaskItem(ctx context.Context, tx pgx.Tx, userID string, item map[string]any) PushAck {
-	logger := log.Ctx(ctx)
+	logger := log.With().Logger()
 
 	// Extract sync metadata from client JSON
 	ext, err := syncx.ExtractCommon(item)
@@ -100,7 +100,7 @@ func (s *TaskService) PushTaskItem(ctx context.Context, tx pgx.Tx, userID string
 // PullTasks handles the pull logic for tasks
 // Returns upserts, deletes, and an optional next cursor for pagination
 func (s *TaskService) PullTasks(ctx context.Context, userID string, cursor syncx.Cursor, limit int) (*PullResponse, error) {
-	logger := log.Ctx(ctx)
+	logger := log.With().Logger()
 
 	// Query tasks ordered by (updated_at_ms, uid) for deterministic pagination
 	rows, err := s.DB.Query(ctx, `

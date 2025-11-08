@@ -39,7 +39,7 @@ func NewNoteService(db *pgxpool.Pool) *NoteService {
 // PushNoteItem handles the push logic for a single note item within a transaction
 // Returns a PushAck with either success or error information
 func (s *NoteService) PushNoteItem(ctx context.Context, tx pgx.Tx, userID string, item map[string]any) PushAck {
-	logger := log.Ctx(ctx)
+	logger := log.With().Logger()
 
 	// Extract sync metadata from client JSON
 	ext, err := syncx.ExtractCommon(item)
@@ -115,7 +115,7 @@ func (s *NoteService) PushNoteItem(ctx context.Context, tx pgx.Tx, userID string
 // PullNotes handles the pull logic for notes
 // Returns upserts, deletes, and an optional next cursor for pagination
 func (s *NoteService) PullNotes(ctx context.Context, userID string, cursor syncx.Cursor, limit int) (*PullResponse, error) {
-	logger := log.Ctx(ctx)
+	logger := log.With().Logger()
 
 	// Query notes ordered by (updated_at_ms, uid) for deterministic pagination
 	rows, err := s.DB.Query(ctx, `
