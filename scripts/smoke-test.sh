@@ -49,10 +49,26 @@ else
     test_fail "Health check failed (HTTP $HEALTH)"
 fi
 
-# Test 2: Push a note
+# Test 2: Create sync session
+test_step "Creating sync session"
+SESSION_RESP=$(curl -s -X POST "$API_URL/v1/sync/sessions" \
+    -H "X-Debug-Sub: $USER")
+
+SESSION_ID=$(echo "$SESSION_RESP" | jq -r '.id')
+SESSION_EPOCH=$(echo "$SESSION_RESP" | jq -r '.epoch')
+
+if [ "$SESSION_ID" != "null" ] && [ -n "$SESSION_ID" ]; then
+    test_pass "Sync session created (id=$SESSION_ID, epoch=$SESSION_EPOCH)"
+else
+    test_fail "Failed to create sync session: $SESSION_RESP"
+fi
+
+# Test 3: Push a note
 test_step "Pushing note (version 1)"
 PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/notes/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -80,10 +96,12 @@ else
     test_fail "Push returned unexpected version: $PUSH_VERSION"
 fi
 
-# Test 3: Pull the note
+# Test 4: Pull the note
 test_step "Pulling notes"
 PULL_RESP=$(curl -s "$API_URL/v1/sync/notes/pull?limit=100" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 UPSERT_COUNT=$(echo "$PULL_RESP" | jq '.upserts | length')
 DELETE_COUNT=$(echo "$PULL_RESP" | jq '.deletes | length')
@@ -95,10 +113,12 @@ else
     test_fail "Note not found in pull response"
 fi
 
-# Test 4: Push duplicate (idempotency test)
+# Test 5: Push duplicate (idempotency test)
 test_step "Pushing duplicate note (idempotency test)"
 PUSH2_RESP=$(curl -s -X POST "$API_URL/v1/sync/notes/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -120,10 +140,12 @@ else
     test_fail "Idempotency failed: version changed to $PUSH2_VERSION"
 fi
 
-# Test 5: Update note (LWW test)
+# Test 6: Update note (LWW test)
 test_step "Updating note with newer timestamp (LWW test)"
 PUSH3_RESP=$(curl -s -X POST "$API_URL/v1/sync/notes/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -146,10 +168,12 @@ else
     test_fail "LWW update failed: version is $PUSH3_VERSION (expected 2)"
 fi
 
-# Test 6: Verify updated content
+# Test 7: Verify updated content
 test_step "Verifying updated content"
 PULL2_RESP=$(curl -s "$API_URL/v1/sync/notes/pull?limit=100" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 UPDATED_TITLE=$(echo "$PULL2_RESP" | jq -r ".upserts[] | select(.uid == \"$NOTE_UID\") | .title")
 UPDATED_CONTENT=$(echo "$PULL2_RESP" | jq -r ".upserts[] | select(.uid == \"$NOTE_UID\") | .content")
@@ -160,10 +184,12 @@ else
     test_fail "Content not updated correctly (title=$UPDATED_TITLE, content=$UPDATED_CONTENT)"
 fi
 
-# Test 7: Delete note (soft delete)
+# Test 8: Delete note (soft delete)
 test_step "Deleting note (soft delete)"
 DELETE_RESP=$(curl -s -X POST "$API_URL/v1/sync/notes/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -186,10 +212,12 @@ else
     test_fail "Delete failed: version is $DELETE_VERSION (expected 3)"
 fi
 
-# Test 8: Verify tombstone
+# Test 9: Verify tombstone
 test_step "Verifying tombstone in deletes array"
 PULL3_RESP=$(curl -s "$API_URL/v1/sync/notes/pull?limit=100" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 UPSERTS=$(echo "$PULL3_RESP" | jq -r ".upserts[] | select(.uid == \"$NOTE_UID\") | .uid")
 DELETED=$(echo "$PULL3_RESP" | jq -r ".deletes[] | select(.uid == \"$NOTE_UID\") | .uid")
@@ -200,10 +228,12 @@ else
     test_fail "Tombstone verification failed (upserts=$UPSERTS, deletes=$DELETED)"
 fi
 
-# Test 9: Cursor pagination
+# Test 10: Cursor pagination
 test_step "Testing cursor pagination"
 CURSOR_RESP=$(curl -s "$API_URL/v1/sync/notes/pull?limit=1" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 CURSOR=$(echo "$CURSOR_RESP" | jq -r '.nextCursor')
 
@@ -213,10 +243,12 @@ else
     test_pass "No cursor (end of results)"
 fi
 
-# Test 10: Push a task
+# Test 11: Push a task
 test_step "Pushing task (version 1)"
 TASK_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/tasks/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -244,10 +276,12 @@ else
     test_fail "Task push returned unexpected version: $TASK_VERSION"
 fi
 
-# Test 11: Pull the task
+# Test 12: Pull the task
 test_step "Pulling tasks"
 TASK_PULL_RESP=$(curl -s "$API_URL/v1/sync/tasks/pull?limit=100" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 FOUND_TASK=$(echo "$TASK_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$TASK_UID\") | .title")
 
@@ -257,10 +291,12 @@ else
     test_fail "Task not found in pull response"
 fi
 
-# Test 12: Delete task (soft delete)
+# Test 13: Delete task (soft delete)
 test_step "Deleting task (soft delete)"
 TASK_DELETE_RESP=$(curl -s -X POST "$API_URL/v1/sync/tasks/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -283,11 +319,13 @@ else
     test_fail "Task delete failed: version is $TASK_DELETE_VERSION (expected 2)"
 fi
 
-# Test 13: Create a new note for comment testing (original note was deleted)
+# Test 14: Create a new note for comment testing (original note was deleted)
 test_step "Creating new note for comment testing"
 COMMENT_NOTE_UID=$(uuidgen | tr '[:upper:]' '[:lower:]')
 COMMENT_NOTE_RESP=$(curl -s -X POST "$API_URL/v1/sync/notes/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -309,10 +347,12 @@ else
     test_fail "Failed to create parent note for comment: version=$COMMENT_NOTE_VERSION"
 fi
 
-# Test 14: Push a comment (on new note)
+# Test 15: Push a comment (on new note)
 test_step "Pushing comment on note (version 1)"
 COMMENT_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/comments/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -341,10 +381,12 @@ else
     test_fail "Comment push returned unexpected version: $COMMENT_VERSION"
 fi
 
-# Test 14: Pull the comment
+# Test 16: Pull the comment
 test_step "Pulling comments"
 COMMENT_PULL_RESP=$(curl -s "$API_URL/v1/sync/comments/pull?limit=100" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 FOUND_COMMENT=$(echo "$COMMENT_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$COMMENT_UID\") | .content")
 
@@ -354,7 +396,7 @@ else
     test_fail "Comment not found in pull response"
 fi
 
-# Test 15: Validate parent relationship
+# Test 17: Validate parent relationship
 test_step "Validating comment parent relationship"
 COMMENT_PARENT=$(echo "$COMMENT_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$COMMENT_UID\") | .parentType")
 
@@ -364,10 +406,12 @@ else
     test_fail "Comment parent relationship not preserved: $COMMENT_PARENT"
 fi
 
-# Test 16: Push a chat
+# Test 18: Push a chat
 test_step "Pushing chat (version 1)"
 CHAT_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/chats/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -394,10 +438,12 @@ else
     test_fail "Chat push returned unexpected version: $CHAT_VERSION"
 fi
 
-# Test 17: Pull the chat
+# Test 19: Pull the chat
 test_step "Pulling chats"
 CHAT_PULL_RESP=$(curl -s "$API_URL/v1/sync/chats/pull?limit=100" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 FOUND_CHAT=$(echo "$CHAT_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$CHAT_UID\") | .title")
 
@@ -407,10 +453,12 @@ else
     test_fail "Chat not found in pull response"
 fi
 
-# Test 18: Delete chat (soft delete)
+# Test 20: Delete chat (soft delete)
 test_step "Deleting chat (soft delete)"
 CHAT_DELETE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chats/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -433,11 +481,13 @@ else
     test_fail "Chat delete failed: version is $CHAT_DELETE_VERSION (expected 2)"
 fi
 
-# Test 19: Push a chat message
+# Test 21: Push a chat message
 test_step "Pushing chat message"
 # First, recreate the chat since we deleted it (use version 2 and newer timestamp to satisfy LWW)
 CHAT_CREATE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chats/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -453,6 +503,8 @@ CHAT_CREATE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chats/push" \
 
 MESSAGE_PUSH_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat_messages/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
@@ -475,10 +527,12 @@ else
     test_fail "Message push failed: version is $MESSAGE_VERSION (expected 1)"
 fi
 
-# Test 20: Pull the message
+# Test 22: Pull the message
 test_step "Pulling chat message"
 MESSAGE_PULL_RESP=$(curl -s "$API_URL/v1/sync/chat_messages/pull?limit=100" \
-    -H "X-Debug-Sub: $USER")
+    -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH")
 
 FOUND_MESSAGE=$(echo "$MESSAGE_PULL_RESP" | jq -r ".upserts[] | select(.uid == \"$MESSAGE_UID\") | .content")
 
@@ -488,10 +542,12 @@ else
     test_fail "Message not found in pull response"
 fi
 
-# Test 21: Delete message (soft delete)
+# Test 23: Delete message (soft delete)
 test_step "Deleting chat message (soft delete)"
 MESSAGE_DELETE_RESP=$(curl -s -X POST "$API_URL/v1/sync/chat_messages/push" \
     -H "X-Debug-Sub: $USER" \
+    -H "X-Sync-Session: $SESSION_ID" \
+    -H "X-Sync-Epoch: $SESSION_EPOCH" \
     -H "Content-Type: application/json" \
     -d "{
         \"items\": [{
