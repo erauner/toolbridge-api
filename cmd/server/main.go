@@ -62,6 +62,18 @@ func main() {
 	auth0Domain := env("AUTH0_DOMAIN", "")
 	auth0Audience := env("AUTH0_AUDIENCE", "")
 
+	// Security validation: Auth0 domain and audience must be set together
+	// If only domain is set, we'd accept tokens for ANY API in the tenant (security risk)
+	// If only audience is set, we'd have no JWKS to validate signatures against
+	if (auth0Domain != "" && auth0Audience == "") || (auth0Domain == "" && auth0Audience != "") {
+		log.Fatal().
+			Str("domain", auth0Domain).
+			Str("audience", auth0Audience).
+			Msg("FATAL: AUTH0_DOMAIN and AUTH0_AUDIENCE must both be set or both be empty. " +
+				"Setting only domain would accept tokens for any API in the tenant. " +
+				"Setting only audience would have no JWKS to validate signatures.")
+	}
+
 	jwtCfg := auth.JWTCfg{
 		HS256Secret:   jwtSecret,
 		DevMode:       isDevMode,
