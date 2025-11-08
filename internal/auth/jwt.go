@@ -2,7 +2,16 @@ package auth
 
 import (
 	"context"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math/big"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,15 +24,158 @@ const CtxUserID ctxKey = "uid"
 
 // JWTCfg holds JWT authentication configuration
 type JWTCfg struct {
-	HS256Secret string // HMAC secret for HS256 tokens
-	DevMode     bool   // Allow X-Debug-Sub header (DANGEROUS: only for local dev)
+	HS256Secret  string // HMAC secret for HS256 tokens (dev/testing)
+	DevMode      bool   // Allow X-Debug-Sub header (DANGEROUS: only for local dev)
+	Auth0Domain  string // Auth0 domain (e.g., "dev-xxx.us.auth0.com") for RS256 token validation
+	Auth0Audience string // Expected audience claim for Auth0 tokens
+}
+
+// JWKS caching for Auth0 public keys
+type jwksCache struct {
+	mu         sync.RWMutex
+	keys       map[string]*rsa.PublicKey
+	lastFetch  time.Time
+	cacheTTL   time.Duration
+	auth0Domain string
+}
+
+var globalJWKSCache *jwksCache
+
+// JWKS response structure from Auth0
+type jwksResponse struct {
+	Keys []jwk `json:"keys"`
+}
+
+type jwk struct {
+	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	Use string `json:"use"`
+	N   string `json:"n"`
+	E   string `json:"e"`
+}
+
+// fetchJWKS fetches and caches Auth0 public keys for RS256 validation
+func (c *jwksCache) fetchJWKS() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Return cached keys if still fresh
+	if time.Since(c.lastFetch) < c.cacheTTL && len(c.keys) > 0 {
+		return nil
+	}
+
+	url := fmt.Sprintf("https://%s/.well-known/jwks.json", c.auth0Domain)
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch JWKS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("JWKS endpoint returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read JWKS response: %w", err)
+	}
+
+	var jwks jwksResponse
+	if err := json.Unmarshal(body, &jwks); err != nil {
+		return fmt.Errorf("failed to parse JWKS: %w", err)
+	}
+
+	// Convert JWKs to RSA public keys
+	keys := make(map[string]*rsa.PublicKey)
+	for _, key := range jwks.Keys {
+		if key.Kty != "RSA" || key.Use != "sig" {
+			continue
+		}
+
+		// Decode modulus (n) and exponent (e) from base64url
+		nBytes, err := base64.RawURLEncoding.DecodeString(key.N)
+		if err != nil {
+			log.Warn().Err(err).Str("kid", key.Kid).Msg("failed to decode modulus")
+			continue
+		}
+
+		eBytes, err := base64.RawURLEncoding.DecodeString(key.E)
+		if err != nil {
+			log.Warn().Err(err).Str("kid", key.Kid).Msg("failed to decode exponent")
+			continue
+		}
+
+		// Convert exponent bytes to int
+		var eInt int
+		for _, b := range eBytes {
+			eInt = eInt<<8 | int(b)
+		}
+
+		pubKey := &rsa.PublicKey{
+			N: new(big.Int).SetBytes(nBytes),
+			E: eInt,
+		}
+
+		keys[key.Kid] = pubKey
+	}
+
+	if len(keys) == 0 {
+		return errors.New("no valid RSA signing keys found in JWKS")
+	}
+
+	c.keys = keys
+	c.lastFetch = time.Now()
+	log.Info().Int("key_count", len(keys)).Msg("refreshed Auth0 JWKS cache")
+
+	return nil
+}
+
+// getPublicKey retrieves a cached public key by kid (key ID)
+func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
+	c.mu.RLock()
+	key, ok := c.keys[kid]
+	c.mu.RUnlock()
+
+	if !ok {
+		// Try refreshing cache if key not found
+		if err := c.fetchJWKS(); err != nil {
+			return nil, err
+		}
+
+		c.mu.RLock()
+		key, ok = c.keys[kid]
+		c.mu.RUnlock()
+
+		if !ok {
+			return nil, fmt.Errorf("key ID %s not found in JWKS", kid)
+		}
+	}
+
+	return key, nil
 }
 
 // Middleware creates HTTP middleware for JWT authentication
-// Supports two modes:
-// 1. Production: Bearer token with JWT validation
-// 2. Development: X-Debug-Sub header (ONLY when DevMode=true)
+// Supports three modes:
+// 1. Production RS256: Auth0 Bearer tokens with RS256 signature validation
+// 2. Development HS256: Bearer tokens with HMAC secret (for testing)
+// 3. Development X-Debug-Sub: Bypass JWT validation (ONLY when DevMode=true)
 func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
+	// Initialize JWKS cache for Auth0 RS256 validation
+	if cfg.Auth0Domain != "" && globalJWKSCache == nil {
+		globalJWKSCache = &jwksCache{
+			keys:        make(map[string]*rsa.PublicKey),
+			cacheTTL:    1 * time.Hour,
+			auth0Domain: cfg.Auth0Domain,
+		}
+
+		// Pre-fetch JWKS on startup
+		if err := globalJWKSCache.fetchJWKS(); err != nil {
+			log.Warn().Err(err).Msg("failed to pre-fetch Auth0 JWKS (will retry on first request)")
+		} else {
+			log.Info().Str("domain", cfg.Auth0Domain).Msg("Auth0 RS256 validation enabled")
+		}
+	}
+
 	// Log warning if dev mode is enabled
 	if cfg.DevMode {
 		log.Warn().Msg("SECURITY WARNING: DevMode enabled - X-Debug-Sub header will bypass JWT authentication")
@@ -51,17 +203,75 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 			if tok != "" {
 				claims := jwt.MapClaims{}
 				t, err := jwt.ParseWithClaims(tok, claims, func(t *jwt.Token) (any, error) {
-					// Verify signing method
-					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-						return nil, jwt.ErrSignatureInvalid
+					// Support both RS256 (Auth0) and HS256 (dev/testing)
+					switch t.Method.(type) {
+					case *jwt.SigningMethodRSA:
+						// Auth0 RS256 token - fetch public key from JWKS
+						if globalJWKSCache == nil {
+							return nil, errors.New("Auth0 JWKS cache not initialized")
+						}
+
+						// Extract kid (key ID) from token header
+						kid, ok := t.Header["kid"].(string)
+						if !ok || kid == "" {
+							return nil, errors.New("missing kid in token header")
+						}
+
+						// Get public key from JWKS
+						pubKey, err := globalJWKSCache.getPublicKey(kid)
+						if err != nil {
+							return nil, fmt.Errorf("failed to get public key: %w", err)
+						}
+
+						return pubKey, nil
+
+					case *jwt.SigningMethodHMAC:
+						// HS256 token (dev/testing) - use shared secret
+						if cfg.HS256Secret == "" {
+							return nil, errors.New("HS256 secret not configured")
+						}
+						return []byte(cfg.HS256Secret), nil
+
+					default:
+						return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 					}
-					return []byte(cfg.HS256Secret), nil
 				})
 
 				if err != nil || !t.Valid {
 					log.Warn().Err(err).Msg("jwt validation failed")
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
 					return
+				}
+
+				// Validate issuer (Auth0 tokens only)
+				if cfg.Auth0Domain != "" {
+					expectedIssuer := fmt.Sprintf("https://%s/", cfg.Auth0Domain)
+					if iss, ok := claims["iss"].(string); !ok || iss != expectedIssuer {
+						log.Warn().Str("expected", expectedIssuer).Str("actual", fmt.Sprintf("%v", claims["iss"])).Msg("invalid issuer")
+						http.Error(w, "unauthorized", http.StatusUnauthorized)
+						return
+					}
+				}
+
+				// Validate audience (Auth0 tokens only)
+				if cfg.Auth0Audience != "" {
+					audValid := false
+					switch aud := claims["aud"].(type) {
+					case string:
+						audValid = aud == cfg.Auth0Audience
+					case []interface{}:
+						for _, a := range aud {
+							if s, ok := a.(string); ok && s == cfg.Auth0Audience {
+								audValid = true
+								break
+							}
+						}
+					}
+					if !audValid {
+						log.Warn().Str("expected", cfg.Auth0Audience).Str("actual", fmt.Sprintf("%v", claims["aud"])).Msg("invalid audience")
+						http.Error(w, "unauthorized", http.StatusUnauthorized)
+						return
+					}
 				}
 
 				// Extract subject from claims

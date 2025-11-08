@@ -58,18 +58,37 @@ func main() {
 	jwtSecret := env("JWT_HS256_SECRET", "dev-secret-change-in-production")
 	isDevMode := env("ENV", "") == "dev"
 
+	// Auth0 configuration for production RS256 tokens
+	auth0Domain := env("AUTH0_DOMAIN", "")
+	auth0Audience := env("AUTH0_AUDIENCE", "")
+
 	jwtCfg := auth.JWTCfg{
-		HS256Secret: jwtSecret,
-		DevMode:     isDevMode,
+		HS256Secret:   jwtSecret,
+		DevMode:       isDevMode,
+		Auth0Domain:   auth0Domain,
+		Auth0Audience: auth0Audience,
 	}
 
 	// Security validation: refuse to start in production with default/missing JWT secret
-	if !isDevMode && (jwtSecret == "" || jwtSecret == "dev-secret-change-in-production") {
-		log.Fatal().
-			Str("secret", jwtSecret).
-			Msg("FATAL: Cannot start in production mode with default or missing JWT_HS256_SECRET. " +
-				"This allows anyone to forge tokens and bypass authentication. " +
-				"Set JWT_HS256_SECRET environment variable to a secure random value (e.g., openssl rand -base64 32)")
+	// UNLESS Auth0 is configured (which uses RS256 with JWKS, not HS256 secret)
+	if !isDevMode && (auth0Domain == "" || auth0Audience == "") {
+		if jwtSecret == "" || jwtSecret == "dev-secret-change-in-production" {
+			log.Fatal().
+				Str("secret", jwtSecret).
+				Msg("FATAL: Cannot start in production mode with default or missing JWT_HS256_SECRET and no Auth0 config. " +
+					"Either set AUTH0_DOMAIN + AUTH0_AUDIENCE for RS256 validation, " +
+					"or set JWT_HS256_SECRET to a secure random value (e.g., openssl rand -base64 32)")
+		}
+	}
+
+	// Log authentication mode
+	if auth0Domain != "" && auth0Audience != "" {
+		log.Info().
+			Str("domain", auth0Domain).
+			Str("audience", auth0Audience).
+			Msg("Auth0 RS256 authentication enabled")
+	} else if !isDevMode {
+		log.Info().Msg("HS256 authentication enabled (dev/testing mode)")
 	}
 
 	httpAddr := env("HTTP_ADDR", ":8081")
