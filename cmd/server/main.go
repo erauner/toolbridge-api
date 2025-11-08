@@ -128,6 +128,58 @@ func main() {
 		}
 	}()
 
+	// ===================================================================
+	// gRPC Server Setup (Phase 1)
+	// ===================================================================
+	// TODO: Uncomment after running `./scripts/generate_proto.sh`
+	// TODO: Add imports:
+	//   "net"
+	//   "github.com/erauner12/toolbridge-api/internal/grpcapi"
+	//   syncv1 "github.com/erauner12/toolbridge-api/gen/go/sync/v1"
+	//   "google.golang.org/grpc"
+	//   "google.golang.org/grpc/reflection"
+	//
+	// grpcAddr := env("GRPC_ADDR", ":8082")
+	// lis, err := net.Listen("tcp", grpcAddr)
+	// if err != nil {
+	// 	log.Fatal().Err(err).Msg("failed to listen for gRPC")
+	// }
+	//
+	// // Chain interceptors (executed in order)
+	// grpcServer := grpc.NewServer(
+	// 	grpc.ChainUnaryInterceptor(
+	// 		grpcapi.RecoveryInterceptor(),        // Recover from panics
+	// 		grpcapi.CorrelationIDInterceptor(),   // Add correlation ID
+	// 		grpcapi.LoggingInterceptor(),         // Log requests
+	// 		grpcapi.AuthInterceptor(pool, jwtCfg), // Validate JWT
+	// 		grpcapi.SessionInterceptor(),          // Validate session
+	// 		grpcapi.EpochInterceptor(pool),        // Validate epoch
+	// 	),
+	// )
+	//
+	// // Create and register gRPC implementation
+	// grpcApiServer := grpcapi.NewServer(pool, srv.NoteSvc)
+	// syncv1.RegisterSyncServiceServer(grpcServer, grpcApiServer)
+	// syncv1.RegisterNoteSyncServiceServer(grpcServer, grpcApiServer)
+	// // TODO: Register other entity services when implemented:
+	// // syncv1.RegisterTaskSyncServiceServer(grpcServer, grpcApiServer)
+	// // syncv1.RegisterCommentSyncServiceServer(grpcServer, grpcApiServer)
+	// // syncv1.RegisterChatSyncServiceServer(grpcServer, grpcApiServer)
+	// // syncv1.RegisterChatMessageSyncServiceServer(grpcServer, grpcApiServer)
+	//
+	// reflection.Register(grpcServer) // Enable reflection for grpcurl testing
+	//
+	// // Start gRPC server in goroutine
+	// go func() {
+	// 	log.Info().Str("addr", grpcAddr).Msg("starting gRPC server")
+	// 	if err := grpcServer.Serve(lis); err != nil {
+	// 		log.Fatal().Err(err).Msg("gRPC server failed")
+	// 	}
+	// }()
+	//
+	// log.Info().Msg("Both HTTP (REST) and gRPC servers running in parallel")
+	// ===================================================================
+
 	// Graceful shutdown on SIGINT/SIGTERM
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -138,9 +190,14 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Shutdown HTTP server
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("HTTP server shutdown error")
 	}
+
+	// TODO: Uncomment to shutdown gRPC server
+	// grpcServer.GracefulStop()
+	// log.Info().Msg("gRPC server stopped")
 
 	log.Info().Msg("server stopped")
 }
