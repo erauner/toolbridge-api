@@ -56,12 +56,13 @@ type jwk struct {
 }
 
 // fetchJWKS fetches and caches Auth0 public keys for RS256 validation
-func (c *jwksCache) fetchJWKS() error {
+// If forceRefresh is true, bypasses TTL check to handle key rotations
+func (c *jwksCache) fetchJWKS(forceRefresh bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Return cached keys if still fresh
-	if time.Since(c.lastFetch) < c.cacheTTL && len(c.keys) > 0 {
+	// Return cached keys if still fresh (unless force refresh requested)
+	if !forceRefresh && time.Since(c.lastFetch) < c.cacheTTL && len(c.keys) > 0 {
 		return nil
 	}
 
@@ -141,7 +142,7 @@ func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
 
 	if cacheExpired {
 		// Cache expired - refresh JWKS to detect key rotations/revocations
-		if err := c.fetchJWKS(); err != nil {
+		if err := c.fetchJWKS(false); err != nil {
 			// Log error but don't fail - continue with stale cache as fallback
 			log.Warn().Err(err).Msg("failed to refresh expired JWKS cache, using stale keys")
 		}
@@ -152,19 +153,18 @@ func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
 	c.mu.RUnlock()
 
 	if !ok {
-		// Key not found in cache - try refreshing if we haven't just done so
-		if !cacheExpired {
-			if err := c.fetchJWKS(); err != nil {
-				return nil, err
-			}
-
-			c.mu.RLock()
-			key, ok = c.keys[kid]
-			c.mu.RUnlock()
+		// Key not found in cache - force refresh to handle Auth0 key rotation
+		// Even if cache is fresh, we need to fetch new keys when kid is missing
+		if err := c.fetchJWKS(true); err != nil {
+			return nil, fmt.Errorf("failed to fetch JWKS for missing key %s: %w", kid, err)
 		}
 
+		c.mu.RLock()
+		key, ok = c.keys[kid]
+		c.mu.RUnlock()
+
 		if !ok {
-			return nil, fmt.Errorf("key ID %s not found in JWKS", kid)
+			return nil, fmt.Errorf("key ID %s not found in JWKS even after refresh", kid)
 		}
 	}
 
@@ -189,7 +189,7 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 		}
 
 		// Pre-fetch JWKS on startup
-		if err := globalJWKSCache.fetchJWKS(); err != nil {
+		if err := globalJWKSCache.fetchJWKS(false); err != nil {
 			log.Warn().Err(err).Msg("failed to pre-fetch Auth0 JWKS (will retry on first request)")
 		} else {
 			log.Info().Str("domain", cfg.Auth0Domain).Msg("Auth0 RS256 validation enabled")
