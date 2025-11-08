@@ -89,6 +89,22 @@ spec:
             configMapKeyRef:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: DB_SSLMODE
+        {{- if .Values.api.auth0 }}
+        {{- if .Values.api.auth0.domain }}
+        - name: AUTH0_DOMAIN
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: AUTH0_DOMAIN
+        {{- end }}
+        {{- if .Values.api.auth0.audience }}
+        - name: AUTH0_AUDIENCE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: AUTH0_AUDIENCE
+        {{- end }}
+        {{- end }}
 
         # Sensitive values from Secret
         - name: POSTGRES_PASSWORD

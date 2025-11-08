@@ -12,3 +12,11 @@ data:
   DB_NAME: {{ .Values.config.dbName | quote }}
   DB_USER: {{ .Values.config.dbUser | quote }}
   DB_SSLMODE: {{ .Values.config.dbSslMode | quote }}
+  {{- if .Values.api.auth0 }}
+  {{- if .Values.api.auth0.domain }}
+  AUTH0_DOMAIN: {{ .Values.api.auth0.domain | quote }}
+  {{- end }}
+  {{- if .Values.api.auth0.audience }}
+  AUTH0_AUDIENCE: {{ .Values.api.auth0.audience | quote }}
+  {{- end }}
+  {{- end }}
