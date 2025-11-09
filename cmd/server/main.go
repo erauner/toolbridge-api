@@ -101,6 +101,12 @@ func main() {
 		}
 	}
 
+	// Initialize Auth0 JWKS cache (shared by both HTTP and gRPC)
+	// Must be called before starting servers to ensure gRPC interceptors can validate tokens
+	if err := auth.InitJWKSCache(jwtCfg); err != nil {
+		log.Warn().Err(err).Msg("failed to pre-fetch Auth0 JWKS (will retry on first request)")
+	}
+
 	// Log authentication mode
 	if auth0Domain != "" && auth0Audience != "" {
 		log.Info().
