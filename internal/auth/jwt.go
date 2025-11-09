@@ -171,6 +171,125 @@ func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
 	return key, nil
 }
 
+// ValidateToken validates a JWT token and returns the subject claim
+// Returns the subject (sub) claim if valid, or an error if validation fails
+// Supports both RS256 (Auth0) and HS256 (dev/testing) tokens
+func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
+	if tokenString == "" {
+		return "", errors.New("token is empty")
+	}
+
+	// Ensure JWKS cache is initialized if Auth0 is configured
+	if cfg.Auth0Domain != "" && globalJWKSCache == nil {
+		return "", errors.New("Auth0 JWKS cache not initialized")
+	}
+
+	claims := jwt.MapClaims{}
+	t, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
+		// Support both RS256 (Auth0) and HS256 (dev/testing)
+		switch t.Method.(type) {
+		case *jwt.SigningMethodRSA:
+			// Auth0 RS256 token - fetch public key from JWKS
+			if globalJWKSCache == nil {
+				return nil, errors.New("Auth0 JWKS cache not initialized")
+			}
+
+			// Extract kid (key ID) from token header
+			kid, ok := t.Header["kid"].(string)
+			if !ok || kid == "" {
+				return nil, errors.New("missing kid in token header")
+			}
+
+			// Get public key from JWKS
+			pubKey, err := globalJWKSCache.getPublicKey(kid)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get public key: %w", err)
+			}
+
+			return pubKey, nil
+
+		case *jwt.SigningMethodHMAC:
+			// HS256 token (dev/testing) - use shared secret
+			if cfg.HS256Secret == "" {
+				return nil, errors.New("HS256 secret not configured")
+			}
+			return []byte(cfg.HS256Secret), nil
+
+		default:
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+	})
+
+	if err != nil || !t.Valid {
+		return "", fmt.Errorf("jwt validation failed: %w", err)
+	}
+
+	// Validate issuer (Auth0 tokens only)
+	if cfg.Auth0Domain != "" {
+		expectedIssuer := fmt.Sprintf("https://%s/", cfg.Auth0Domain)
+		if iss, ok := claims["iss"].(string); !ok || iss != expectedIssuer {
+			return "", fmt.Errorf("invalid issuer: expected %s, got %v", expectedIssuer, claims["iss"])
+		}
+	}
+
+	// Validate audience (Auth0 tokens only)
+	if cfg.Auth0Audience != "" {
+		audValid := false
+		switch aud := claims["aud"].(type) {
+		case string:
+			audValid = aud == cfg.Auth0Audience
+		case []interface{}:
+			for _, a := range aud {
+				if s, ok := a.(string); ok && s == cfg.Auth0Audience {
+					audValid = true
+					break
+				}
+			}
+		}
+		if !audValid {
+			return "", fmt.Errorf("invalid audience: expected %s, got %v", cfg.Auth0Audience, claims["aud"])
+		}
+	}
+
+	// Extract subject from claims
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		return "", errors.New("missing or invalid sub claim")
+	}
+
+	return sub, nil
+}
+
+// InitJWKSCache initializes the global JWKS cache for Auth0 RS256 validation
+// Should be called once at application startup if Auth0 is configured
+func InitJWKSCache(cfg JWTCfg) error {
+	if cfg.Auth0Domain == "" {
+		return nil // No Auth0 configured, skip initialization
+	}
+
+	if globalJWKSCache != nil {
+		return nil // Already initialized
+	}
+
+	globalJWKSCache = &jwksCache{
+		keys:        make(map[string]*rsa.PublicKey),
+		cacheTTL:    1 * time.Hour,
+		auth0Domain: cfg.Auth0Domain,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second, // Prevent hanging on slow/stalled JWKS endpoint
+		},
+	}
+
+	// Pre-fetch JWKS on startup
+	if err := globalJWKSCache.fetchJWKS(false); err != nil {
+		log.Warn().Err(err).Msg("failed to pre-fetch Auth0 JWKS (will retry on first request)")
+		return err
+	}
+
+	log.Info().Str("domain", cfg.Auth0Domain).Msg("Auth0 RS256 validation enabled")
+	return nil
+}
+
 // Middleware creates HTTP middleware for JWT authentication
 // Supports three modes:
 // 1. Production RS256: Auth0 Bearer tokens with RS256 signature validation
@@ -178,23 +297,7 @@ func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
 // 3. Development X-Debug-Sub: Bypass JWT validation (ONLY when DevMode=true)
 func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 	// Initialize JWKS cache for Auth0 RS256 validation
-	if cfg.Auth0Domain != "" && globalJWKSCache == nil {
-		globalJWKSCache = &jwksCache{
-			keys:        make(map[string]*rsa.PublicKey),
-			cacheTTL:    1 * time.Hour,
-			auth0Domain: cfg.Auth0Domain,
-			httpClient: &http.Client{
-				Timeout: 10 * time.Second, // Prevent hanging on slow/stalled JWKS endpoint
-			},
-		}
-
-		// Pre-fetch JWKS on startup
-		if err := globalJWKSCache.fetchJWKS(false); err != nil {
-			log.Warn().Err(err).Msg("failed to pre-fetch Auth0 JWKS (will retry on first request)")
-		} else {
-			log.Info().Str("domain", cfg.Auth0Domain).Msg("Auth0 RS256 validation enabled")
-		}
-	}
+	_ = InitJWKSCache(cfg)
 
 	// Log warning if dev mode is enabled
 	if cfg.DevMode {
@@ -221,82 +324,12 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 
 			// Validate JWT token if present
 			if tok != "" {
-				claims := jwt.MapClaims{}
-				t, err := jwt.ParseWithClaims(tok, claims, func(t *jwt.Token) (any, error) {
-					// Support both RS256 (Auth0) and HS256 (dev/testing)
-					switch t.Method.(type) {
-					case *jwt.SigningMethodRSA:
-						// Auth0 RS256 token - fetch public key from JWKS
-						if globalJWKSCache == nil {
-							return nil, errors.New("Auth0 JWKS cache not initialized")
-						}
-
-						// Extract kid (key ID) from token header
-						kid, ok := t.Header["kid"].(string)
-						if !ok || kid == "" {
-							return nil, errors.New("missing kid in token header")
-						}
-
-						// Get public key from JWKS
-						pubKey, err := globalJWKSCache.getPublicKey(kid)
-						if err != nil {
-							return nil, fmt.Errorf("failed to get public key: %w", err)
-						}
-
-						return pubKey, nil
-
-					case *jwt.SigningMethodHMAC:
-						// HS256 token (dev/testing) - use shared secret
-						if cfg.HS256Secret == "" {
-							return nil, errors.New("HS256 secret not configured")
-						}
-						return []byte(cfg.HS256Secret), nil
-
-					default:
-						return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-					}
-				})
-
-				if err != nil || !t.Valid {
+				var err error
+				sub, err = ValidateToken(tok, cfg)
+				if err != nil {
 					log.Warn().Err(err).Msg("jwt validation failed")
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
 					return
-				}
-
-				// Validate issuer (Auth0 tokens only)
-				if cfg.Auth0Domain != "" {
-					expectedIssuer := fmt.Sprintf("https://%s/", cfg.Auth0Domain)
-					if iss, ok := claims["iss"].(string); !ok || iss != expectedIssuer {
-						log.Warn().Str("expected", expectedIssuer).Str("actual", fmt.Sprintf("%v", claims["iss"])).Msg("invalid issuer")
-						http.Error(w, "unauthorized", http.StatusUnauthorized)
-						return
-					}
-				}
-
-				// Validate audience (Auth0 tokens only)
-				if cfg.Auth0Audience != "" {
-					audValid := false
-					switch aud := claims["aud"].(type) {
-					case string:
-						audValid = aud == cfg.Auth0Audience
-					case []interface{}:
-						for _, a := range aud {
-							if s, ok := a.(string); ok && s == cfg.Auth0Audience {
-								audValid = true
-								break
-							}
-						}
-					}
-					if !audValid {
-						log.Warn().Str("expected", cfg.Auth0Audience).Str("actual", fmt.Sprintf("%v", claims["aud"])).Msg("invalid audience")
-						http.Error(w, "unauthorized", http.StatusUnauthorized)
-						return
-					}
-				}
-
-				// Extract subject from claims
-				if s, ok := claims["sub"].(string); ok {
-					sub = s
 				}
 			}
 

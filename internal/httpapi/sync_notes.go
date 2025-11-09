@@ -39,78 +39,15 @@ func (s *Server) PushNotes(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 
 	for _, item := range req.Items {
-		// Extract sync metadata from client JSON
-		ext, err := syncx.ExtractCommon(item)
-		if err != nil {
-			logger.Warn().Err(err).Interface("item", item).Msg("failed to extract sync metadata")
-			acks = append(acks, pushAck{Error: err.Error()})
-			continue
-		}
+		// Call the refactored service layer
+		svcAck := s.NoteSvc.PushNoteItem(ctx, tx, userID, item)
 
-		// Serialize payload back to JSON for storage
-		payloadJSON, err := json.Marshal(item)
-		if err != nil {
-			logger.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to marshal payload")
-			acks = append(acks, pushAck{
-				UID:       ext.UID.String(),
-				Version:   ext.Version,
-				UpdatedAt: syncx.RFC3339(ext.UpdatedAtMs),
-				Error:     "payload serialization error",
-			})
-			continue
-		}
-
-		// Insert or update with LWW conflict resolution
-		// Key invariant: WHERE clause uses strict > (not >=) to make duplicate pushes idempotent
-		// If same timestamp arrives twice, version doesn't increment
-		_, err = tx.Exec(ctx, `
-			INSERT INTO note (uid, owner_id, updated_at_ms, deleted_at_ms, version, payload_json)
-			VALUES ($1, $2, $3, $4, GREATEST($5, 1), $6)
-			ON CONFLICT (owner_id, uid) DO UPDATE SET
-				payload_json   = EXCLUDED.payload_json,
-				updated_at_ms  = EXCLUDED.updated_at_ms,
-				deleted_at_ms  = EXCLUDED.deleted_at_ms,
-				-- Bump version only on strictly newer update (not >=, just >)
-				version        = CASE
-					WHEN EXCLUDED.updated_at_ms > note.updated_at_ms
-					THEN note.version + 1
-					ELSE note.version
-				END
-			WHERE EXCLUDED.updated_at_ms > note.updated_at_ms
-		`, ext.UID, userID, ext.UpdatedAtMs, ext.DeletedAtMs, ext.Version, payloadJSON)
-
-		if err != nil {
-			logger.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to upsert note")
-			acks = append(acks, pushAck{
-				UID:       ext.UID.String(),
-				Version:   ext.Version,
-				UpdatedAt: syncx.RFC3339(ext.UpdatedAtMs),
-				Error:     err.Error(),
-			})
-			continue
-		}
-
-		// Read back server state (authoritative version and timestamp)
-		var serverVersion int
-		var serverMs int64
-		if err := tx.QueryRow(ctx,
-			`SELECT version, updated_at_ms FROM note WHERE uid = $1 AND owner_id = $2`,
-			ext.UID, userID).Scan(&serverVersion, &serverMs); err != nil {
-			logger.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to read note after upsert")
-			acks = append(acks, pushAck{
-				UID:       ext.UID.String(),
-				Version:   ext.Version,
-				UpdatedAt: syncx.RFC3339(ext.UpdatedAtMs),
-				Error:     "failed to confirm write",
-			})
-			continue
-		}
-
-		// Success - return server-authoritative values
+		// Convert service PushAck to HTTP pushAck
 		acks = append(acks, pushAck{
-			UID:       ext.UID.String(),
-			Version:   serverVersion,
-			UpdatedAt: syncx.RFC3339(serverMs),
+			UID:       svcAck.UID,
+			Version:   svcAck.Version,
+			UpdatedAt: svcAck.UpdatedAt,
+			Error:     svcAck.Error,
 		})
 	}
 
@@ -150,78 +87,23 @@ func (s *Server) PullNotes(w http.ResponseWriter, r *http.Request) {
 		Str("cursor", r.URL.Query().Get("cursor")).
 		Msg("sync_pull_started: notes")
 
-	// Query notes ordered by (updated_at_ms, uid) for deterministic pagination
-	rows, err := s.DB.Query(ctx, `
-		SELECT payload_json, deleted_at_ms, updated_at_ms, uid
-		FROM note
-		WHERE owner_id = $1
-		  AND (updated_at_ms, uid) > ($2, $3::uuid)
-		ORDER BY updated_at_ms, uid
-		LIMIT $4
-	`, userID, cur.Ms, cur.UID, limit)
-
+	// Call the refactored service layer
+	resp, err := s.NoteSvc.PullNotes(ctx, userID, cur, limit)
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to query notes")
-		writeError(w, r, 500, "query failed")
+		writeError(w, r, 500, "pull failed")
 		return
-	}
-	defer rows.Close()
-
-	upserts := make([]map[string]any, 0, limit)
-	deletes := make([]map[string]any, 0)
-	var lastMs int64
-	var lastUID string
-
-	for rows.Next() {
-		var payload map[string]any
-		var deletedAtMs *int64
-		var ms int64
-		var uid string
-
-		if err := rows.Scan(&payload, &deletedAtMs, &ms, &uid); err != nil {
-			logger.Error().Err(err).Msg("failed to scan note row")
-			writeError(w, r, 500, "scan failed")
-			return
-		}
-
-		if deletedAtMs != nil {
-			// Tombstone - return as delete
-			deletes = append(deletes, map[string]any{
-				"uid":       uid,
-				"deletedAt": syncx.RFC3339(*deletedAtMs),
-			})
-		} else {
-			// Active note - return full payload
-			upserts = append(upserts, payload)
-		}
-
-		lastMs, lastUID = ms, uid
-	}
-
-	if err := rows.Err(); err != nil {
-		logger.Error().Err(err).Msg("row iteration error")
-		writeError(w, r, 500, "iteration failed")
-		return
-	}
-
-	// Generate next cursor if we returned any results
-	var nextCursor *string
-	if len(upserts)+len(deletes) > 0 {
-		uid, _ := uuid.Parse(lastUID)
-		encoded := syncx.EncodeCursor(syncx.Cursor{Ms: lastMs, UID: uid})
-		nextCursor = &encoded
 	}
 
 	logger.Info().
 		Str("user_id", userID).
-		Int("upsert_count", len(upserts)).
-		Int("delete_count", len(deletes)).
-		Bool("has_next_page", nextCursor != nil).
+		Int("upsert_count", len(resp.Upserts)).
+		Int("delete_count", len(resp.Deletes)).
+		Bool("has_next_page", resp.NextCursor != nil).
 		Msg("sync_pull_completed: notes")
 
 	writeJSON(w, 200, pullResp{
-		Upserts:    upserts,
-		Deletes:    deletes,
-		NextCursor: nextCursor,
+		Upserts:    resp.Upserts,
+		Deletes:    resp.Deletes,
+		NextCursor: resp.NextCursor,
 	})
 }
