@@ -89,10 +89,10 @@ func setupTestGrpcServer(t *testing.T, pool *pgxpool.Pool) *grpc.Server {
 
 	syncv1.RegisterSyncServiceServer(grpcServer, srv)
 	syncv1.RegisterNoteSyncServiceServer(grpcServer, srv)
-	syncv1.RegisterTaskSyncServiceServer(grpcServer, srv)
-	syncv1.RegisterCommentSyncServiceServer(grpcServer, srv)
-	syncv1.RegisterChatSyncServiceServer(grpcServer, srv)
-	syncv1.RegisterChatMessageSyncServiceServer(grpcServer, srv)
+	syncv1.RegisterTaskSyncServiceServer(grpcServer, &TaskServer{Server: srv})
+	syncv1.RegisterCommentSyncServiceServer(grpcServer, &CommentServer{Server: srv})
+	syncv1.RegisterChatSyncServiceServer(grpcServer, &ChatServer{Server: srv})
+	syncv1.RegisterChatMessageSyncServiceServer(grpcServer, &ChatMessageServer{Server: srv})
 
 	// Start server in background
 	go func() {
@@ -425,7 +425,9 @@ func TestBeginAndEndSession(t *testing.T) {
 
 	// End session
 	endCtx := createAuthenticatedContext("test-user-session-lifecycle", beginResp.Id, int(beginResp.Epoch))
-	_, err = syncClient.EndSession(endCtx, &syncv1.EndSessionRequest{})
+	_, err = syncClient.EndSession(endCtx, &syncv1.EndSessionRequest{
+		SessionId: beginResp.Id, // Server requires sessionId in request body
+	})
 	if err != nil {
 		t.Fatalf("EndSession failed: %v", err)
 	}
@@ -459,7 +461,7 @@ func TestWipeAccount(t *testing.T) {
 	// Push a note
 	authCtx := createAuthenticatedContext(userID, session.Id, int(session.Epoch))
 	noteItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":       "note-to-wipe",
+		"uid":       "dddd0000-0000-0000-0000-000000000000",
 		"title":     "Test Note",
 		"updatedTs": "2025-11-09T10:00:00Z",
 		"sync": map[string]interface{}{
@@ -473,7 +475,9 @@ func TestWipeAccount(t *testing.T) {
 	}
 
 	// Wipe account
-	wipeResp, err := syncClient.WipeAccount(authCtx, &syncv1.WipeAccountRequest{})
+	wipeResp, err := syncClient.WipeAccount(authCtx, &syncv1.WipeAccountRequest{
+		Confirm: "WIPE", // Server requires explicit confirmation
+	})
 	if err != nil {
 		t.Fatalf("WipeAccount failed: %v", err)
 	}
@@ -573,7 +577,7 @@ func TestNotePush(t *testing.T) {
 		{
 			name: "push valid note",
 			item: map[string]interface{}{
-				"uid":       "note-123",
+				"uid":       "aaaa4444-0000-0000-0000-000000000000",
 				"title":     "Test Note",
 				"content":   "Test content",
 				"updatedTs": "2025-11-09T10:00:00Z",
@@ -584,8 +588,8 @@ func TestNotePush(t *testing.T) {
 			},
 			wantError: false,
 			checkAck: func(t *testing.T, ack *syncv1.PushAck) {
-				if ack.Uid != "note-123" {
-					t.Errorf("Expected UID note-123, got %s", ack.Uid)
+				if ack.Uid != "aaaa4444-0000-0000-0000-000000000000" {
+					t.Errorf("Expected UID aaaa4444-0000-0000-0000-000000000000, got %s", ack.Uid)
 				}
 				if ack.Version != 1 {
 					t.Errorf("Expected version 1, got %d", ack.Version)
@@ -598,7 +602,7 @@ func TestNotePush(t *testing.T) {
 		{
 			name: "push update (LWW)",
 			item: map[string]interface{}{
-				"uid":       "note-123",
+				"uid":       "aaaa4444-0000-0000-0000-000000000000",
 				"title":     "Updated Note",
 				"updatedTs": "2025-11-09T10:01:00Z", // Newer
 				"sync": map[string]interface{}{
@@ -676,10 +680,15 @@ func TestNotePull(t *testing.T) {
 
 	// Push some notes first
 	notes := []*structpb.Struct{}
-	for i := 1; i <= 3; i++ {
+	noteUIDs := []string{
+		"11111111-1111-1111-1111-111111111111",
+		"22222222-2222-2222-2222-222222222222",
+		"33333333-3333-3333-3333-333333333333",
+	}
+	for i, uid := range noteUIDs {
 		item, _ := structpb.NewStruct(map[string]interface{}{
-			"uid":       string(rune('a' + i)),
-			"title":     string(rune('N' + i)),
+			"uid":       uid,
+			"title":     fmt.Sprintf("Note %d", i+1),
 			"updatedTs": "2025-11-09T10:00:00Z",
 			"sync":      map[string]interface{}{"version": 1},
 		})
@@ -749,7 +758,7 @@ func TestTaskPushAndPull(t *testing.T) {
 
 	// Push task
 	taskItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":       "task-123",
+		"uid":       "aaaa2222-0000-0000-0000-000000000000",
 		"title":     "Test Task",
 		"done":      false,
 		"updatedTs": "2025-11-09T10:00:00Z",
@@ -809,7 +818,7 @@ func TestCommentPushAndPull(t *testing.T) {
 
 	// First, create a note (parent for comment)
 	noteItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":       "note-for-comment",
+		"uid":       "eeee0000-0000-0000-0000-000000000000",
 		"title":     "Parent Note",
 		"updatedTs": "2025-11-09T10:00:00Z",
 		"sync":      map[string]interface{}{"version": 1},
@@ -822,10 +831,10 @@ func TestCommentPushAndPull(t *testing.T) {
 
 	// Push comment
 	commentItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":        "comment-123",
+		"uid":        "ffff0000-0000-0000-0000-000000000000",
 		"content":    "Test Comment",
 		"parentType": "note",
-		"parentId":   "note-for-comment",
+		"parentUid":  "eeee0000-0000-0000-0000-000000000000",
 		"updatedTs":  "2025-11-09T10:01:00Z",
 		"sync":       map[string]interface{}{"version": 1},
 	})
@@ -883,7 +892,7 @@ func TestChatPushAndPull(t *testing.T) {
 
 	// Push chat
 	chatItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":       "chat-123",
+		"uid":       "aaaa3333-0000-0000-0000-000000000000",
 		"title":     "Test Chat",
 		"updatedTs": "2025-11-09T10:00:00Z",
 		"sync":      map[string]interface{}{"version": 1},
@@ -942,7 +951,7 @@ func TestChatMessagePushAndPull(t *testing.T) {
 
 	// First, create a chat (parent for message)
 	chatItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":       "chat-for-message",
+		"uid":       "aaaa1111-0000-0000-0000-000000000000",
 		"title":     "Parent Chat",
 		"updatedTs": "2025-11-09T10:00:00Z",
 		"sync":      map[string]interface{}{"version": 1},
@@ -955,9 +964,9 @@ func TestChatMessagePushAndPull(t *testing.T) {
 
 	// Push chat message
 	messageItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":       "message-123",
+		"uid":       "bbbb1111-0000-0000-0000-000000000000",
 		"content":   "Test Message",
-		"chatId":    "chat-for-message",
+		"chatUid":   "aaaa1111-0000-0000-0000-000000000000",
 		"role":      "user",
 		"updatedTs": "2025-11-09T10:01:00Z",
 		"sync":      map[string]interface{}{"version": 1},
@@ -1016,10 +1025,10 @@ func TestCommentPush_InvalidParent(t *testing.T) {
 
 	// Try to push comment with non-existent parent
 	commentItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":        "comment-orphan",
+		"uid":        "cccc1111-0000-0000-0000-000000000000",
 		"content":    "Orphan Comment",
 		"parentType": "note",
-		"parentId":   "non-existent-note",
+		"parentUid":  "99999999-9999-9999-9999-999999999999",
 		"updatedTs":  "2025-11-09T10:00:00Z",
 		"sync":       map[string]interface{}{"version": 1},
 	})
@@ -1070,9 +1079,9 @@ func TestChatMessagePush_InvalidChat(t *testing.T) {
 
 	// Try to push message with non-existent chat
 	messageItem, _ := structpb.NewStruct(map[string]interface{}{
-		"uid":       "message-orphan",
+		"uid":       "dddd1111-0000-0000-0000-000000000000",
 		"content":   "Orphan Message",
-		"chatId":    "non-existent-chat",
+		"chatUid":   "88888888-8888-8888-8888-888888888888",
 		"role":      "user",
 		"updatedTs": "2025-11-09T10:00:00Z",
 		"sync":      map[string]interface{}{"version": 1},
@@ -1122,11 +1131,18 @@ func TestConcurrentPush(t *testing.T) {
 
 	// Push multiple notes concurrently
 	done := make(chan bool)
+	uids := []string{
+		"aaaa0000-0000-0000-0000-000000000000",
+		"bbbb0000-0000-0000-0000-000000000000",
+		"cccc0000-0000-0000-0000-000000000000",
+		"dddd0000-0000-0000-0000-000000000000",
+		"eeee0000-0000-0000-0000-000000000000",
+	}
 	for i := 0; i < 5; i++ {
 		go func(index int) {
 			noteItem, _ := structpb.NewStruct(map[string]interface{}{
-				"uid":       string(rune('a' + index)),
-				"title":     string(rune('N' + index)),
+				"uid":       uids[index],
+				"title":     fmt.Sprintf("Concurrent Note %d", index),
 				"updatedTs": "2025-11-09T10:00:00Z",
 				"sync":      map[string]interface{}{"version": 1},
 			})

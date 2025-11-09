@@ -31,10 +31,21 @@ func GetString(m map[string]any, k string) (string, bool) {
 }
 
 // GetMap safely extracts a nested map from a map
+// Handles both map[string]any and map[string]interface{} (protobuf compatibility)
 func GetMap(m map[string]any, k string) (map[string]any, bool) {
 	if v, ok := m[k]; ok {
+		// Try map[string]any first
 		if mm, ok2 := v.(map[string]any); ok2 {
 			return mm, true
+		}
+		// Try map[string]interface{} (protobuf Struct.AsMap() returns this)
+		if mm, ok2 := v.(map[string]interface{}); ok2 {
+			// Convert to map[string]any
+			converted := make(map[string]any, len(mm))
+			for key, val := range mm {
+				converted[key] = val
+			}
+			return converted, true
 		}
 	}
 	return nil, false
