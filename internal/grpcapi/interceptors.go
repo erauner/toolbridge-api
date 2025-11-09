@@ -274,8 +274,8 @@ func ChainUnaryServer(interceptors ...grpc.UnaryServerInterceptor) grpc.UnarySer
 // isSessionExempt returns true if the method does not require a session
 func isSessionExempt(method string) bool {
 	exempt := []string{
-		"/toolbridge.sync.v1.SyncService/GetServerInfo",
-		"/toolbridge.sync.v1.SyncService/BeginSession",
+		"/sync.v1.SyncService/GetServerInfo",
+		"/sync.v1.SyncService/BeginSession",
 	}
 	for _, e := range exempt {
 		if method == e {
@@ -287,8 +287,10 @@ func isSessionExempt(method string) bool {
 
 // isEpochExempt returns true if the method does not require epoch validation
 func isEpochExempt(method string) bool {
-	// Epoch exempt = session exempt + EndSession
-	return isSessionExempt(method) || method == "/toolbridge.sync.v1.SyncService/EndSession"
+	// Epoch exempt = session exempt + EndSession + GetSyncState
+	return isSessionExempt(method) ||
+		method == "/sync.v1.SyncService/EndSession" ||
+		method == "/sync.v1.SyncService/GetSyncState"
 }
 
 // RecoveryInterceptor recovers from panics and returns Internal error
