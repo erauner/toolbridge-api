@@ -81,15 +81,21 @@ spec:
 # Required
 DATABASE_URL=postgres://user:pass@host/db
 ENV=production  # Disables X-Debug-Sub header
+JWT_HS256_SECRET=<strong-secret>  # Required in production (even with Auth0)
 
-# Auth0 RS256 JWT validation
+# Auth0 RS256 JWT validation (recommended for production)
 AUTH0_DOMAIN=your-tenant.us.auth0.com
 AUTH0_AUDIENCE=https://toolbridgeapi.erauner.dev
 
 # Optional
 HTTP_ADDR=:8081  # Default REST API port
-JWT_HS256_SECRET=<strong-secret>  # Defense-in-depth even with Auth0
 ```
+
+**Security Note**: `JWT_HS256_SECRET` is required in production. The server will refuse to start if:
+- `ENV != dev` (production mode)
+- AND `JWT_HS256_SECRET` is unset or set to the default value
+
+Generate a strong secret: `openssl rand -base64 32`
 
 **Do NOT set `GRPC_ADDR` - it's not used in production.**
 
