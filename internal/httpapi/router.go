@@ -18,8 +18,11 @@ type Server struct {
 	DB              *pgxpool.Pool
 	RateLimitConfig RateLimitInfo // Centralized rate limit configuration
 	// Services
-	NoteSvc *syncservice.NoteService
-	// TODO: Add other entity services (TaskSvc, CommentSvc, etc.)
+	NoteSvc        *syncservice.NoteService
+	TaskSvc        *syncservice.TaskService
+	CommentSvc     *syncservice.CommentService
+	ChatSvc        *syncservice.ChatService
+	ChatMessageSvc *syncservice.ChatMessageService
 }
 
 // DefaultRateLimitConfig provides the default rate limiting configuration
