@@ -2,13 +2,18 @@
 
 Delta sync backend for ToolBridge. Implements Last-Write-Wins (LWW) conflict resolution with cursor-based pagination.
 
+> **Production Transport: REST API Only**
+> This service is deployed with REST API. gRPC is NOT used in production.
+> See [DEPLOYMENT.md](./DEPLOYMENT.md) for details. gRPC code exists in experimental branch only.
+
 ## Architecture
 
 **Tech Stack:**
 - Go 1.22
 - PostgreSQL 16
-- JWT authentication (HS256)
+- JWT authentication (HS256 + Auth0 RS256)
 - Chi HTTP router
+- REST API (production)
 
 **Sync Protocol:**
 - **Push**: Client sends local changes → Server applies with LWW
