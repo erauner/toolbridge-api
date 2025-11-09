@@ -52,8 +52,11 @@ func main() {
 		DB:              pool,
 		RateLimitConfig: httpapi.DefaultRateLimitConfig,
 		// Initialize services
-		NoteSvc: syncservice.NewNoteService(pool),
-		// TODO: Add other entity services (TaskSvc, CommentSvc, etc.)
+		NoteSvc:        syncservice.NewNoteService(pool),
+		TaskSvc:        syncservice.NewTaskService(pool),
+		CommentSvc:     syncservice.NewCommentService(pool),
+		ChatSvc:        syncservice.NewChatService(pool),
+		ChatMessageSvc: syncservice.NewChatMessageService(pool),
 	}
 
 	// JWT configuration
@@ -135,55 +138,10 @@ func main() {
 	}()
 
 	// ===================================================================
-	// gRPC Server Setup (Phase 1)
+	// gRPC Server Setup (Conditionally compiled with -tags grpc)
 	// ===================================================================
-	// TODO: Uncomment after running `./scripts/generate_proto.sh`
-	// TODO: Add imports:
-	//   "net"
-	//   "github.com/erauner12/toolbridge-api/internal/grpcapi"
-	//   syncv1 "github.com/erauner12/toolbridge-api/gen/go/sync/v1"
-	//   "google.golang.org/grpc"
-	//   "google.golang.org/grpc/reflection"
-	//
-	// grpcAddr := env("GRPC_ADDR", ":8082")
-	// lis, err := net.Listen("tcp", grpcAddr)
-	// if err != nil {
-	// 	log.Fatal().Err(err).Msg("failed to listen for gRPC")
-	// }
-	//
-	// // Chain interceptors (executed in order)
-	// grpcServer := grpc.NewServer(
-	// 	grpc.ChainUnaryInterceptor(
-	// 		grpcapi.RecoveryInterceptor(),        // Recover from panics
-	// 		grpcapi.CorrelationIDInterceptor(),   // Add correlation ID
-	// 		grpcapi.LoggingInterceptor(),         // Log requests
-	// 		grpcapi.AuthInterceptor(pool, jwtCfg), // Validate JWT
-	// 		grpcapi.SessionInterceptor(),          // Validate session
-	// 		grpcapi.EpochInterceptor(pool),        // Validate epoch
-	// 	),
-	// )
-	//
-	// // Create and register gRPC implementation
-	// grpcApiServer := grpcapi.NewServer(pool, srv.NoteSvc)
-	// syncv1.RegisterSyncServiceServer(grpcServer, grpcApiServer)
-	// syncv1.RegisterNoteSyncServiceServer(grpcServer, grpcApiServer)
-	// // TODO: Register other entity services when implemented:
-	// // syncv1.RegisterTaskSyncServiceServer(grpcServer, grpcApiServer)
-	// // syncv1.RegisterCommentSyncServiceServer(grpcServer, grpcApiServer)
-	// // syncv1.RegisterChatSyncServiceServer(grpcServer, grpcApiServer)
-	// // syncv1.RegisterChatMessageSyncServiceServer(grpcServer, grpcApiServer)
-	//
-	// reflection.Register(grpcServer) // Enable reflection for grpcurl testing
-	//
-	// // Start gRPC server in goroutine
-	// go func() {
-	// 	log.Info().Str("addr", grpcAddr).Msg("starting gRPC server")
-	// 	if err := grpcServer.Serve(lis); err != nil {
-	// 		log.Fatal().Err(err).Msg("gRPC server failed")
-	// 	}
-	// }()
-	//
-	// log.Info().Msg("Both HTTP (REST) and gRPC servers running in parallel")
+	// gRPC server is started in grpc_setup.go when building with -tags grpc
+	startGRPCServer(pool, srv, jwtCfg) // No-op without grpc tag
 	// ===================================================================
 
 	// Graceful shutdown on SIGINT/SIGTERM
@@ -201,9 +159,8 @@ func main() {
 		log.Error().Err(err).Msg("HTTP server shutdown error")
 	}
 
-	// TODO: Uncomment to shutdown gRPC server
-	// grpcServer.GracefulStop()
-	// log.Info().Msg("gRPC server stopped")
+	// Shutdown gRPC server (no-op without grpc tag)
+	stopGRPCServer()
 
 	log.Info().Msg("server stopped")
 }

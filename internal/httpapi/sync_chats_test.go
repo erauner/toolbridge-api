@@ -8,6 +8,7 @@ import (
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
 	"github.com/erauner12/toolbridge-api/internal/db"
+	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -42,7 +43,11 @@ func TestPushChats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -174,7 +179,11 @@ func TestPullChats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -274,7 +283,11 @@ func TestPushPullRoundTrip_Chats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -339,7 +352,11 @@ func TestSoftDelete_Chats_Integration(t *testing.T) {
 	pool := getChatTestDB(t)
 	defer pool.Close()
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite

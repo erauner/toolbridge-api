@@ -71,40 +71,43 @@ func AuthInterceptor(db *pgxpool.Pool, cfg auth.JWTCfg) grpc.UnaryServerIntercep
 			return nil, status.Error(codes.Unauthenticated, "missing metadata")
 		}
 
+		var subject string
+
 		// 2. Check for debug mode (X-Debug-Sub header)
 		if cfg.DevMode {
 			debugSubHeaders := md.Get("x-debug-sub")
 			if len(debugSubHeaders) > 0 && debugSubHeaders[0] != "" {
-				userID := debugSubHeaders[0]
-				logger.Warn().Str("user_id", userID).Msg("using X-Debug-Sub header (dev mode only)")
-				ctx = context.WithValue(ctx, auth.CtxUserID, userID)
-				return handler(ctx, req)
+				subject = debugSubHeaders[0]
+				logger.Warn().Str("sub", subject).Msg("using X-Debug-Sub header (dev mode only)")
 			}
 		}
 
-		// 3. Get authorization header
-		authHeaders := md.Get("authorization")
-		if len(authHeaders) == 0 {
-			return nil, status.Error(codes.Unauthenticated, "missing authorization header")
+		// 3. If no dev mode subject, validate JWT token
+		if subject == "" {
+			authHeaders := md.Get("authorization")
+			if len(authHeaders) == 0 {
+				return nil, status.Error(codes.Unauthenticated, "missing authorization header")
+			}
+
+			authHeader := authHeaders[0]
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				return nil, status.Error(codes.Unauthenticated, "invalid authorization header format")
+			}
+
+			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+			// Validate token using shared validation logic (supports RS256 and HS256)
+			var err error
+			subject, err = auth.ValidateToken(tokenString, cfg)
+			if err != nil {
+				logger.Warn().Err(err).Msg("jwt validation failed")
+				return nil, status.Error(codes.Unauthenticated, "invalid token")
+			}
 		}
 
-		authHeader := authHeaders[0]
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			return nil, status.Error(codes.Unauthenticated, "invalid authorization header format")
-		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-
-		// 4. Validate token using shared validation logic (supports RS256 and HS256)
-		subject, err := auth.ValidateToken(tokenString, cfg)
-		if err != nil {
-			logger.Warn().Err(err).Msg("jwt validation failed")
-			return nil, status.Error(codes.Unauthenticated, "invalid token")
-		}
-
-		// 5. Find or create app_user record
+		// 4. Find or create app_user record (same for both dev mode and JWT)
 		var userID string
-		err = db.QueryRow(ctx,
+		err := db.QueryRow(ctx,
 			`INSERT INTO app_user(sub, created_at)
 			 VALUES ($1, NOW())
 			 ON CONFLICT (sub) DO UPDATE SET sub = excluded.sub
@@ -117,10 +120,10 @@ func AuthInterceptor(db *pgxpool.Pool, cfg auth.JWTCfg) grpc.UnaryServerIntercep
 			return nil, status.Error(codes.Internal, "user lookup failed")
 		}
 
-		// 6. Add userID to context
+		// 5. Add userID to context
 		ctx = context.WithValue(ctx, auth.CtxUserID, userID)
 
-		logger.Debug().Str("user_id", userID).Msg("authenticated")
+		logger.Debug().Str("user_id", userID).Str("subject", subject).Msg("authenticated")
 
 		return handler(ctx, req)
 	}
@@ -287,8 +290,12 @@ func isSessionExempt(method string) bool {
 
 // isEpochExempt returns true if the method does not require epoch validation
 func isEpochExempt(method string) bool {
-	// Epoch exempt = session exempt + EndSession
-	return isSessionExempt(method) || method == "/toolbridge.sync.v1.SyncService/EndSession"
+	// Epoch exempt = session exempt + EndSession + GetSyncState + WipeAccount
+	// Note: WipeAccount needs session but not epoch (client may not know new epoch after wipe)
+	return isSessionExempt(method) ||
+		method == "/toolbridge.sync.v1.SyncService/EndSession" ||
+		method == "/toolbridge.sync.v1.SyncService/GetSyncState" ||
+		method == "/toolbridge.sync.v1.SyncService/WipeAccount"
 }
 
 // RecoveryInterceptor recovers from panics and returns Internal error

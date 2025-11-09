@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
+	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
 )
 
 // setupChatMessageTest creates a chat for testing chat messages
@@ -41,7 +42,12 @@ func TestPushChatMessages_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat_message")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+		ChatMessageSvc:  syncservice.NewChatMessageService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -209,7 +215,12 @@ func TestPushChatMessagesOnDeletedParent_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat_message")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+		ChatMessageSvc:  syncservice.NewChatMessageService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -288,7 +299,12 @@ func TestDeleteChatMessageAfterParentDeleted_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat_message")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+		ChatMessageSvc:  syncservice.NewChatMessageService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -392,7 +408,12 @@ func TestPullChatMessages_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat_message")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+		ChatMessageSvc:  syncservice.NewChatMessageService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -490,7 +511,12 @@ func TestPushPullRoundTrip_ChatMessages_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat_message")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+		ChatMessageSvc:  syncservice.NewChatMessageService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -566,7 +592,12 @@ func TestSoftDelete_ChatMessages_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat_message")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM chat")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		ChatSvc:         syncservice.NewChatService(pool),
+		ChatMessageSvc:  syncservice.NewChatMessageService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
+	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
 )
 
 // setupCommentTest creates a note and task for testing comments
@@ -55,7 +56,13 @@ func TestPushComments_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM task")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+		TaskSvc:         syncservice.NewTaskService(pool),
+		CommentSvc:      syncservice.NewCommentService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -305,7 +312,13 @@ func TestPushCommentsOnDeletedParent_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM task")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+		TaskSvc:         syncservice.NewTaskService(pool),
+		CommentSvc:      syncservice.NewCommentService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -386,7 +399,13 @@ func TestDeleteCommentAfterParentDeleted_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM task")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+		TaskSvc:         syncservice.NewTaskService(pool),
+		CommentSvc:      syncservice.NewCommentService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -493,7 +512,13 @@ func TestPullComments_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM task")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+		TaskSvc:         syncservice.NewTaskService(pool),
+		CommentSvc:      syncservice.NewCommentService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -594,7 +619,13 @@ func TestPushPullRoundTrip_Comments_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM task")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+		TaskSvc:         syncservice.NewTaskService(pool),
+		CommentSvc:      syncservice.NewCommentService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite
@@ -675,7 +706,13 @@ func TestSoftDelete_Comments_Integration(t *testing.T) {
 	_, _ = pool.Exec(context.Background(), "DELETE FROM task")
 	_, _ = pool.Exec(context.Background(), "DELETE FROM note")
 
-	srv := &Server{DB: pool, RateLimitConfig: DefaultRateLimitConfig}
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+		TaskSvc:         syncservice.NewTaskService(pool),
+		CommentSvc:      syncservice.NewCommentService(pool),
+	}
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	// Create a session for this test suite

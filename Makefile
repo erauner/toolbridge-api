@@ -1,4 +1,4 @@
-.PHONY: help dev test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean
+.PHONY: help dev dev-grpc test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean
 
 # Docker configuration
 DOCKER_REGISTRY ?= ghcr.io
@@ -18,7 +18,8 @@ help:
 	@echo "ToolBridge API - Development Commands"
 	@echo ""
 	@echo "Development:"
-	@echo "  make dev              - Start local dev server"
+	@echo "  make dev              - Start local dev server (HTTP only)"
+	@echo "  make dev-grpc         - Start dev server with gRPC support (HTTP + gRPC)"
 	@echo "  make build            - Build binary"
 	@echo ""
 	@echo "Testing:"
@@ -53,13 +54,24 @@ help:
 	@echo "Cleanup:"
 	@echo "  make clean            - Clean build artifacts"
 
-# Local development server
+# Local development server (HTTP only)
 dev:
-	@echo "Starting dev server..."
+	@echo "Starting dev server (HTTP only on :8081)..."
 	DATABASE_URL=postgres://toolbridge:dev-password@localhost:5432/toolbridge?sslmode=disable \
 	JWT_HS256_SECRET=dev-secret \
 	ENV=dev \
 	go run ./cmd/server
+
+# Local development server with gRPC support (HTTP + gRPC)
+dev-grpc:
+	@echo "Starting dev server with gRPC support..."
+	@echo "Building with gRPC support..."
+	@go build -tags grpc -o ./bin/server ./cmd/server
+	@echo "Starting server (HTTP on :8081, gRPC on :8082)..."
+	DATABASE_URL=postgres://toolbridge:dev-password@localhost:5432/toolbridge?sslmode=disable \
+	JWT_HS256_SECRET=dev-secret \
+	ENV=dev \
+	./bin/server
 
 # Run all tests (unit + integration)
 test:
