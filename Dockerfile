@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -13,8 +13,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/server ./cmd/server
+# Build binary with gRPC support
+RUN CGO_ENABLED=0 GOOS=linux go build -tags grpc -ldflags="-w -s" -o /app/server ./cmd/server
 
 # Runtime stage
 FROM alpine:3.19
@@ -46,8 +46,9 @@ USER app
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
 
-# Expose standard HTTP port
-# Note: Actual bind address is controlled by HTTP_ADDR environment variable
+# Expose standard HTTP and gRPC ports
+# Note: Actual bind addresses are controlled by HTTP_ADDR and GRPC_ADDR environment variables
 EXPOSE 8080
+EXPOSE 8082
 
 ENTRYPOINT ["/app/server"]

@@ -50,6 +50,10 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        {{- if .Values.grpc.enabled }}
+        - containerPort: {{ .Values.grpc.port }}
+          name: grpc
+        {{- end }}
         env:
         # Simple environment variables from ConfigMap
         - name: ENV
@@ -62,6 +66,13 @@ spec:
             configMapKeyRef:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: HTTP_ADDR
+        {{- if .Values.grpc.enabled }}
+        - name: GRPC_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: GRPC_ADDR
+        {{- end }}
 
         # Database connection parts
         - name: DB_HOST

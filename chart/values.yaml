@@ -4,7 +4,7 @@
 image:
   repository: ghcr.io/erauner12/toolbridge-api
   pullPolicy: IfNotPresent
-  tag: "v0.1.0"
+  tag: "v0.2.0"
 
 # Number of API replicas
 # NOTE: Currently limited to 1 due to in-memory session/rate-limit storage
@@ -51,6 +51,17 @@ api:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3  # More lenient to avoid marking pods unready on transient failures
+
+# gRPC configuration
+grpc:
+  # Enable gRPC server (disabled by default for backward compatibility)
+  enabled: false
+
+  # gRPC server address
+  addr: ":8082"
+
+  # gRPC service port configuration
+  port: 8082
 
 # Database configuration
 postgresql:

@@ -7,6 +7,9 @@ metadata:
 data:
   ENV: {{ .Values.api.env | quote }}
   HTTP_ADDR: {{ .Values.api.httpAddr | quote }}
+  {{- if .Values.grpc.enabled }}
+  GRPC_ADDR: {{ .Values.grpc.addr | quote }}
+  {{- end }}
   DB_HOST: {{ .Values.config.dbHost | default (include "toolbridge-api.database.serviceName" .) | quote }}
   DB_PORT: {{ .Values.config.dbPort | quote }}
   DB_NAME: {{ .Values.config.dbName | quote }}
