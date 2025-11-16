@@ -2,17 +2,37 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // TestSession holds session info for testing
 type TestSession struct {
-	ID    string
-	Epoch int
+	ID     string
+	Epoch  int
+	UserID string // Added UserID to track the actual user UUID
+}
+
+// createTestUser creates or gets a test user by subject and returns their UUID
+func createTestUser(t *testing.T, pool *pgxpool.Pool, subject string) string {
+	t.Helper()
+
+	var userID string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO app_user (sub) VALUES ($1)
+		 ON CONFLICT (sub) DO UPDATE SET sub = excluded.sub
+		 RETURNING id`, subject).Scan(&userID)
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	return userID
 }
 
 // createTestSession creates a sync session for testing and returns session info
@@ -30,16 +50,18 @@ func createTestSession(t *testing.T, router http.Handler) TestSession {
 	}
 
 	var session struct {
-		ID    string `json:"id"`
-		Epoch int    `json:"epoch"`
+		ID     string `json:"id"`
+		UserID string `json:"userId"`
+		Epoch  int    `json:"epoch"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&session); err != nil {
 		t.Fatalf("Failed to decode session response: %v", err)
 	}
 
 	return TestSession{
-		ID:    session.ID,
-		Epoch: session.Epoch,
+		ID:     session.ID,
+		UserID: session.UserID,
+		Epoch:  session.Epoch,
 	}
 }
 

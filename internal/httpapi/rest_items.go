@@ -212,16 +212,23 @@ func (s *Server) UpdateNote(w http.ResponseWriter, r *http.Request) {
 
 	// Check for optimistic locking
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.NoteSvc.ApplyNoteMutation(ctx, userID, payload, opts)
 	if err != nil {
 		// Check for version mismatch
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to update note")
@@ -280,15 +287,22 @@ func (s *Server) PatchNote(w http.ResponseWriter, r *http.Request) {
 
 	// Apply mutation
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.NoteSvc.ApplyNoteMutation(ctx, userID, merged, opts)
 	if err != nil {
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to patch note")
@@ -590,16 +604,23 @@ func (s *Server) UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	// Check for optimistic locking
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.TaskSvc.ApplyTaskMutation(ctx, userID, payload, opts)
 	if err != nil {
 		// Check for version mismatch
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to update task")
@@ -658,15 +679,22 @@ func (s *Server) PatchTask(w http.ResponseWriter, r *http.Request) {
 
 	// Apply mutation
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.TaskSvc.ApplyTaskMutation(ctx, userID, merged, opts)
 	if err != nil {
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to patch task")
@@ -966,16 +994,23 @@ func (s *Server) UpdateChat(w http.ResponseWriter, r *http.Request) {
 
 	// Check for optimistic locking
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.ChatSvc.ApplyChatMutation(ctx, userID, payload, opts)
 	if err != nil {
 		// Check for version mismatch
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to update chat")
@@ -1034,15 +1069,22 @@ func (s *Server) PatchChat(w http.ResponseWriter, r *http.Request) {
 
 	// Apply mutation
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.ChatSvc.ApplyChatMutation(ctx, userID, merged, opts)
 	if err != nil {
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to patch chat")
@@ -1340,16 +1382,23 @@ func (s *Server) UpdateComment(w http.ResponseWriter, r *http.Request) {
 
 	// Check for optimistic locking
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.CommentSvc.ApplyCommentMutation(ctx, userID, payload, opts)
 	if err != nil {
 		// Check for version mismatch
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to update comment")
@@ -1408,15 +1457,22 @@ func (s *Server) PatchComment(w http.ResponseWriter, r *http.Request) {
 
 	// Apply mutation
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.CommentSvc.ApplyCommentMutation(ctx, userID, merged, opts)
 	if err != nil {
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to patch comment")
@@ -1714,16 +1770,23 @@ func (s *Server) UpdateChatMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Check for optimistic locking
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.ChatMessageSvc.ApplyChatMessageMutation(ctx, userID, payload, opts)
 	if err != nil {
 		// Check for version mismatch
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to update chat message")
@@ -1782,15 +1845,22 @@ func (s *Server) PatchChatMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Apply mutation
 	opts := syncservice.MutationOpts{}
+	usedIfMatch := false
 	if version, ok := parseIfMatchHeader(r); ok {
 		opts.EnforceVersion = true
 		opts.ExpectedVersion = version
+		usedIfMatch = true
 	}
 
 	item, err := s.ChatMessageSvc.ApplyChatMessageMutation(ctx, userID, merged, opts)
 	if err != nil {
 		if _, ok := err.(*syncservice.VersionMismatchError); ok {
-			writeError(w, r, 409, "version mismatch: "+err.Error())
+			// RFC 7232: Return 412 Precondition Failed for If-Match failures
+			statusCode := 412
+			if !usedIfMatch {
+				statusCode = 409 // Conflict for other version mismatches
+			}
+			writeError(w, r, statusCode, "version mismatch: "+err.Error())
 			return
 		}
 		logger.Error().Err(err).Msg("failed to patch chat message")

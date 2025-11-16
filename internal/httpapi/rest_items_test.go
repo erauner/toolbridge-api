@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const testUserID = "test-user"
+const testUserSubject = "test-user"
 
 // TestGetNote_IncludeDeleted tests the includeDeleted query parameter behavior
 func TestGetNote_IncludeDeleted(t *testing.T) {
@@ -33,13 +33,18 @@ func TestGetNote_IncludeDeleted(t *testing.T) {
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	ctx := context.Background()
-	userID := testUserID
+	userID := createTestUser(t, pool, testUserSubject) // Create user and get UUID
 
 	t.Run("404_for_nonexistent_note", func(t *testing.T) {
+		// Create a session to ensure the request has proper session headers
+		session := createTestSession(t, router)
+
 		nonexistentUID := uuid.New()
 
 		req := httptest.NewRequest("GET", fmt.Sprintf("/v1/notes/%s", nonexistentUID), nil)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -50,6 +55,9 @@ func TestGetNote_IncludeDeleted(t *testing.T) {
 	})
 
 	t.Run("410_Gone_for_deleted_note_without_includeDeleted", func(t *testing.T) {
+		// Create a session
+		session := createTestSession(t, router)
+
 		// Create a note via REST API
 		noteUID := uuid.New()
 		notePayload := map[string]any{
@@ -73,7 +81,9 @@ func TestGetNote_IncludeDeleted(t *testing.T) {
 
 		// Try to GET without includeDeleted flag (should get 410)
 		req := httptest.NewRequest("GET", fmt.Sprintf("/v1/notes/%s", noteUID), nil)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -97,6 +107,9 @@ func TestGetNote_IncludeDeleted(t *testing.T) {
 	})
 
 	t.Run("200_OK_for_deleted_note_with_includeDeleted_true", func(t *testing.T) {
+		// Create a session
+		session := createTestSession(t, router)
+
 		// Create another note
 		noteUID := uuid.New()
 		notePayload := map[string]any{
@@ -120,7 +133,9 @@ func TestGetNote_IncludeDeleted(t *testing.T) {
 
 		// GET with includeDeleted=true (should get 200 with full item)
 		req := httptest.NewRequest("GET", fmt.Sprintf("/v1/notes/%s?includeDeleted=true", noteUID), nil)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -148,6 +163,9 @@ func TestGetNote_IncludeDeleted(t *testing.T) {
 	})
 
 	t.Run("200_OK_for_active_note", func(t *testing.T) {
+		// Create a session
+		session := createTestSession(t, router)
+
 		// Create an active note
 		noteUID := uuid.New()
 		notePayload := map[string]any{
@@ -163,7 +181,9 @@ func TestGetNote_IncludeDeleted(t *testing.T) {
 
 		// GET active note (should always return 200)
 		req := httptest.NewRequest("GET", fmt.Sprintf("/v1/notes/%s", noteUID), nil)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -210,9 +230,12 @@ func TestGetTask_IncludeDeleted(t *testing.T) {
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	ctx := context.Background()
-	userID := testUserID
+	userID := createTestUser(t, pool, testUserSubject) // Create user and get UUID
 
 	t.Run("410_Gone_for_deleted_task", func(t *testing.T) {
+		// Create a session
+		session := createTestSession(t, router)
+
 		taskUID := uuid.New()
 		taskPayload := map[string]any{
 			"uid":         taskUID.String(),
@@ -235,7 +258,9 @@ func TestGetTask_IncludeDeleted(t *testing.T) {
 
 		// GET without includeDeleted
 		req := httptest.NewRequest("GET", fmt.Sprintf("/v1/tasks/%s", taskUID), nil)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -246,6 +271,9 @@ func TestGetTask_IncludeDeleted(t *testing.T) {
 	})
 
 	t.Run("200_OK_for_deleted_task_with_includeDeleted", func(t *testing.T) {
+		// Create a session
+		session := createTestSession(t, router)
+
 		taskUID := uuid.New()
 		taskPayload := map[string]any{
 			"uid":   taskUID.String(),
@@ -267,7 +295,9 @@ func TestGetTask_IncludeDeleted(t *testing.T) {
 
 		// GET with includeDeleted=true
 		req := httptest.NewRequest("GET", fmt.Sprintf("/v1/tasks/%s?includeDeleted=true", taskUID), nil)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -304,7 +334,10 @@ func TestMutationOnTombstone(t *testing.T) {
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	ctx := context.Background()
-	userID := testUserID
+	userID := createTestUser(t, pool, testUserSubject) // Create user and get UUID
+
+	// Create a session
+	session := createTestSession(t, router)
 
 	// Create and delete a note
 	noteUID := uuid.New()
@@ -330,7 +363,9 @@ func TestMutationOnTombstone(t *testing.T) {
 		body := toJSONReader(patchPayload)
 
 		req := httptest.NewRequest("PATCH", fmt.Sprintf("/v1/notes/%s", noteUID), body)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -344,7 +379,9 @@ func TestMutationOnTombstone(t *testing.T) {
 	// Try to DELETE the tombstone again (should get 410)
 	t.Run("DELETE_returns_410_for_tombstone", func(t *testing.T) {
 		req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/notes/%s", noteUID), nil)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -457,7 +494,10 @@ func TestOptimisticLocking_QuotedETag(t *testing.T) {
 	router := srv.Routes(auth.JWTCfg{HS256Secret: "test-secret", DevMode: true})
 
 	ctx := context.Background()
-	userID := testUserID
+	userID := createTestUser(t, pool, testUserSubject) // Create user and get UUID
+
+	// Create a session
+	session := createTestSession(t, router)
 
 	// Create a note
 	noteUID := uuid.New()
@@ -479,7 +519,9 @@ func TestOptimisticLocking_QuotedETag(t *testing.T) {
 		body := toJSONReader(updatePayload)
 
 		req := httptest.NewRequest("PATCH", fmt.Sprintf("/v1/notes/%s", noteUID), body)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("If-Match", fmt.Sprintf(`"%d"`, currentVersion)) // Quoted ETag
 		w := httptest.NewRecorder()
@@ -496,7 +538,9 @@ func TestOptimisticLocking_QuotedETag(t *testing.T) {
 		body := toJSONReader(updatePayload)
 
 		req := httptest.NewRequest("PATCH", fmt.Sprintf("/v1/notes/%s", noteUID), body)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("If-Match", `"1"`) // Stale quoted ETag
 		w := httptest.NewRecorder()
@@ -519,7 +563,9 @@ func TestOptimisticLocking_QuotedETag(t *testing.T) {
 		body := toJSONReader(updatePayload)
 
 		req := httptest.NewRequest("PATCH", fmt.Sprintf("/v1/notes/%s", noteUID), body)
-		req.Header.Set("X-Debug-Sub", testUserID)
+		req.Header.Set("X-Debug-Sub", testUserSubject)
+		req.Header.Set("X-Sync-Session", session.ID)
+		req.Header.Set("X-Sync-Epoch", fmt.Sprintf("%d", session.Epoch))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("If-Match", fmt.Sprintf("%d", currentItem.Version)) // Unquoted ETag
 		w := httptest.NewRecorder()
