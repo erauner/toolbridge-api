@@ -147,6 +147,11 @@ func (c *EntityClient) Create(ctx context.Context, payload map[string]any) (*RES
 // If version is provided, server checks for version mismatch (409 Conflict)
 // Reference: internal/httpapi/rest_items.go:UpdateNote, UpdateTask, etc.
 func (c *EntityClient) Update(ctx context.Context, uid uuid.UUID, payload map[string]any, version *int) (*RESTItem, error) {
+	// Initialize payload if nil
+	if payload == nil {
+		payload = make(map[string]any)
+	}
+
 	// Ensure UID is in payload
 	payload["uid"] = uid.String()
 

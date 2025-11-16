@@ -256,6 +256,9 @@ func TestConfigValidation(t *testing.T) {
 							ClientID: "test-client-id",
 						},
 					},
+					SyncAPI: &SyncAPIConfig{
+						Audience: "https://api.toolbridge.dev",
+					},
 				},
 			},
 			wantErr: false,
