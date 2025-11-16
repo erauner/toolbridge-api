@@ -72,8 +72,7 @@ func EpochRequired(db *pgxpool.Pool) func(http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Sync-Epoch", strconv.Itoa(epoch))
 				w.Header().Set("X-Correlation-ID", r.Header.Get("X-Correlation-ID"))
-				w.WriteHeader(http.StatusConflict)
-
+		
 				writeJSON(w, http.StatusConflict, map[string]any{
 					"error":          "epoch_mismatch",
 					"epoch":          epoch,

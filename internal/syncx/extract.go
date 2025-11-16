@@ -201,3 +201,45 @@ func ExtractChatMessage(item map[string]any) (Extracted, error) {
 
 	return ext, nil
 }
+
+// BuildServerMutation prepares a payload map for server-side mutation
+// Used by REST endpoints to create sync-compliant payloads
+// - Ensures uid field exists (generates if missing)
+// - Sets updatedTs to server timestamp (monotonic)
+// - Optionally marks as deleted
+// - Returns the mutated payload ready for Push*Item
+func BuildServerMutation(payload map[string]any, timestampMs int64, setDeleted bool) map[string]any {
+	// Ensure UID exists
+	if _, hasUID := GetString(payload, "uid"); !hasUID {
+		payload["uid"] = uuid.New().String()
+	}
+
+	// Set server timestamp
+	payload["updatedTs"] = RFC3339(timestampMs)
+
+	// Build sync block
+	sync := map[string]any{
+		"version": 1, // Will be overridden by server
+	}
+
+	if setDeleted {
+		sync["isDeleted"] = true
+		sync["deletedAt"] = RFC3339(timestampMs)
+	} else {
+		sync["isDeleted"] = false
+	}
+
+	payload["sync"] = sync
+
+	return payload
+}
+
+// EnsureMonotonicTimestamp returns a timestamp that is strictly greater than the provided previous timestamp
+// Used to maintain strict ordering of updates in REST operations
+func EnsureMonotonicTimestamp(prevMs int64) int64 {
+	nowMs := NowMs()
+	if nowMs <= prevMs {
+		return prevMs + 1
+	}
+	return nowMs
+}

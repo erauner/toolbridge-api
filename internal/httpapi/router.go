@@ -152,6 +152,63 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 			r.Get("/v1/sync/chat_messages/pull", s.PullChatMessages)
 		})
 
+		// REST CRUD endpoints require same protections as sync endpoints
+		r.Group(func(r chi.Router) {
+			r.Use(SessionRequired)
+			r.Use(RateLimitMiddleware(s.RateLimitConfig))
+			r.Use(EpochRequired(s.DB))
+
+			// Notes REST endpoints
+			r.Get("/v1/notes", s.ListNotes)
+			r.Post("/v1/notes", s.CreateNote)
+			r.Get("/v1/notes/{uid}", s.GetNote)
+			r.Put("/v1/notes/{uid}", s.UpdateNote)
+			r.Patch("/v1/notes/{uid}", s.PatchNote)
+			r.Delete("/v1/notes/{uid}", s.DeleteNote)
+			r.Post("/v1/notes/{uid}/archive", s.ArchiveNote)
+			r.Post("/v1/notes/{uid}/process", s.ProcessNote)
+
+			// Tasks REST endpoints
+			r.Get("/v1/tasks", s.ListTasks)
+			r.Post("/v1/tasks", s.CreateTask)
+			r.Get("/v1/tasks/{uid}", s.GetTask)
+			r.Put("/v1/tasks/{uid}", s.UpdateTask)
+			r.Patch("/v1/tasks/{uid}", s.PatchTask)
+			r.Delete("/v1/tasks/{uid}", s.DeleteTask)
+			r.Post("/v1/tasks/{uid}/archive", s.ArchiveTask)
+			r.Post("/v1/tasks/{uid}/process", s.ProcessTask)
+
+			// Comments REST endpoints
+			r.Get("/v1/comments", s.ListComments)
+			r.Post("/v1/comments", s.CreateComment)
+			r.Get("/v1/comments/{uid}", s.GetComment)
+			r.Put("/v1/comments/{uid}", s.UpdateComment)
+			r.Patch("/v1/comments/{uid}", s.PatchComment)
+			r.Delete("/v1/comments/{uid}", s.DeleteComment)
+			r.Post("/v1/comments/{uid}/archive", s.ArchiveComment)
+			r.Post("/v1/comments/{uid}/process", s.ProcessComment)
+
+			// Chats REST endpoints
+			r.Get("/v1/chats", s.ListChats)
+			r.Post("/v1/chats", s.CreateChat)
+			r.Get("/v1/chats/{uid}", s.GetChat)
+			r.Put("/v1/chats/{uid}", s.UpdateChat)
+			r.Patch("/v1/chats/{uid}", s.PatchChat)
+			r.Delete("/v1/chats/{uid}", s.DeleteChat)
+			r.Post("/v1/chats/{uid}/archive", s.ArchiveChat)
+			r.Post("/v1/chats/{uid}/process", s.ProcessChat)
+
+			// Chat Messages REST endpoints
+			r.Get("/v1/chat_messages", s.ListChatMessages)
+			r.Post("/v1/chat_messages", s.CreateChatMessage)
+			r.Get("/v1/chat_messages/{uid}", s.GetChatMessage)
+			r.Put("/v1/chat_messages/{uid}", s.UpdateChatMessage)
+			r.Patch("/v1/chat_messages/{uid}", s.PatchChatMessage)
+			r.Delete("/v1/chat_messages/{uid}", s.DeleteChatMessage)
+			r.Post("/v1/chat_messages/{uid}/archive", s.ArchiveChatMessage)
+			r.Post("/v1/chat_messages/{uid}/process", s.ProcessChatMessage)
+		})
+
 		// Wipe & state routes require auth + session, but NO epoch check
 		// (otherwise you can't wipe when epoch is mismatched!)
 		r.Group(func(r chi.Router) {

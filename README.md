@@ -115,12 +115,158 @@ JWT must contain `sub` claim (user identifier). User is created automatically on
 
 ## API Endpoints
 
-### Health Check
+The API provides two interfaces for data management:
+
+1. **Delta Sync API** (`/v1/sync/*`) - Batch operations for offline-first synchronization
+2. **REST CRUD API** (`/v1/*`) - Traditional REST endpoints for interactive operations
+
+Both APIs share the same underlying service layer and LWW conflict resolution. REST mutations automatically propagate to delta sync pull operations.
+
+---
+
+### REST CRUD API
+
+Traditional REST endpoints for managing individual entities. All endpoints require:
+- `Authorization: Bearer <jwt>` or `X-Debug-Sub` header
+- `X-Sync-Session` header (obtain via `POST /v1/sync/sessions`)
+- `X-Sync-Epoch` header (provided in session response)
+
+#### Common Operations
+
+**List Entities** (cursor pagination):
+```http
+GET /v1/{entity}?cursor=<opaque>&limit=500&includeDeleted=true
+Authorization: Bearer <token>
+X-Sync-Session: <session-id>
+X-Sync-Epoch: <epoch>
+```
+
+**Create Entity**:
+```http
+POST /v1/{entity}
+Authorization: Bearer <token>
+X-Sync-Session: <session-id>
+X-Sync-Epoch: <epoch>
+Content-Type: application/json
+
+{
+  "title": "Example",
+  "content": "...",
+  "customField": "..."
+}
+```
+Server generates `uid` if not provided. Returns 201 with full entity.
+
+**Retrieve Single**:
+```http
+GET /v1/{entity}/{uid}?includeDeleted=true
+```
+Returns 404 if not found, 410 if deleted (unless `includeDeleted=true`).
+
+**Replace (Full Update)**:
+```http
+PUT /v1/{entity}/{uid}
+If-Match: 3
+Content-Type: application/json
+
+{
+  "uid": "{uid}",
+  "title": "Updated Title",
+  "content": "Full replacement"
+}
+```
+Optional `If-Match` header enforces optimistic locking (returns 409 on version mismatch).
+
+**Partial Update**:
+```http
+PATCH /v1/{entity}/{uid}
+Content-Type: application/json
+
+{
+  "title": "Only update this field"
+}
+```
+
+**Soft Delete**:
+```http
+DELETE /v1/{entity}/{uid}
+```
+
+**Archive**:
+```http
+POST /v1/{entity}/{uid}/archive
+```
+- Notes/Tasks/Comments: Sets `status="archived"`
+- Chats/Chat Messages: Sets `archived=true`
+
+**Process Action**:
+```http
+POST /v1/{entity}/{uid}/process
+Content-Type: application/json
+
+{
+  "action": "complete",
+  "metadata": {}
+}
+```
+
+**Supported actions per entity:**
+- Notes: `pin`, `unpin`, `archive`, `unarchive`
+- Tasks: `start`, `complete`, `reopen`
+- Comments: `resolve`, `reopen`
+- Chats: `resolve`, `reopen`
+- Chat Messages: `mark_read`, `mark_delivered`
+
+#### REST Response Format
+
+```json
+{
+  "uid": "uuid",
+  "version": 4,
+  "updatedAt": "2025-03-01T10:00:01.123Z",
+  "deletedAt": null,
+  "payload": {
+    "uid": "uuid",
+    "title": "...",
+    "content": "...",
+    "sync": {
+      "version": 4,
+      "isDeleted": false
+    }
+  }
+}
+```
+
+List responses:
+```json
+{
+  "items": [
+    { "uid": "...", "version": 4, "payload": {...} }
+  ],
+  "nextCursor": "opaque-base64-string"
+}
+```
+
+#### Available Entities
+
+- `/v1/notes` - Note management
+- `/v1/tasks` - Task management
+- `/v1/comments` - Comments (require `parentType` and `parentUid`)
+- `/v1/chats` - Chat conversations
+- `/v1/chat_messages` - Chat messages (require `chatUid`)
+
+---
+
+### Delta Sync API
+
+Batch operations for offline-first synchronization.
+
+#### Health Check
 ```
 GET /healthz
 ```
 
-### Push Notes
+#### Push Notes
 ```
 POST /v1/sync/notes/push
 Content-Type: application/json
