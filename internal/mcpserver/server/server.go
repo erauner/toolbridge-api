@@ -379,7 +379,16 @@ func (s *MCPServer) handleMCPDelete(w http.ResponseWriter, r *http.Request) {
 
 // createRESTClient creates a REST client for the ToolBridge API
 func (s *MCPServer) createRESTClient(tokenProvider *PassthroughTokenProvider) *client.HTTPClient {
-	audience := s.config.Auth0.SyncAPI.Audience
+	// In dev mode or when Auth0 is not configured, use empty audience
+	var audience string
+	if s.config.Auth0.SyncAPI != nil {
+		audience = s.config.Auth0.SyncAPI.Audience
+	} else {
+		// Dev mode: use API base URL as fallback audience
+		audience = s.config.APIBaseURL
+		log.Debug().Str("audience", audience).Msg("Using fallback audience for dev mode")
+	}
+
 	sessionMgr := client.NewSessionManager(s.config.APIBaseURL, tokenProvider, audience)
 	return client.NewHTTPClient(s.config.APIBaseURL, tokenProvider, sessionMgr, audience, "")
 }

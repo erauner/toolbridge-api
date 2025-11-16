@@ -631,3 +631,90 @@ func TestMCPServer_OriginValidation_Integration(t *testing.T) {
 		})
 	}
 }
+
+func TestMCPServer_DevMode(t *testing.T) {
+	// Test that server works in dev mode without Auth0 configuration
+	cfg := &config.Config{
+		DevMode:        true,
+		AllowedOrigins: []string{},
+		APIBaseURL:     "http://localhost:8081",
+		// No Auth0 config - this should not panic
+	}
+
+	server := NewMCPServer(cfg)
+
+	// Server should be created successfully
+	if server == nil {
+		t.Fatal("Expected server to be created in dev mode")
+	}
+
+	// JWT validator should be nil in dev mode
+	if server.jwtValidator != nil {
+		t.Error("Expected jwtValidator to be nil in dev mode")
+	}
+
+	// Test initialize request with X-Debug-Sub header
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]interface{}{
+			"protocolVersion": "2025-03-26",
+			"capabilities":    map[string]interface{}{},
+			"clientInfo": map[string]interface{}{
+				"name":    "test-client",
+				"version": "1.0",
+			},
+		},
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(body))
+	req.Header.Set("X-Debug-Sub", "test-user-dev")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Mcp-Protocol-Version", "2025-03-26")
+
+	w := httptest.NewRecorder()
+	server.handleMCPPost(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Check for session ID in response headers
+	sessionID := w.Header().Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Error("Expected Mcp-Session-Id header in response")
+	}
+
+	// Test tools/list with the session (this would previously panic)
+	toolsReq := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/list",
+		"params":  map[string]interface{}{},
+	}
+
+	body, _ = json.Marshal(toolsReq)
+	req = httptest.NewRequest("POST", "/mcp", bytes.NewReader(body))
+	req.Header.Set("X-Debug-Sub", "test-user-dev")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Mcp-Protocol-Version", "2025-03-26")
+	req.Header.Set("Mcp-Session-Id", sessionID)
+
+	w = httptest.NewRecorder()
+	server.handleMCPPost(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 for tools/list, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response JSONRPCResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Error != nil {
+		t.Errorf("Expected no error, got: %s", response.Error.Message)
+	}
+}
