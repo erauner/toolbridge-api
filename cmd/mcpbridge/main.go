@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/erauner12/toolbridge-api/internal/mcpserver/auth"
 	"github.com/erauner12/toolbridge-api/internal/mcpserver/config"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -168,28 +169,57 @@ func parseLogLevel(level string) zerolog.Level {
 
 // run is the main application logic
 func run(ctx context.Context, cfg *config.Config) error {
-	// TODO: Phase 4 - Initialize MCP server here
-	// For now, we'll just log and wait for shutdown
+	var broker *auth.TokenBroker
 
-	log.Info().Msg("MCP server initialized (placeholder - actual implementation in Phase 4)")
+	// Initialize Auth0 token broker (unless in dev mode)
+	if !cfg.DevMode {
+		log.Info().Msg("Initializing Auth0 token broker...")
+
+		// Create device code flow delegate
+		delegate := auth.NewDeviceDelegate()
+
+		// Create token broker with caching
+		var err error
+		broker, err = auth.NewBroker(cfg.Auth0, delegate)
+		if err != nil {
+			return fmt.Errorf("failed to create auth broker: %w", err)
+		}
+
+		log.Info().
+			Str("auth0Domain", cfg.Auth0.Domain).
+			Int("clientCount", len(cfg.Auth0.Clients)).
+			Strs("defaultScopes", cfg.Auth0.GetDefaultScopes()).
+			Msg("Auth0 token broker initialized")
+
+		// Optionally warm up the session in non-interactive mode
+		// This will load cached refresh tokens if available
+		_, _ = delegate.EnsureSession(ctx, false, cfg.Auth0.GetDefaultScopes())
+	} else {
+		log.Info().Msg("Running in dev mode - Auth0 authentication bypassed")
+	}
+
+	// TODO: Phase 3 - Initialize REST client with broker
+	// TODO: Phase 4 - Initialize MCP server
+
+	log.Info().Msg("MCP server initialized (actual implementation in Phase 3-4)")
 
 	// Log configuration summary
 	log.Debug().
 		Interface("config", cfg).
 		Msg("Configuration loaded")
 
-	if !cfg.DevMode && cfg.Auth0.Domain != "" {
-		log.Info().
-			Str("auth0Domain", cfg.Auth0.Domain).
-			Int("clientCount", len(cfg.Auth0.Clients)).
-			Strs("defaultScopes", cfg.Auth0.GetDefaultScopes()).
-			Msg("Auth0 configuration loaded")
-	}
-
 	// Wait for shutdown signal
 	<-ctx.Done()
 
 	log.Info().Msg("Shutting down MCP server...")
+
+	// Cleanup
+	if broker != nil {
+		// Logout and clear cached tokens
+		if err := broker.LogoutAll(ctx); err != nil {
+			log.Warn().Err(err).Msg("error during logout")
+		}
+	}
 
 	// TODO: Phase 4 - Graceful shutdown of MCP server
 	// - Close stdio connections

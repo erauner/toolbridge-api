@@ -242,6 +242,153 @@ Logs are written to stderr in JSON format (or console format in debug mode):
 }
 ```
 
+## Testing Auth0 Integration
+
+### Prerequisites
+
+1. **Create Auth0 Application**:
+   - Go to your Auth0 Dashboard
+   - Create a new "Native" application
+   - Enable "Device Code" grant type in Application Settings → Advanced Settings → Grant Types
+   - Note your Domain and Client ID
+
+2. **Configure Sync API**:
+   - Create an API in Auth0 Dashboard (if not already created)
+   - Note the API Identifier (audience)
+   - Configure permissions/scopes as needed
+
+3. **Create Configuration File**:
+   ```json
+   {
+     "apiBaseUrl": "http://localhost:8081",
+     "debug": true,
+     "devMode": false,
+     "auth0": {
+       "domain": "your-tenant.us.auth0.com",
+       "clients": {
+         "native": {
+           "clientId": "YOUR_CLIENT_ID",
+           "scopes": ["openid", "profile", "email", "offline_access"]
+         }
+       },
+       "syncApi": {
+         "audience": "https://api.toolbridge.example.com"
+       }
+     }
+   }
+   ```
+
+### Manual Testing Steps
+
+#### 1. Initial Token Acquisition (Interactive)
+
+Start the bridge with your Auth0 configuration:
+
+```bash
+./bin/mcpbridge --config config/auth0_prod.json --debug
+```
+
+**Expected behavior**:
+- Bridge displays device code instructions:
+  ```
+  ═══════════════════════════════════════════
+    Auth0 Device Authorization Required
+  ═══════════════════════════════════════════
+
+  Visit: https://your-tenant.us.auth0.com/activate
+  Enter code: XXXX-XXXX
+
+  Waiting for authorization...
+  ═══════════════════════════════════════════
+  ```
+- Open the URL in a browser and enter the code
+- After authorization, you should see: `"message": "device authorization successful"`
+- Bridge should log: `"message": "Auth0 token broker initialized"`
+
+#### 2. Token Caching
+
+Restart the bridge immediately (within token expiry time):
+
+```bash
+./bin/mcpbridge --config config/auth0_prod.json --debug
+```
+
+**Expected behavior**:
+- No device code prompt (uses cached refresh token from keyring)
+- Should log: `"message": "loaded refresh token from keyring"`
+- Token acquisition should be silent and fast
+
+#### 3. Token Refresh (Automatic)
+
+The broker automatically refreshes tokens when they're within 5 minutes of expiry.
+
+**To test manually**:
+1. Modify a cached token's expiry time (requires code change for testing)
+2. Or wait until token approaches expiry
+3. Make a request - token should refresh silently
+
+**Expected logs**:
+```json
+{"level":"debug","message":"token is expiring soon"}
+{"level":"debug","message":"refreshing access token"}
+{"level":"debug","message":"access token refreshed successfully"}
+```
+
+#### 4. Token Invalidation
+
+Test token cache invalidation (useful when receiving 401 errors):
+
+```go
+// In your REST client (Phase 3)
+if resp.StatusCode == 401 {
+    broker.InvalidateToken(audience, scope)
+    // Retry with fresh token
+}
+```
+
+**Expected behavior**:
+- Token removed from cache
+- Next request triggers fresh token acquisition
+
+#### 5. Logout
+
+Currently, logout happens automatically on graceful shutdown (Ctrl+C):
+
+```bash
+./bin/mcpbridge --config config/auth0_prod.json
+# Press Ctrl+C
+```
+
+**Expected logs**:
+```json
+{"level":"info","signal":"interrupt","message":"Received shutdown signal"}
+{"level":"info","message":"Shutting down MCP server..."}
+{"level":"info","message":"logged out successfully"}
+```
+
+### Unit Tests
+
+Run broker tests to verify caching logic:
+
+```bash
+# Run all auth tests
+go test -v ./internal/mcpserver/auth/...
+
+# Run with race detector (important for concurrent code)
+go test -race ./internal/mcpserver/auth/...
+
+# Run with coverage
+go test -cover ./internal/mcpserver/auth/...
+```
+
+**Tests cover**:
+- ✅ Scope merging (default + user scopes, deduplication, sorting)
+- ✅ Cache key generation
+- ✅ Expiry detection (5-minute buffer)
+- ✅ Token caching behavior
+- ✅ Cache invalidation
+- ✅ Thread safety (concurrent access)
+
 ## Troubleshooting
 
 ### General Debugging Steps
@@ -309,10 +456,10 @@ If smoke tests fail, check:
 - [x] CLI flags and logging setup
 - [x] Graceful shutdown handling
 
-**Phase 2: Auth0 Integration** (In Progress)
-- [ ] OAuth2 Device Code Flow
-- [ ] Token caching and refresh
-- [ ] Secure token storage
+**Phase 2: Auth0 Integration** ✅
+- [x] OAuth2 Device Code Flow
+- [x] Token caching and refresh
+- [x] Secure token storage (keyring integration)
 
 **Phase 3: REST Client** (Planned)
 - [ ] HTTP client with retry logic
