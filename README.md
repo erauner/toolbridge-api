@@ -27,18 +27,63 @@ Delta sync backend for ToolBridge. Implements Last-Write-Wins (LWW) conflict res
 ```
 toolbridge-api/
 ├── cmd/
-│   └── server/           # Main entry point
+│   ├── server/           # REST API server (main entry point)
+│   └── mcpbridge/        # MCP bridge server (Claude integration)
 ├── internal/
 │   ├── auth/            # JWT authentication middleware
 │   ├── db/              # Postgres connection pool
 │   ├── httpapi/         # HTTP handlers (push/pull endpoints)
+│   ├── mcpserver/       # MCP server implementation
+│   │   ├── config/      # Configuration loading
+│   │   ├── auth/        # Auth0 token management (coming in Phase 2)
+│   │   ├── client/      # REST client & session management (coming in Phase 3)
+│   │   └── tools/       # MCP tool implementations (coming in Phase 5-6)
 │   └── syncx/           # Sync utilities (cursor, extraction)
+├── config/              # Example configuration files
 ├── migrations/          # Database schema
 ├── docker-compose.yml   # Local Postgres
 ├── Dockerfile           # Production image
 ├── Makefile             # Dev commands
 └── go.mod
 ```
+
+## MCP Bridge Server (Claude Integration)
+
+The MCP Bridge is a stdio-based Model Context Protocol server that allows Claude to interact with ToolBridge data through natural language.
+
+**Features:**
+- Auth0 authentication with automatic token refresh
+- REST session & epoch management
+- Full compatibility with Flutter MCP tool schemas
+- Notes, tasks, comments, chats, and context management tools
+
+**Quick Start (Dev Mode):**
+```bash
+# Start REST API
+make dev
+
+# In another terminal, start MCP bridge
+make run-mcp
+```
+
+**Claude Desktop Integration:**
+Add to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "toolbridge": {
+      "command": "/path/to/toolbridge-api/bin/mcpbridge",
+      "args": ["--dev"],
+      "env": {
+        "MCP_API_BASE_URL": "http://localhost:8081",
+        "MCP_DEV_MODE": "true"
+      }
+    }
+  }
+}
+```
+
+See [cmd/mcpbridge/README.md](./cmd/mcpbridge/README.md) for full documentation.
 
 ## Quick Start
 

@@ -1,0 +1,14 @@
+{
+  "apiBaseUrl": "http://localhost:8081",
+  "debug": true,
+  "devMode": true,
+  "logLevel": "debug",
+  "workspace": {
+    "roots": []
+  },
+  "allowlist": [],
+  "auth0": {
+    "domain": "",
+    "clients": {}
+  }
+}

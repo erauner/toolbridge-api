@@ -1,0 +1,37 @@
+{
+  "apiBaseUrl": "http://localhost:8081",
+  "debug": false,
+  "devMode": false,
+  "logLevel": "info",
+  "workspace": {
+    "roots": []
+  },
+  "allowlist": [],
+  "auth0": {
+    "domain": "your-tenant.us.auth0.com",
+    "clients": {
+      "web": {
+        "clientId": "YOUR_WEB_CLIENT_ID",
+        "redirectUri": "http://localhost:5173/oauth_callback.html",
+        "scopes": ["openid", "profile", "email", "offline_access"]
+      },
+      "native": {
+        "clientId": "YOUR_NATIVE_CLIENT_ID",
+        "redirectUri": "com.erauner.toolbridge://{{domain}}/ios/com.erauner.toolbridge/callback",
+        "redirectUriOverrides": {
+          "android": "com.erauner.toolbridge://{{domain}}/android/com.erauner.toolbridge/callback"
+        },
+        "scopes": ["openid", "profile", "email", "offline_access"]
+      },
+      "macos": {
+        "clientId": "YOUR_MACOS_CLIENT_ID",
+        "redirectUri": "run.erauner.toolbridge://{{domain}}/macos/run.erauner.toolbridge/callback",
+        "scopes": ["openid", "profile", "email", "offline_access"]
+      }
+    },
+    "syncApi": {
+      "audience": "https://api.toolbridge.example.com",
+      "scope": "read:sync write:sync"
+    }
+  }
+}

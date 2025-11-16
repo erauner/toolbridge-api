@@ -1,4 +1,4 @@
-.PHONY: help dev dev-grpc test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean
+.PHONY: help dev dev-grpc test test-unit test-integration test-smoke test-all test-e2e ci build build-mcp run-mcp test-mcp docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean
 
 # Docker configuration
 DOCKER_REGISTRY ?= ghcr.io
@@ -20,7 +20,12 @@ help:
 	@echo "Development:"
 	@echo "  make dev              - Start local dev server (HTTP only)"
 	@echo "  make dev-grpc         - Start dev server with gRPC support (HTTP + gRPC)"
-	@echo "  make build            - Build binary"
+	@echo "  make build            - Build REST API binary"
+	@echo ""
+	@echo "MCP Bridge:"
+	@echo "  make build-mcp        - Build MCP bridge binary"
+	@echo "  make run-mcp          - Run MCP bridge in dev mode"
+	@echo "  make test-mcp         - Test MCP bridge components"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test             - Run all tests (unit + integration)"
@@ -188,6 +193,25 @@ ci:
 build:
 	@echo "Building server..."
 	CGO_ENABLED=0 go build -o bin/server ./cmd/server
+
+# Build MCP bridge binary
+build-mcp:
+	@echo "Building MCP bridge..."
+	CGO_ENABLED=0 go build -o bin/mcpbridge ./cmd/mcpbridge
+
+# Run MCP bridge in dev mode (uses environment variables)
+run-mcp:
+	@echo "Starting MCP bridge in dev mode..."
+	MCP_DEV_MODE=true \
+	MCP_DEBUG=true \
+	MCP_LOG_LEVEL=debug \
+	MCP_API_BASE_URL=http://localhost:8081 \
+	go run ./cmd/mcpbridge --dev --debug
+
+# Test MCP bridge components
+test-mcp:
+	@echo "Testing MCP bridge components..."
+	go test -v -race -cover ./internal/mcpserver/...
 
 # Build Docker image for local platform (fast, for development)
 docker-build-local:
