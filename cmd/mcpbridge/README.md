@@ -26,6 +26,12 @@ MCP_DEV_MODE=true MCP_API_BASE_URL=http://localhost:8081 go run ./cmd/mcpbridge 
 
 Dev mode uses the `X-Debug-Sub` header to authenticate with the REST API.
 
+**Verify your setup**:
+```bash
+# Run automated smoke tests to verify --dev and --debug flags work correctly
+make test-mcp-smoke
+```
+
 ### Production Mode (With Auth0)
 
 1. Create a configuration file (see `config/mcpbridge_config.example.json`)
@@ -148,16 +154,37 @@ make build-mcp
 
 ## Testing
 
-```bash
-# Run unit tests
-make test-mcp
+### Quick Verification (Smoke Tests)
 
-# Run smoke tests (verifies --dev and --debug flags work)
+The smoke test suite verifies that the bridge works correctly without config:
+
+```bash
 make test-mcp-smoke
+```
+
+**What it tests**:
+- ✅ `--dev` flag starts without Auth0 config
+- ✅ `--debug` flag enables debug logging
+- ✅ `--version` flag displays version info
+- ✅ No Auth0 validation errors in dev mode
+
+This is the **recommended first step** after building to verify your setup.
+
+### Unit Tests
+
+```bash
+# Run unit tests (config loader, validation, etc.)
+make test-mcp
 
 # Run with verbose output
 go test -v ./internal/mcpserver/...
 ```
+
+**Coverage**:
+- Config file loading and env var precedence
+- CLI flag override ordering
+- Template substitution in redirect URIs
+- Default scope computation
 
 ## Architecture
 
@@ -216,6 +243,24 @@ Logs are written to stderr in JSON format (or console format in debug mode):
 ```
 
 ## Troubleshooting
+
+### General Debugging Steps
+
+**First, verify basic functionality**:
+```bash
+# Run smoke tests to ensure --dev and --debug flags work
+make test-mcp-smoke
+```
+
+If smoke tests fail, check:
+1. Binary is built correctly: `make build-mcp`
+2. No conflicting environment variables are set
+3. File permissions on the binary
+
+**Enable debug logging** for detailed diagnostics:
+```bash
+./bin/mcpbridge --dev --debug
+```
 
 ### Auth0 Token Acquisition Fails
 
