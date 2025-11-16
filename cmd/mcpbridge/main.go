@@ -193,7 +193,9 @@ func run(ctx context.Context, cfg *config.Config) error {
 
 		// Optionally warm up the session in non-interactive mode
 		// This will load cached refresh tokens if available
-		_, _ = delegate.EnsureSession(ctx, false, cfg.Auth0.GetDefaultScopes())
+		if _, err := delegate.EnsureSession(ctx, false, cfg.Auth0.GetDefaultScopes()); err != nil {
+			log.Warn().Err(err).Msg("failed to establish initial Auth0 session (will retry on first token request)")
+		}
 	} else {
 		log.Info().Msg("Running in dev mode - Auth0 authentication bypassed")
 	}

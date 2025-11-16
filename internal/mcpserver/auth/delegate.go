@@ -32,6 +32,7 @@ type Delegate interface {
 type TokenResult struct {
 	AccessToken  string
 	RefreshToken string
+	IDToken      string // OIDC ID token (JWT) for user identity
 	ExpiresAt    time.Time
 	TokenType    string // Usually "Bearer"
 }

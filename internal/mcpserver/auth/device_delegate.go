@@ -87,7 +87,7 @@ func (d *DeviceDelegate) EnsureSession(ctx context.Context, interactive bool, de
 
 	d.mu.Lock()
 	d.refreshToken = token.RefreshToken
-	d.idToken = token.AccessToken // Store ID token temporarily
+	d.idToken = token.IDToken
 	d.mu.Unlock()
 
 	// Store refresh token in keyring
@@ -143,6 +143,7 @@ func (d *DeviceDelegate) TryGetToken(ctx context.Context, audience string, scope
 
 		d.mu.Lock()
 		d.refreshToken = token.RefreshToken
+		d.idToken = token.IDToken
 		d.mu.Unlock()
 
 		// Store refresh token in keyring
@@ -177,12 +178,18 @@ func (d *DeviceDelegate) TryGetToken(ctx context.Context, audience string, scope
 		return nil, fmt.Errorf("refresh token invalid and non-interactive mode: %w", err)
 	}
 
-	// Update refresh token if rotated
+	// Update refresh token if rotated and store ID token
+	d.mu.Lock()
 	if token.RefreshToken != "" && token.RefreshToken != refreshToken {
-		d.mu.Lock()
 		d.refreshToken = token.RefreshToken
-		d.mu.Unlock()
+	}
+	if token.IDToken != "" {
+		d.idToken = token.IDToken
+	}
+	d.mu.Unlock()
 
+	// Store refresh token in keyring if rotated
+	if token.RefreshToken != "" && token.RefreshToken != refreshToken {
 		if err := StoreRefreshToken(d.config.Domain, client.ClientID, token.RefreshToken); err != nil {
 			log.Warn().Err(err).Msg("failed to update refresh token in keyring")
 		}
@@ -211,8 +218,8 @@ func (d *DeviceDelegate) TryGetIDToken(ctx context.Context, defaultScopes []stri
 		return "", fmt.Errorf("no token available")
 	}
 
-	// For simplicity, return the access token (in production, you'd decode the ID token)
-	return token.AccessToken, nil
+	// Return the ID token from the response
+	return token.IDToken, nil
 }
 
 // LogoutAll clears all sessions and tokens
@@ -401,6 +408,7 @@ func (d *DeviceDelegate) attemptTokenExchange(ctx context.Context, tokenURL, cli
 	var tokenResp struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
+		IDToken      string `json:"id_token"`
 		ExpiresIn    int    `json:"expires_in"`
 		TokenType    string `json:"token_type"`
 	}
@@ -413,6 +421,7 @@ func (d *DeviceDelegate) attemptTokenExchange(ctx context.Context, tokenURL, cli
 	return &TokenResult{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
+		IDToken:      tokenResp.IDToken,
 		ExpiresAt:    expiresAt,
 		TokenType:    tokenResp.TokenType,
 	}, nil
@@ -466,6 +475,7 @@ func (d *DeviceDelegate) refreshAccessToken(ctx context.Context, clientID, refre
 	var tokenResp struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
+		IDToken      string `json:"id_token"`
 		ExpiresIn    int    `json:"expires_in"`
 		TokenType    string `json:"token_type"`
 	}
@@ -482,6 +492,7 @@ func (d *DeviceDelegate) refreshAccessToken(ctx context.Context, clientID, refre
 	return &TokenResult{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
+		IDToken:      tokenResp.IDToken,
 		ExpiresAt:    expiresAt,
 		TokenType:    tokenResp.TokenType,
 	}, nil
