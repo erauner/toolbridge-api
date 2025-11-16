@@ -6,6 +6,7 @@ bin/
 *.so
 *.dylib
 /server
+/mcpbridge
 
 # Test binary, built with `go test -c`
 *.test
