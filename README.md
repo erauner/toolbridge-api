@@ -49,39 +49,51 @@ toolbridge-api/
 
 ## MCP Bridge Server (Claude Integration)
 
-The MCP Bridge is a stdio-based Model Context Protocol server that allows Claude to interact with ToolBridge data through natural language.
+The MCP Bridge is a **remote MCP server** using **Streamable HTTP transport** that allows Claude Desktop/Web to interact with ToolBridge data through natural language.
+
+**Architecture:**
+```
+Claude Desktop/Web → https://api.toolbridge.com/mcp
+  ↓ OAuth (Auth0) - user authenticates in browser
+  ↓ HTTP + JWT
+MCP Server (Streamable HTTP)
+  ↓ Uses REST client
+ToolBridge API → PostgreSQL
+```
 
 **Features:**
-- Auth0 authentication with automatic token refresh
-- REST session & epoch management
-- Full compatibility with Flutter MCP tool schemas
-- Notes, tasks, comments, chats, and context management tools
+- **Remote access**: Deploy anywhere, connect from any Claude instance
+- **OAuth authentication**: Users authenticate in browser via Auth0
+- **JWT validation**: Server validates Auth0 RS256 tokens
+- **REST session & epoch management**: Automatic via Phase 3 client
+- **Full MCP tool support**: Notes, tasks, comments, chats, context management
+- **Multi-client**: Multiple users can connect simultaneously
 
 **Quick Start (Dev Mode):**
 ```bash
 # Start REST API
 make dev
 
-# In another terminal, start MCP bridge
+# In another terminal, start MCP bridge (HTTP server on port 8082)
 make run-mcp
 ```
 
-**Claude Desktop Integration:**
-Add to your `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "toolbridge": {
-      "command": "/path/to/toolbridge-api/bin/mcpbridge",
-      "args": ["--dev"],
-      "env": {
-        "MCP_API_BASE_URL": "http://localhost:8081",
-        "MCP_DEV_MODE": "true"
-      }
-    }
-  }
-}
-```
+**Production Deployment:**
+
+Deploy the MCP server to any cloud provider:
+- Fly.io: `fly launch` (see deployment guide)
+- Railway: Connect repo and deploy
+- Heroku: `git push heroku main`
+- Any Kubernetes cluster
+
+**Claude Integration:**
+
+1. Open Claude Desktop settings
+2. Go to "Connectors" or "MCP Servers"
+3. Click "Add Server"
+4. Enter your server URL: `https://api.toolbridge.com/mcp`
+5. Complete OAuth authentication in browser
+6. Done! Claude can now access your ToolBridge data
 
 See [cmd/mcpbridge/README.md](./cmd/mcpbridge/README.md) for full documentation.
 

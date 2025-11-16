@@ -78,6 +78,11 @@ func (a *Auth0Config) Validate() error {
 		return ErrNoValidAuth0Client
 	}
 
+	// Validate SyncAPI configuration is present
+	if a.SyncAPI == nil || a.SyncAPI.Audience == "" {
+		return ErrMissingSyncAPI
+	}
+
 	return nil
 }
 

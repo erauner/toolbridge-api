@@ -4,11 +4,39 @@ A Model Context Protocol (MCP) bridge that translates Claude tool calls into Too
 
 ## Overview
 
-The MCP Bridge provides a stdio-based MCP server that:
-- Authenticates with Auth0 to obtain access tokens
-- Manages REST API sessions and epoch coordination
+The MCP Bridge provides a **remote MCP server** using **Streamable HTTP transport** that:
+- Validates Auth0 JWT tokens from Claude (user authenticates in browser)
+- Manages MCP sessions and REST API sessions
 - Translates MCP tool calls to REST CRUD operations
 - Maintains full compatibility with the Dart MCP tool schemas
+- Can be accessed remotely from Claude Desktop, Claude Web, or any MCP client
+
+### Architecture
+
+```
+Claude Desktop/Web
+    ↓ User adds server URL: https://api.toolbridge.com/mcp
+    ↓ OAuth flow (Auth0) - user authenticates in browser
+    ↓ HTTP requests with JWT Bearer token
+    ↓
+Remote MCP Server (Streamable HTTP)
+    POST /mcp        ← JSON-RPC requests
+    GET /mcp         ← SSE stream for server→client messages
+    DELETE /mcp      ← Close session
+    /.well-known/... ← OAuth metadata discovery
+    ↓ Uses REST client from Phase 3
+    ↓
+ToolBridge REST API (port 8081)
+    ↓
+PostgreSQL
+```
+
+**Key Benefits:**
+- **Remote access**: Deploy anywhere, connect from any Claude instance
+- **OAuth in browser**: Users authenticate via standard OAuth flow (no Device Code Flow in server)
+- **Multi-client**: Multiple users can connect simultaneously
+- **Cloud-native**: Deploy on Fly.io, Railway, Heroku, etc.
+- **No client installation**: Just add URL in Claude settings
 
 ## Quick Start
 
@@ -113,27 +141,30 @@ console output format with colors. You don't need to also specify `--log-level d
 
 ## Claude Desktop Integration
 
-To use with Claude Desktop, add to your `claude_desktop_config.json`:
+### Remote Server (Production - Streamable HTTP)
+
+Add your remote MCP server URL in Claude Desktop settings:
+
+**Via Claude Desktop UI:**
+1. Open Claude Desktop settings
+2. Go to "Connectors" or "MCP Servers"
+3. Click "Add Server"
+4. Enter your server URL: `https://api.toolbridge.com/mcp`
+5. Complete OAuth authentication in browser
+6. Done! Claude can now access your ToolBridge data
+
+**Note**: Direct `claude_desktop_config.json` configuration won't work for remote servers. You must use the UI to add remote servers.
+
+### Local Development (stdio mode - DEPRECATED)
+
+For local testing only, you can still run as stdio process:
 
 ```json
 {
   "mcpServers": {
-    "toolbridge": {
+    "toolbridge-local": {
       "command": "/path/to/mcpbridge",
-      "args": ["--config", "/path/to/config.json"]
-    }
-  }
-}
-```
-
-Or for dev mode:
-
-```json
-{
-  "mcpServers": {
-    "toolbridge": {
-      "command": "/path/to/mcpbridge",
-      "args": ["--dev"],
+      "args": ["--dev", "--stdio"],
       "env": {
         "MCP_API_BASE_URL": "http://localhost:8081",
         "MCP_DEV_MODE": "true"
@@ -142,6 +173,8 @@ Or for dev mode:
   }
 }
 ```
+
+**Important**: stdio mode is for development only. Production deployments should use Streamable HTTP (remote server).
 
 ## Building
 
@@ -186,35 +219,83 @@ go test -v ./internal/mcpserver/...
 - Template substitution in redirect URIs
 - Default scope computation
 
-## Architecture
+## Architecture Details
+
+### Transport Layer
+
+**Streamable HTTP** (MCP specification 2025-03-26):
+- `POST /mcp` - JSON-RPC requests from Claude
+- `GET /mcp` - SSE stream for server→client messages
+- `DELETE /mcp` - Close MCP session
+- `GET /.well-known/oauth-authorization-server` - OAuth metadata discovery
+
+### Request Flow
 
 ```
-┌─────────────┐
-│   Claude    │
-│   Desktop   │
-└─────┬───────┘
-      │ stdio (JSON-RPC)
-      │
-┌─────▼───────────┐
-│  MCP Bridge     │
-│  - Auth0 Token  │
-│  - Session Mgmt │
-│  - Tool Routing │
-└─────┬───────────┘
-      │ HTTP/REST
-      │ (Bearer Token + Session Headers)
-      │
-┌─────▼────────────┐
-│  ToolBridge API  │
-│  - Auth Validate │
-│  - Epoch Check   │
-│  - CRUD Ops      │
-└─────┬────────────┘
-      │
-┌─────▼────────────┐
-│   PostgreSQL     │
-└──────────────────┘
+1. User opens Claude Desktop/Web
+   ↓
+2. User adds MCP server: https://api.toolbridge.com/mcp
+   ↓
+3. Claude fetches /.well-known/oauth-authorization-server
+   ↓
+4. Claude redirects user to Auth0 for authentication
+   ↓
+5. User authenticates in browser
+   ↓
+6. Auth0 issues JWT token to Claude
+   ↓
+7. Claude sends initialize request to POST /mcp with JWT
+   ↓
+8. MCP Bridge validates JWT (RS256 signature, audience, issuer)
+   ↓
+9. MCP Bridge creates session, returns Mcp-Session-Id header
+   ↓
+10. Claude sends tool calls with JWT + Mcp-Session-Id
+    ↓
+11. MCP Bridge validates session and JWT
+    ↓
+12. MCP Bridge creates PassthroughTokenProvider (reuses JWT)
+    ↓
+13. MCP Bridge uses Phase 3 REST client to call ToolBridge API
+    ↓
+14. REST client auto-manages API sessions and epochs
+    ↓
+15. Results returned to Claude
 ```
+
+### Session Management
+
+**Two types of sessions:**
+
+1. **MCP Session** (Phase 4 - this server)
+   - Tracks Claude connection
+   - Managed by MCP Bridge
+   - Stored in memory
+   - 24-hour TTL
+
+2. **REST API Session** (Phase 3 - REST client)
+   - Tracks sync epoch with ToolBridge API
+   - Managed by SessionManager from Phase 3
+   - Created automatically by REST client
+   - 23-hour cache TTL (server TTL is 24h)
+
+### Authentication Flow
+
+**No Device Code Flow needed!** User authenticates in browser via standard OAuth:
+
+1. Claude discovers OAuth endpoints from `/.well-known/...`
+2. User authenticates with Auth0 in browser (standard OAuth flow)
+3. Claude receives JWT
+4. Claude sends JWT in `Authorization: Bearer <token>` header
+5. MCP Bridge validates JWT (RS256 public key from Auth0 JWKS)
+6. MCP Bridge reuses same JWT to call ToolBridge API (passthrough)
+
+**JWT Validation:**
+- Fetch public keys from `https://<domain>/.well-known/jwks.json`
+- Validate RS256 signature
+- Check issuer: `https://<domain>/`
+- Check audience: matches sync API audience
+- Extract user ID from `sub` claim
 
 ## Tool Categories
 
@@ -457,31 +538,46 @@ If smoke tests fail, check:
 - [x] Graceful shutdown handling
 
 **Phase 2: Auth0 Integration** ✅
-- [x] OAuth2 Device Code Flow
+- [x] OAuth2 Device Code Flow (for stdio mode - deprecated)
 - [x] Token caching and refresh
 - [x] Secure token storage (keyring integration)
+- Note: Device Code Flow is NOT used in Streamable HTTP mode!
 
-**Phase 3: REST Client** (Planned)
-- [ ] HTTP client with retry logic
-- [ ] Session management
-- [ ] Epoch coordination
+**Phase 3: REST Client** ✅
+- [x] HTTP client with auto-auth and retry logic
+- [x] Session management (REST API sessions)
+- [x] Epoch coordination
+- [x] Entity CRUD operations
+- [x] TokenProvider abstraction (enables Streamable HTTP reuse)
 
-**Phase 4: MCP Server Core** (Planned)
-- [ ] JSON-RPC message handling
-- [ ] Tool registry
-- [ ] Context management
+**Phase 4: Streamable HTTP Server** (In Progress)
+- [ ] HTTP server with POST/GET/DELETE `/mcp` endpoints
+- [ ] JWT validation (Auth0 RS256)
+- [ ] MCP session management
+- [ ] JSON-RPC message parsing
+- [ ] SSE streaming for server→client messages
+- [ ] OAuth metadata discovery (`/.well-known/...`)
+- [ ] PassthroughTokenProvider for Phase 3 integration
 
 **Phase 5-6: Tool Implementations** (Planned)
-- [ ] Notes & Tasks tools
-- [ ] Comments, Chats, Chat Messages
-- [ ] Context attachment tools
+- [ ] Tool registry and dispatcher
+- [ ] Notes tools (create, list, get, update, delete, pin)
+- [ ] Tasks tools (create, complete, reopen, list)
+- [ ] Comments tools (create, list, update, delete)
+- [ ] Chats tools (create, append, get, list, delete)
+- [ ] Chat messages tools (list, create, update)
+- [ ] Context attachment tools (attach, detach, list, clear)
 
-**Phase 7: Additional Features** (Planned)
-- [ ] OAuth discovery tool
-- [ ] Server info tool
+**Phase 7: Production Deployment** (Planned)
+- [ ] Dockerfile for Streamable HTTP server
+- [ ] Kubernetes manifests
+- [ ] Fly.io / Railway deployment guides
+- [ ] Production OAuth configuration
+- [ ] Rate limiting and monitoring
 
 **Phase 8: Testing & Polish** (Planned)
-- [ ] Integration tests
+- [ ] Integration tests (full MCP flow)
+- [ ] Load testing (concurrent sessions)
 - [ ] Error handling improvements
 - [ ] Documentation updates
 

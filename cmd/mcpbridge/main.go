@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/erauner12/toolbridge-api/internal/mcpserver/auth"
+	"github.com/erauner12/toolbridge-api/internal/mcpserver/client"
 	"github.com/erauner12/toolbridge-api/internal/mcpserver/config"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -170,6 +171,7 @@ func parseLogLevel(level string) zerolog.Level {
 // run is the main application logic
 func run(ctx context.Context, cfg *config.Config) error {
 	var broker *auth.TokenBroker
+	var httpClient *client.HTTPClient
 
 	// Initialize Auth0 token broker (unless in dev mode)
 	if !cfg.DevMode {
@@ -196,14 +198,45 @@ func run(ctx context.Context, cfg *config.Config) error {
 		if _, err := delegate.EnsureSession(ctx, false, cfg.Auth0.GetDefaultScopes()); err != nil {
 			log.Warn().Err(err).Msg("failed to establish initial Auth0 session (will retry on first token request)")
 		}
+
+		// Phase 3: Initialize REST client with session management
+		log.Info().Msg("Initializing REST client with session management...")
+
+		audience := cfg.Auth0.SyncAPI.Audience
+		sessionMgr := client.NewSessionManager(cfg.APIBaseURL, broker, audience)
+		httpClient = client.NewHTTPClient(cfg.APIBaseURL, broker, sessionMgr, audience, "")
+
+		log.Info().
+			Str("apiBaseUrl", cfg.APIBaseURL).
+			Str("audience", audience).
+			Msg("REST client initialized")
 	} else {
 		log.Info().Msg("Running in dev mode - Auth0 authentication bypassed")
+
+		// Phase 3: Initialize REST client in dev mode with session management
+		// Uses X-Debug-Sub header instead of Bearer token
+		debugSub := "mcp-bridge-dev-user"
+		sessionMgr := client.NewDevSessionManager(cfg.APIBaseURL, debugSub)
+		httpClient = client.NewHTTPClient(cfg.APIBaseURL, nil, sessionMgr, "", debugSub)
+
+		log.Info().
+			Str("apiBaseUrl", cfg.APIBaseURL).
+			Str("debugSub", debugSub).
+			Msg("REST client initialized (dev mode)")
 	}
 
-	// TODO: Phase 3 - Initialize REST client with broker
-	// TODO: Phase 4 - Initialize MCP server
+	// TODO: Phase 4 - Initialize MCP server with httpClient
+	// Example entity clients that will be used in Phase 4:
+	// - notesClient := client.NewEntityClient(httpClient, "notes")
+	// - tasksClient := client.NewEntityClient(httpClient, "tasks")
+	// - commentsClient := client.NewEntityClient(httpClient, "comments")
+	// - chatsClient := client.NewEntityClient(httpClient, "chats")
+	// - messagesClient := client.NewEntityClient(httpClient, "chat_messages")
 
-	log.Info().Msg("MCP server initialized (actual implementation in Phase 3-4)")
+	// httpClient will be used in Phase 4 for MCP server
+	_ = httpClient
+
+	log.Info().Msg("MCP Bridge Phase 3 complete - REST client ready (MCP server implementation in Phase 4)")
 
 	// Log configuration summary
 	log.Debug().

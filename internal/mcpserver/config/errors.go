@@ -15,6 +15,9 @@ var (
 	// ErrNoValidAuth0Client indicates that no Auth0 client has a valid clientId
 	ErrNoValidAuth0Client = errors.New("at least one auth0 client must have a clientId")
 
+	// ErrMissingSyncAPI indicates that the syncApi configuration is missing
+	ErrMissingSyncAPI = errors.New("auth0.syncApi is required when not in dev mode")
+
 	// ErrConfigFileNotFound indicates that the config file was not found
 	ErrConfigFileNotFound = errors.New("configuration file not found")
 
