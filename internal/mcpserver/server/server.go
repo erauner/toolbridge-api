@@ -178,8 +178,8 @@ func (s *MCPServer) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 	// Create token provider for this request
 	tokenProvider := NewPassthroughTokenProvider(tokenString, expiresAt)
 
-	// Create REST client for this user
-	httpClient := s.createRESTClient(tokenProvider)
+	// Create REST client for this user (passing userID for dev mode debug subject)
+	httpClient := s.createRESTClient(tokenProvider, session.UserID)
 
 	// Route request to handler
 	s.handleJSONRPC(w, &req, session, httpClient)
@@ -378,9 +378,11 @@ func (s *MCPServer) handleMCPDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // createRESTClient creates a REST client for the ToolBridge API
-func (s *MCPServer) createRESTClient(tokenProvider *PassthroughTokenProvider) *client.HTTPClient {
-	// In dev mode or when Auth0 is not configured, use empty audience
+func (s *MCPServer) createRESTClient(tokenProvider *PassthroughTokenProvider, userID string) *client.HTTPClient {
+	// In dev mode or when Auth0 is not configured, use fallback audience
 	var audience string
+	var debugSub string
+
 	if s.config.Auth0.SyncAPI != nil {
 		audience = s.config.Auth0.SyncAPI.Audience
 	} else {
@@ -389,8 +391,14 @@ func (s *MCPServer) createRESTClient(tokenProvider *PassthroughTokenProvider) *c
 		log.Debug().Str("audience", audience).Msg("Using fallback audience for dev mode")
 	}
 
+	// In dev mode, pass userID as debug subject for REST API authentication
+	if s.config.DevMode {
+		debugSub = userID
+		log.Debug().Str("debugSub", debugSub).Msg("Using debug subject for dev mode REST API calls")
+	}
+
 	sessionMgr := client.NewSessionManager(s.config.APIBaseURL, tokenProvider, audience)
-	return client.NewHTTPClient(s.config.APIBaseURL, tokenProvider, sessionMgr, audience, "")
+	return client.NewHTTPClient(s.config.APIBaseURL, tokenProvider, sessionMgr, audience, debugSub)
 }
 
 // validateOrigin checks if the request Origin header is allowed
