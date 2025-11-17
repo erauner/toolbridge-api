@@ -44,9 +44,15 @@ func (s *MCPServer) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, 
 	resourceURL := s.config.PublicURL
 	if resourceURL == "" {
 		// Fallback: construct from request
-		scheme := "https"
-		if r.TLS == nil {
-			scheme = "http"
+		// Check X-Forwarded-Proto first (for TLS-terminating proxies like Envoy)
+		scheme := r.Header.Get("X-Forwarded-Proto")
+		if scheme == "" {
+			// Fall back to checking direct TLS connection
+			if r.TLS != nil {
+				scheme = "https"
+			} else {
+				scheme = "http"
+			}
 		}
 		resourceURL = fmt.Sprintf("%s://%s", scheme, r.Host)
 	}

@@ -141,11 +141,12 @@ func TestMCPServer_OAuthMetadata(t *testing.T) {
 
 func TestMCPServer_OAuthProtectedResourceMetadata(t *testing.T) {
 	tests := []struct {
-		name          string
-		publicURL     string
-		requestHost   string
-		expectScheme  string
-		expectHost    string
+		name              string
+		publicURL         string
+		requestHost       string
+		xForwardedProto   string
+		expectScheme      string
+		expectHost        string
 	}{
 		{
 			name:         "With PublicURL configured",
@@ -155,11 +156,27 @@ func TestMCPServer_OAuthProtectedResourceMetadata(t *testing.T) {
 			expectHost:   "mcpbridge.example.com",
 		},
 		{
-			name:         "Without PublicURL (fallback to request)",
+			name:         "Without PublicURL (fallback to request - plain HTTP)",
 			publicURL:    "",
 			requestHost:  "localhost:8082",
 			expectScheme: "http",
 			expectHost:   "localhost:8082",
+		},
+		{
+			name:            "Behind TLS proxy (X-Forwarded-Proto: https)",
+			publicURL:       "",
+			requestHost:     "mcpbridge.erauner.dev",
+			xForwardedProto: "https",
+			expectScheme:    "https",
+			expectHost:      "mcpbridge.erauner.dev",
+		},
+		{
+			name:            "Behind non-TLS proxy (X-Forwarded-Proto: http)",
+			publicURL:       "",
+			requestHost:     "localhost:8082",
+			xForwardedProto: "http",
+			expectScheme:    "http",
+			expectHost:      "localhost:8082",
 		},
 	}
 
@@ -182,6 +199,9 @@ func TestMCPServer_OAuthProtectedResourceMetadata(t *testing.T) {
 			// Create test request
 			req := httptest.NewRequest("GET", "/.well-known/oauth-protected-resource", nil)
 			req.Host = tt.requestHost
+			if tt.xForwardedProto != "" {
+				req.Header.Set("X-Forwarded-Proto", tt.xForwardedProto)
+			}
 			w := httptest.NewRecorder()
 
 			server.handleOAuthProtectedResourceMetadata(w, req)
