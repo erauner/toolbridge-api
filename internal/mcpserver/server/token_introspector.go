@@ -37,8 +37,17 @@ type IntrospectionResponse struct {
 
 // NewTokenIntrospector creates a new token introspector
 func NewTokenIntrospector(domain, clientID, clientSecret, audience, issuer string) *TokenIntrospector {
+	endpoint := fmt.Sprintf("https://%s/oauth/token/introspect", domain)
+
+	log.Info().
+		Str("endpoint", endpoint).
+		Str("clientId", clientID).
+		Str("audience", audience).
+		Str("authMethod", "client_secret_post").
+		Msg("Token introspector initialized (credentials will be sent in form body)")
+
 	return &TokenIntrospector{
-		endpoint:     fmt.Sprintf("https://%s/oauth/token/introspect", domain),
+		endpoint:     endpoint,
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		audience:     audience,
@@ -58,14 +67,19 @@ func (ti *TokenIntrospector) Introspect(ctx context.Context, token string) (*Cla
 		formData.Set("audience", ti.audience)
 	}
 
-	// Create request with Basic Auth (client credentials)
+	// Auth0 requires client_secret_post authentication method
+	// (credentials in form body, not Basic Auth header)
+	// This matches the client's configured authentication_method in Auth0
+	formData.Set("client_id", ti.clientID)
+	formData.Set("client_secret", ti.clientSecret)
+
+	// Create request
 	req, err := http.NewRequestWithContext(ctx, "POST", ti.endpoint, strings.NewReader(formData.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create introspection request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(ti.clientID, ti.clientSecret)
 
 	log.Debug().
 		Str("endpoint", ti.endpoint).
