@@ -57,18 +57,6 @@ mcpbridge:
     clientIdWeb: ""
     clientIdMacos: ""
 
-    # Token introspection configuration (RFC 7662)
-    # Used as fallback when JWT parsing fails (e.g., opaque Auth0 tokens)
-    # Required when Claude Desktop omits audience parameter in authorization
-    introspection:
-      # M2M client ID for introspection (MUST be confidential client)
-      clientId: ""
-      # M2M client secret (stored in secret, never in values)
-      # This is a placeholder - actual value comes from secrets section
-      clientSecret: ""
-      # Optional audience override (defaults to syncApiAudience if not set)
-      audience: ""
-
   # Resource limits
   resources:
     requests:
@@ -141,12 +129,6 @@ secrets:
   auth0ClientIdWeb: ""
   auth0ClientIdMacos: ""
   auth0SyncApiAudience: ""
-
-  # Token introspection credentials (SENSITIVE - always use secrets)
-  # M2M client credentials for RFC 7662 token introspection
-  auth0IntrospectionClientId: ""
-  auth0IntrospectionClientSecret: ""
-  auth0IntrospectionAudience: ""  # Optional, defaults to syncApiAudience
 
   # Use existing secret instead of creating one
   existingSecret: ""

@@ -17,10 +17,9 @@ type Config struct {
 
 // Auth0Config mirrors the Dart Auth0Config structure
 type Auth0Config struct {
-	Domain        string                   `json:"domain"`
-	Clients       map[string]ClientConfig  `json:"clients"` // web, native, macos
-	SyncAPI       *SyncAPIConfig           `json:"syncApi,omitempty"`
-	Introspection *IntrospectionConfig     `json:"introspection,omitempty"` // Token introspection for opaque tokens
+	Domain  string                  `json:"domain"`
+	Clients map[string]ClientConfig `json:"clients"` // web, native, macos
+	SyncAPI *SyncAPIConfig          `json:"syncApi,omitempty"`
 }
 
 // ClientConfig describes a single Auth0 client configuration
@@ -36,14 +35,6 @@ type ClientConfig struct {
 type SyncAPIConfig struct {
 	Audience string `json:"audience"`
 	Scope    string `json:"scope,omitempty"`
-}
-
-// IntrospectionConfig holds OAuth 2.0 token introspection credentials
-// Used as fallback when JWT parsing fails (e.g., for opaque tokens)
-type IntrospectionConfig struct {
-	ClientID     string `json:"clientId"`
-	ClientSecret string `json:"clientSecret"`
-	Audience     string `json:"audience,omitempty"` // Optional override, defaults to SyncAPI.Audience
 }
 
 // WorkspaceConfig defines workspace settings for the MCP server
@@ -92,17 +83,6 @@ func (a *Auth0Config) Validate() error {
 	// Validate SyncAPI configuration is present
 	if a.SyncAPI == nil || a.SyncAPI.Audience == "" {
 		return ErrMissingSyncAPI
-	}
-
-	// Validate introspection configuration if present
-	if a.Introspection != nil {
-		if a.Introspection.ClientID == "" {
-			return ErrMissingIntrospectionClientID
-		}
-		if a.Introspection.ClientSecret == "" {
-			return ErrMissingIntrospectionClientSecret
-		}
-		// Audience is optional and defaults to SyncAPI.Audience
 	}
 
 	return nil

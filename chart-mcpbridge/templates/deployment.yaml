@@ -106,30 +106,6 @@ spec:
               key: auth0-client-id-macos
               optional: true
         {{- end }}
-        {{- if or .Values.secrets.auth0IntrospectionClientId .Values.mcpbridge.auth0.introspection.clientId .Values.secrets.existingSecret }}
-        - name: AUTH0_INTROSPECTION_CLIENT_ID
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "toolbridge-mcpbridge.secretName" . }}
-              key: auth0-introspection-client-id
-              optional: true
-        {{- end }}
-        {{- if or .Values.secrets.auth0IntrospectionClientSecret .Values.mcpbridge.auth0.introspection.clientSecret .Values.secrets.existingSecret }}
-        - name: AUTH0_INTROSPECTION_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "toolbridge-mcpbridge.secretName" . }}
-              key: auth0-introspection-client-secret
-              optional: true
-        {{- end }}
-        {{- if or .Values.secrets.auth0IntrospectionAudience .Values.mcpbridge.auth0.introspection.audience .Values.secrets.existingSecret }}
-        - name: AUTH0_INTROSPECTION_AUDIENCE
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "toolbridge-mcpbridge.secretName" . }}
-              key: auth0-introspection-audience
-              optional: true
-        {{- end }}
         {{- end }}
 
         # Health checks
