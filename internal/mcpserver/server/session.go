@@ -115,9 +115,9 @@ func (sm *SessionManager) AddAttachment(sessionID string, att tools.Attachment) 
 		return fmt.Errorf("attachment limit exceeded (max %d)", maxAttachments)
 	}
 
-	// Check for duplicates
+	// Check for duplicates (by both UID and kind, as different entity types may share UUIDs)
 	for _, existing := range session.Attachments {
-		if existing.UID == att.UID {
+		if existing.UID == att.UID && existing.Kind == att.Kind {
 			return fmt.Errorf("entity already attached")
 		}
 	}

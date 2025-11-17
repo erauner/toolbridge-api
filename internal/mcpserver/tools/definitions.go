@@ -298,7 +298,7 @@ func registerContextTools(r *Registry) {
 		InputSchema: BuildSchema(map[string]any{
 			"entityUid":  UUIDSchema("UID of the entity to attach"),
 			"entityKind": EnumSchema("Type of entity", []string{"note", "task", "chat"}),
-			"title":      StringSchema("Optional human-readable title for the attachment", false),
+			"title":      StringSchema("Optional human-readable title for the attachment"),
 		}, []string{"entityUid", "entityKind"}),
 	}, HandleAttachContext)
 

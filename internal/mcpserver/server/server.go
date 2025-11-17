@@ -261,10 +261,7 @@ func (s *MCPServer) handleJSONRPC(w http.ResponseWriter, r *http.Request, req *J
 			// Check if it's a ToolError
 			if toolErr, ok := err.(*tools.ToolError); ok {
 				code, message, data := toolErr.ToJSONRPCError()
-				s.sendError(w, req.ID, code, message)
-				if data != nil {
-					// TODO: Include data in error response
-				}
+				s.sendError(w, req.ID, code, message, data)
 			} else {
 				s.sendError(w, req.ID, InternalError, err.Error())
 			}
@@ -478,17 +475,24 @@ func (s *MCPServer) validateOrigin(r *http.Request) bool {
 }
 
 // Helper functions
-func (s *MCPServer) sendError(w http.ResponseWriter, id json.RawMessage, code int, message string) {
+func (s *MCPServer) sendError(w http.ResponseWriter, id json.RawMessage, code int, message string, data ...json.RawMessage) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK) // JSON-RPC errors are still HTTP 200
+
+	errObj := &JSONRPCError{
+		Code:    code,
+		Message: message,
+	}
+
+	// Include data if provided
+	if len(data) > 0 && data[0] != nil {
+		errObj.Data = data[0]
+	}
 
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
-		Error: &JSONRPCError{
-			Code:    code,
-			Message: message,
-		},
+		Error:   errObj,
 	}
 
 	json.NewEncoder(w).Encode(response)

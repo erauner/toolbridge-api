@@ -3,12 +3,11 @@ package tools
 // Common JSON Schema building blocks
 
 // StringSchema creates a JSON schema for a string field
-func StringSchema(description string, required bool) map[string]any {
-	schema := map[string]any{
+func StringSchema(description string) map[string]any {
+	return map[string]any{
 		"type":        "string",
 		"description": description,
 	}
-	return schema
 }
 
 // UUIDSchema creates a JSON schema for a UUID field
@@ -85,7 +84,7 @@ func BuildSchema(properties map[string]any, required []string) map[string]any {
 func ListOptsSchema() map[string]any {
 	min1, max1000 := 1, 1000
 	return BuildSchema(map[string]any{
-		"cursor": StringSchema("Pagination cursor from previous response", false),
+		"cursor": StringSchema("Pagination cursor from previous response"),
 		"limit":  IntegerSchema("Maximum number of items to return (1-1000)", &min1, &max1000),
 		"includeDeleted": BooleanSchema("Include soft-deleted items in results"),
 	}, nil)

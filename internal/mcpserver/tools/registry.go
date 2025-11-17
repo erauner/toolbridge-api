@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -76,6 +77,7 @@ func (r *Registry) List() []ToolDescriptor {
 }
 
 // Call executes a tool by name with the given parameters
+// Returns a CallResult wrapped in MCP content format per the MCP specification
 func (r *Registry) Call(ctx context.Context, toolCtx *ToolContext, req CallRequest) (interface{}, error) {
 	r.mu.RLock()
 	entry, exists := r.tools[req.Name]
@@ -91,7 +93,22 @@ func (r *Registry) Call(ctx context.Context, toolCtx *ToolContext, req CallReque
 		return nil, err
 	}
 
-	return result, nil
+	// Wrap result in MCP content format
+	// Per MCP spec, tool results must be in the format: {"content": [{"type": "text", "text": "..."}]}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return nil, NewToolError(ErrCodeInternal, "Failed to serialize tool result: "+err.Error(), nil)
+	}
+
+	return CallResult{
+		Content: []ContentBlock{
+			{
+				Type: "text",
+				Text: string(resultJSON),
+			},
+		},
+		IsError: false,
+	}, nil
 }
 
 // Get retrieves a tool definition by name (for testing)
