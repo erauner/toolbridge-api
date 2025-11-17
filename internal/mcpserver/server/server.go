@@ -188,6 +188,7 @@ func (s *MCPServer) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 		if usedIntrospection {
 			log.Debug().Str("sub", userID).Msg("Token validated via introspection")
 		}
+	}
 
 	// Parse JSON-RPC request
 	var req JSONRPCRequest

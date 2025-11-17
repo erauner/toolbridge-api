@@ -57,6 +57,7 @@ func NewJWTValidator(domain, audience string, introspectionConfig ...*Introspect
 			cfg.ClientID,
 			cfg.ClientSecret,
 			introspectionAudience,
+			v.issuer, // Pass expected issuer for validation
 		)
 		log.Info().
 			Str("endpoint", v.introspector.endpoint).

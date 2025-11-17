@@ -19,7 +19,8 @@ type TokenIntrospector struct {
 	endpoint     string // https://<domain>/oauth/token/introspect
 	clientID     string
 	clientSecret string
-	audience     string      // Optional audience to pass in introspection request
+	audience     string // Expected audience for validation
+	issuer       string // Expected issuer for validation
 	httpClient   *http.Client
 }
 
@@ -35,12 +36,13 @@ type IntrospectionResponse struct {
 }
 
 // NewTokenIntrospector creates a new token introspector
-func NewTokenIntrospector(domain, clientID, clientSecret, audience string) *TokenIntrospector {
+func NewTokenIntrospector(domain, clientID, clientSecret, audience, issuer string) *TokenIntrospector {
 	return &TokenIntrospector{
 		endpoint:     fmt.Sprintf("https://%s/oauth/token/introspect", domain),
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		audience:     audience,
+		issuer:       issuer,
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -128,6 +130,23 @@ func (ti *TokenIntrospector) Introspect(ctx context.Context, token string) (*Cla
 	}
 	if audienceStr != "" {
 		claims.Audience = []string{audienceStr}
+	}
+
+	// SECURITY: Validate issuer matches expected value
+	if claims.Issuer != ti.issuer {
+		return nil, fmt.Errorf("invalid issuer: expected %s, got %s", ti.issuer, claims.Issuer)
+	}
+
+	// SECURITY: Validate audience matches expected value
+	validAudience := false
+	for _, aud := range claims.Audience {
+		if aud == ti.audience {
+			validAudience = true
+			break
+		}
+	}
+	if !validAudience {
+		return nil, fmt.Errorf("invalid audience: expected %s, got %v", ti.audience, claims.Audience)
 	}
 
 	log.Debug().
