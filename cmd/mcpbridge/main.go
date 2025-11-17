@@ -173,6 +173,12 @@ func run(ctx context.Context, cfg *config.Config) error {
 	// Phase 4: Start MCP server in Streamable HTTP mode
 	mcpServer := server.NewMCPServer(cfg)
 
+	// Warm up JWT validator (pre-fetch JWKS)
+	// This makes /readyz return 200 faster
+	if err := mcpServer.WarmUp(); err != nil {
+		log.Warn().Err(err).Msg("Failed to warm up JWT validator (will retry on first request)")
+	}
+
 	// Start HTTP server in background
 	serverErr := make(chan error, 1)
 	go func() {

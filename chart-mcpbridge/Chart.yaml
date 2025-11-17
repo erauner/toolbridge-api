@@ -1,0 +1,16 @@
+apiVersion: v2
+name: toolbridge-mcpbridge
+description: A Helm chart for ToolBridge MCP Bridge - Remote MCP server with Streamable HTTP transport
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - mcp
+  - toolbridge
+  - bridge
+  - streamable-http
+maintainers:
+  - name: erauner12
+    url: https://github.com/erauner12
+sources:
+  - https://github.com/erauner12/toolbridge-api

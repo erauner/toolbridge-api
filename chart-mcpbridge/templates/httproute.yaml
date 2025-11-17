@@ -1,0 +1,22 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "toolbridge-mcpbridge.fullname" . }}
+  labels:
+    {{- include "toolbridge-mcpbridge.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: {{ .Values.ingress.gateway.name }}
+      namespace: {{ .Values.ingress.gateway.namespace }}
+  hostnames:
+    - {{ .Values.ingress.hostname | required "ingress.hostname is required when ingress is enabled" | quote }}
+  rules:
+    - backendRefs:
+        - name: {{ include "toolbridge-mcpbridge.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

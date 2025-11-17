@@ -4,13 +4,17 @@
 DOCKER_REGISTRY ?= ghcr.io
 DOCKER_USERNAME ?= erauner12
 IMAGE_NAME ?= toolbridge-api
+MCP_IMAGE_NAME ?= toolbridge-mcpbridge
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 FULL_IMAGE_NAME = $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(IMAGE_NAME)
+MCP_FULL_IMAGE_NAME = $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(MCP_IMAGE_NAME)
 PLATFORMS ?= linux/amd64,linux/arm64
 
 # Helm configuration
 CHART_NAME ?= toolbridge-api
 CHART_VERSION ?= $(shell grep '^version:' chart/Chart.yaml | awk '{print $$2}')
+MCP_CHART_NAME ?= toolbridge-mcpbridge
+MCP_CHART_VERSION ?= $(shell grep '^version:' chart-mcpbridge/Chart.yaml | awk '{print $$2}')
 HELM_REGISTRY ?= oci://$(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/charts
 
 # Default target
@@ -38,22 +42,33 @@ help:
 	@echo "  make test-all         - Run complete test suite (unit + HTTP + gRPC + e2e)"
 	@echo "  make ci               - Run CI pipeline locally (lint + test-all)"
 	@echo ""
-	@echo "Docker:"
-	@echo "  make docker-build-local    - Build image for local platform (fast)"
-	@echo "  make docker-build-multiarch - Build multi-arch image (amd64, arm64)"
-	@echo "  make docker-release        - Build and push multi-arch image"
+	@echo "Docker (REST API):"
+	@echo "  make docker-build-local    - Build REST API image for local platform"
+	@echo "  make docker-build-multiarch - Build REST API multi-arch image"
+	@echo "  make docker-release        - Build and push REST API multi-arch image"
 	@echo "  make docker-up             - Start Postgres via docker-compose"
 	@echo "  make docker-down           - Stop Postgres"
+	@echo ""
+	@echo "Docker (MCP Bridge):"
+	@echo "  make docker-build-mcp-local    - Build MCP image for local platform"
+	@echo "  make docker-build-mcp-multiarch - Build MCP multi-arch image"
+	@echo "  make docker-release-mcp        - Build and push MCP multi-arch image"
 	@echo ""
 	@echo "Docker Variables:"
 	@echo "  VERSION=vX.Y.Z        - Set image version (default: git describe)"
 	@echo "  PLATFORMS=linux/amd64 - Override target platforms"
 	@echo ""
-	@echo "Helm Chart:"
-	@echo "  make helm-lint        - Lint Helm chart"
-	@echo "  make helm-package     - Package chart as .tgz"
-	@echo "  make helm-push        - Push chart to OCI registry"
-	@echo "  make helm-release     - Package and push chart (VERSION=vX.Y.Z)"
+	@echo "Helm Charts (REST API):"
+	@echo "  make helm-lint        - Lint REST API Helm chart"
+	@echo "  make helm-package     - Package REST API chart as .tgz"
+	@echo "  make helm-push        - Push REST API chart to OCI registry"
+	@echo "  make helm-release     - Package and push REST API chart"
+	@echo ""
+	@echo "Helm Charts (MCP Bridge):"
+	@echo "  make helm-mcp-lint    - Lint MCP bridge Helm chart"
+	@echo "  make helm-mcp-package - Package MCP chart as .tgz"
+	@echo "  make helm-mcp-push    - Push MCP chart to OCI registry"
+	@echo "  make helm-mcp-release - Package and push MCP chart"
 	@echo ""
 	@echo "Database:"
 	@echo "  make migrate          - Run migrations against local DB"
@@ -319,3 +334,79 @@ helm-release: helm-lint helm-package helm-push
 	@echo ""
 	@echo "Install with:"
 	@echo "  helm install $(CHART_NAME) $(HELM_REGISTRY)/$(CHART_NAME) --version $(CHART_VERSION)"
+
+# MCP Bridge Docker targets
+
+# Build MCP bridge Docker image for local platform (fast, for development)
+docker-build-mcp-local:
+	@echo "Building MCP bridge Docker image for local platform..."
+	docker build -f cmd/mcpbridge/Dockerfile -t $(MCP_IMAGE_NAME):latest .
+	@echo "✓ Built $(MCP_IMAGE_NAME):latest"
+
+# Build multi-architecture MCP bridge Docker image (does not push)
+docker-build-mcp-multiarch:
+	@echo "Building MCP bridge multi-arch Docker image..."
+	@echo "Platforms: $(PLATFORMS)"
+	docker buildx build \
+		--platform $(PLATFORMS) \
+		-f cmd/mcpbridge/Dockerfile \
+		-t $(MCP_FULL_IMAGE_NAME):$(VERSION) \
+		-t $(MCP_FULL_IMAGE_NAME):latest \
+		.
+	@echo "✓ Built $(MCP_FULL_IMAGE_NAME):$(VERSION) for $(PLATFORMS)"
+
+# Build and push multi-architecture MCP bridge Docker image (for production)
+docker-release-mcp:
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "Building and pushing MCP bridge multi-arch image"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "Registry: $(MCP_FULL_IMAGE_NAME)"
+	@echo "Version:  $(VERSION)"
+	@echo "Platforms: $(PLATFORMS)"
+	@echo ""
+	docker buildx build \
+		--platform $(PLATFORMS) \
+		-f cmd/mcpbridge/Dockerfile \
+		-t $(MCP_FULL_IMAGE_NAME):$(VERSION) \
+		-t $(MCP_FULL_IMAGE_NAME):latest \
+		--push \
+		.
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "✓ Released $(MCP_FULL_IMAGE_NAME):$(VERSION)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# MCP Bridge Helm chart management
+
+# Lint MCP bridge Helm chart
+helm-mcp-lint:
+	@echo "Linting MCP bridge Helm chart..."
+	helm lint ./chart-mcpbridge
+	@echo "✓ MCP bridge Helm chart is valid"
+
+# Package MCP bridge Helm chart
+helm-mcp-package:
+	@echo "Packaging MCP bridge Helm chart..."
+	@echo "Chart: $(MCP_CHART_NAME)"
+	@echo "Version: $(MCP_CHART_VERSION)"
+	helm package ./chart-mcpbridge
+	@echo "✓ Packaged $(MCP_CHART_NAME)-$(MCP_CHART_VERSION).tgz"
+
+# Push MCP bridge Helm chart to OCI registry
+helm-mcp-push:
+	@echo "Pushing MCP bridge Helm chart to OCI registry..."
+	@echo "Registry: $(HELM_REGISTRY)"
+	@echo "Chart: $(MCP_CHART_NAME)"
+	@echo "Version: $(MCP_CHART_VERSION)"
+	helm push $(MCP_CHART_NAME)-$(MCP_CHART_VERSION).tgz $(HELM_REGISTRY)
+	@echo "✓ Pushed $(HELM_REGISTRY)/$(MCP_CHART_NAME):$(MCP_CHART_VERSION)"
+
+# Package and push MCP bridge Helm chart (one-step release)
+helm-mcp-release: helm-mcp-lint helm-mcp-package helm-mcp-push
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "✓ Released MCP bridge Helm chart $(MCP_CHART_NAME):$(MCP_CHART_VERSION)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "Install with:"
+	@echo "  helm install $(MCP_CHART_NAME) $(HELM_REGISTRY)/$(MCP_CHART_NAME) --version $(MCP_CHART_VERSION)"

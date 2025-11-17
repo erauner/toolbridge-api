@@ -46,9 +46,23 @@ func NewMCPServer(cfg *config.Config) *MCPServer {
 	}
 }
 
+// WarmUp pre-fetches JWKS to make the server ready faster
+// This is optional but recommended during startup
+func (s *MCPServer) WarmUp() error {
+	if s.jwtValidator != nil {
+		return s.jwtValidator.WarmUp()
+	}
+	// No warmup needed in dev mode
+	return nil
+}
+
 // Start starts the HTTP server
 func (s *MCPServer) Start(addr string) error {
 	mux := http.NewServeMux()
+
+	// Health endpoints (no auth required for k8s probes)
+	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReady)
 
 	// MCP endpoints
 	mux.HandleFunc("POST /mcp", s.handleMCPPost)
@@ -513,4 +527,47 @@ func (s *MCPServer) sendResult(w http.ResponseWriter, id json.RawMessage, result
 func mustMarshal(v interface{}) json.RawMessage {
 	data, _ := json.Marshal(v)
 	return data
+}
+
+// handleHealth handles GET /healthz (liveness probe)
+// Returns 200 OK if process is alive, no dependencies checked
+func (s *MCPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "ok",
+	})
+}
+
+// handleReady handles GET /readyz (readiness probe)
+// Returns 200 OK if server is ready to accept traffic
+// Checks JWT validator readiness if not in dev mode
+func (s *MCPServer) handleReady(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// In dev mode, always ready (no JWT validator)
+	if s.config.DevMode {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ready",
+			"devMode": true,
+		})
+		return
+	}
+
+	// Check JWT validator readiness
+	if s.jwtValidator == nil || !s.jwtValidator.Ready() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "not ready",
+			"reason": "JWT validator not initialized",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":       "ready",
+		"jwtValidator": "ready",
+	})
 }

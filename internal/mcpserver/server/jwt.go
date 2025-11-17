@@ -23,6 +23,7 @@ type JWTValidator struct {
 	publicKeys map[string]*rsa.PublicKey
 	lastFetch  time.Time
 	httpClient *http.Client
+	ready      bool // true once JWKS has been fetched at least once
 }
 
 // NewJWTValidator creates a new JWT validator
@@ -185,6 +186,7 @@ func (v *JWTValidator) fetchPublicKey(kid string) (*rsa.PublicKey, error) {
 	}
 
 	v.lastFetch = time.Now()
+	v.ready = true // Mark as ready after first successful fetch
 
 	// Return requested key
 	if key, exists := v.publicKeys[kid]; exists {
@@ -192,6 +194,74 @@ func (v *JWTValidator) fetchPublicKey(kid string) (*rsa.PublicKey, error) {
 	}
 
 	return nil, fmt.Errorf("key ID %s not found in JWKS", kid)
+}
+
+// Ready returns true if the validator has successfully fetched JWKS at least once
+func (v *JWTValidator) Ready() bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.ready
+}
+
+// WarmUp pre-fetches JWKS to make the validator ready
+// This is optional but recommended during startup to avoid readiness delays
+func (v *JWTValidator) WarmUp() error {
+	log.Debug().Msg("Warming up JWT validator (fetching JWKS)")
+
+	resp, err := v.httpClient.Get(v.jwksURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch JWKS during warmup: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("JWKS warmup request failed with status %d", resp.StatusCode)
+	}
+
+	var jwks struct {
+		Keys []struct {
+			Kid string `json:"kid"`
+			Kty string `json:"kty"`
+			Use string `json:"use"`
+			N   string `json:"n"`
+			E   string `json:"e"`
+			Alg string `json:"alg"`
+		} `json:"keys"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
+		return fmt.Errorf("failed to decode JWKS during warmup: %w", err)
+	}
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	// Parse all keys and cache
+	for _, key := range jwks.Keys {
+		if key.Kty != "RSA" || key.Use != "sig" {
+			continue
+		}
+
+		publicKey, err := parseRSAPublicKey(key.N, key.E)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Str("kid", key.Kid).
+				Msg("Failed to parse RSA public key during warmup")
+			continue
+		}
+
+		v.publicKeys[key.Kid] = publicKey
+		log.Debug().
+			Str("kid", key.Kid).
+			Msg("Cached RSA public key during warmup")
+	}
+
+	v.lastFetch = time.Now()
+	v.ready = true
+
+	log.Info().Int("keyCount", len(v.publicKeys)).Msg("JWT validator warmed up successfully")
+	return nil
 }
 
 // parseRSAPublicKey parses RSA public key from JWKS n and e values
