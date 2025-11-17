@@ -483,10 +483,11 @@ func (s *MCPServer) validateOrigin(r *http.Request) bool {
 
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// Requests without Origin header (e.g., from curl, server-to-server) are rejected
-		// Browser requests always include Origin header
-		log.Debug().Msg("Request missing Origin header")
-		return false
+		// Requests without Origin header (e.g., from desktop apps like Claude Desktop)
+		// are allowed since they're authenticated via OAuth2 and behind HTTPS
+		// Browser requests always include Origin header, so we can still validate those
+		log.Debug().Msg("Request missing Origin header - allowing (likely desktop app)")
+		return true
 	}
 
 	// Check if origin is in allowlist
