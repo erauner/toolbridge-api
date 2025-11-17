@@ -9,6 +9,12 @@ import (
 // handleOAuthMetadata serves the OAuth authorization server metadata
 // Reference: RFC 8414 (OAuth 2.0 Authorization Server Metadata)
 func (s *MCPServer) handleOAuthMetadata(w http.ResponseWriter, r *http.Request) {
+	// In trust-proxy mode, OAuth is handled by the proxy (ToolHive), not here
+	if s.config.TrustToolhiveAuth {
+		http.Error(w, "OAuth metadata not available - authentication handled by proxy", http.StatusNotImplemented)
+		return
+	}
+
 	domain := s.config.Auth0.Domain
 	issuer := fmt.Sprintf("https://%s/", domain)
 
@@ -36,6 +42,12 @@ func (s *MCPServer) handleOAuthMetadata(w http.ResponseWriter, r *http.Request) 
 // Reference: RFC 9728 (OAuth 2.0 Protected Resource Metadata)
 // Required by MCP specification (June 2025 update) for Claude Desktop integration
 func (s *MCPServer) handleOAuthProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	// In trust-proxy mode, OAuth is handled by the proxy (ToolHive), not here
+	if s.config.TrustToolhiveAuth {
+		http.Error(w, "OAuth metadata not available - authentication handled by proxy", http.StatusNotImplemented)
+		return
+	}
+
 	domain := s.config.Auth0.Domain
 	issuer := fmt.Sprintf("https://%s/", domain)
 
