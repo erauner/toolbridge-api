@@ -17,6 +17,10 @@ spec:
         {{- include "toolbridge-mcpbridge.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "toolbridge-mcpbridge.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 
       containers:
       - name: mcpbridge

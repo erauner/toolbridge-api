@@ -5,6 +5,9 @@ image:
   repository: ghcr.io/erauner12/toolbridge-mcpbridge
   pullPolicy: IfNotPresent
   tag: "v0.1.0"
+  # Image pull secrets for private container registries
+  # Example: [{ name: ghcr-pull-secret }]
+  pullSecrets: []
 
 # Number of MCP bridge replicas
 replicaCount: 1
