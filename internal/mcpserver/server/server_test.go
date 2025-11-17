@@ -525,6 +525,39 @@ func TestMCPServer_UnsupportedProtocolVersion(t *testing.T) {
 	}
 }
 
+func TestMCPServer_SupportedProtocolVersions(t *testing.T) {
+	// Test that all documented MCP protocol versions are supported
+	supportedVersions := []string{
+		"2024-11-05",
+		"2025-03-26",
+		"2025-06-18", // Latest version with Streamable HTTP transport and RFC 9728 OAuth support
+	}
+
+	for _, version := range supportedVersions {
+		t.Run(version, func(t *testing.T) {
+			if !isSupportedProtocolVersion(version) {
+				t.Errorf("Version %s should be supported but is not", version)
+			}
+		})
+	}
+
+	// Test unsupported versions
+	unsupportedVersions := []string{
+		"1.0.0",
+		"2024-01-01",
+		"2025-12-31",
+		"invalid",
+	}
+
+	for _, version := range unsupportedVersions {
+		t.Run("unsupported_"+version, func(t *testing.T) {
+			if isSupportedProtocolVersion(version) {
+				t.Errorf("Version %s should not be supported but is", version)
+			}
+		})
+	}
+}
+
 func TestMCPServer_ToolsList(t *testing.T) {
 	// Generate test RSA key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -663,11 +696,11 @@ func TestMCPServer_OriginValidation(t *testing.T) {
 			wantAllowed:    true,
 		},
 		{
-			name:           "missing origin header rejected",
+			name:           "missing origin header allowed (desktop apps)",
 			devMode:        false,
 			allowedOrigins: []string{"https://allowed.com"},
 			requestOrigin:  "",
-			wantAllowed:    false,
+			wantAllowed:    true, // Desktop apps like Claude Desktop don't send Origin
 		},
 		{
 			name:           "allowed origin accepted",

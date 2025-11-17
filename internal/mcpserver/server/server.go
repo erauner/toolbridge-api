@@ -118,10 +118,17 @@ func (s *MCPServer) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 
 	// Validate protocol version
 	protocolVersion := r.Header.Get("Mcp-Protocol-Version")
-	if protocolVersion != "2025-03-26" && protocolVersion != "2024-11-05" {
+	if !isSupportedProtocolVersion(protocolVersion) {
+		log.Warn().
+			Str("version", protocolVersion).
+			Msg("Unsupported MCP protocol version")
 		http.Error(w, "unsupported protocol version", http.StatusBadRequest)
 		return
 	}
+
+	log.Debug().
+		Str("version", protocolVersion).
+		Msg("MCP protocol version validated")
 
 	var userID string
 	var tokenString string
@@ -322,10 +329,17 @@ func (s *MCPServer) handleMCPGet(w http.ResponseWriter, r *http.Request) {
 
 	// Validate protocol version
 	protocolVersion := r.Header.Get("Mcp-Protocol-Version")
-	if protocolVersion != "2025-03-26" && protocolVersion != "2024-11-05" {
+	if !isSupportedProtocolVersion(protocolVersion) {
+		log.Warn().
+			Str("version", protocolVersion).
+			Msg("Unsupported MCP protocol version")
 		http.Error(w, "unsupported protocol version", http.StatusBadRequest)
 		return
 	}
+
+	log.Debug().
+		Str("version", protocolVersion).
+		Msg("MCP protocol version validated")
 
 	var userID string
 
@@ -466,6 +480,27 @@ func (s *MCPServer) createRESTClient(tokenProvider *PassthroughTokenProvider, us
 
 	sessionMgr := client.NewSessionManager(s.config.APIBaseURL, tokenProvider, audience)
 	return client.NewHTTPClient(s.config.APIBaseURL, tokenProvider, sessionMgr, audience, debugSub)
+}
+
+// isSupportedProtocolVersion checks if the given MCP protocol version is supported
+// Supported versions:
+// - 2024-11-05: Initial MCP specification
+// - 2025-03-26: Updated specification with OAuth improvements
+// - 2025-06-18: Latest specification with Streamable HTTP transport and RFC 9728 OAuth support
+func isSupportedProtocolVersion(version string) bool {
+	supportedVersions := []string{
+		"2024-11-05",
+		"2025-03-26",
+		"2025-06-18",
+	}
+
+	for _, supported := range supportedVersions {
+		if version == supported {
+			return true
+		}
+	}
+
+	return false
 }
 
 // validateOrigin checks if the request Origin header is allowed
