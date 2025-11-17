@@ -56,14 +56,27 @@ type WorkspaceConfig struct {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if !c.DevMode && !c.TrustToolhiveAuth {
-		if err := c.Auth0.Validate(); err != nil {
-			return err
-		}
-	}
-
 	if c.APIBaseURL == "" {
 		return ErrMissingAPIBaseURL
+	}
+
+	// In DevMode, skip all Auth0 validation
+	if c.DevMode {
+		return nil
+	}
+
+	// In TrustToolhiveAuth mode, only validate SyncAPI.Audience
+	// (needed for backend REST API calls, not for client authentication)
+	if c.TrustToolhiveAuth {
+		if c.Auth0.SyncAPI == nil || c.Auth0.SyncAPI.Audience == "" {
+			return ErrMissingSyncAPI
+		}
+		return nil
+	}
+
+	// Standalone mode: validate full Auth0 config
+	if err := c.Auth0.Validate(); err != nil {
+		return err
 	}
 
 	return nil
