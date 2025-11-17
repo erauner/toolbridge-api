@@ -195,9 +195,11 @@ func applyEnvironmentOverrides(cfg *Config) {
 		if introspectionClientSecret != "" {
 			cfg.Auth0.Introspection.ClientSecret = introspectionClientSecret
 		}
-		if introspectionAudience != "" {
-			cfg.Auth0.Introspection.Audience = introspectionAudience
-		}
+	}
+
+	// Apply audience override independently (allows overriding just audience via env var)
+	if introspectionAudience != "" && cfg.Auth0.Introspection != nil {
+		cfg.Auth0.Introspection.Audience = introspectionAudience
 	}
 
 	// Apply default scopes after all overrides
