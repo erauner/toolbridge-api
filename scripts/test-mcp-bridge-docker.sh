@@ -45,6 +45,38 @@ function cleanup() {
     log_info "Cleanup complete"
 }
 
+# Portable wait function (replaces GNU timeout)
+# Usage: wait_for_cmd <timeout_seconds> <command>
+function wait_for_cmd() {
+    local timeout=$1
+    shift
+    local cmd="$*"
+    local elapsed=0
+
+    while [ $elapsed -lt $timeout ]; do
+        if eval "$cmd" > /dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    return 1
+}
+
+# Safe curl - returns content or empty string on failure (doesn't trip set -e)
+function safe_curl() {
+    curl "$@" 2>/dev/null || echo ""
+}
+
+# Safe jq check - returns 0 if condition is true, 1 otherwise (doesn't trip set -e)
+function safe_jq_check() {
+    local json="$1"
+    local condition="$2"
+    echo "$json" | jq -e "$condition" > /dev/null 2>&1
+    return $?
+}
+
 # Trap to ensure cleanup on exit
 trap cleanup EXIT
 
@@ -53,14 +85,25 @@ echo "MCP Bridge Docker Integration Tests"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Step 1: Build the Docker image
-log_step "Step 1: Building MCP Bridge Docker image"
+# Step 1: Build the Docker images
+log_step "Step 1: Building Docker images"
 cd "$PROJECT_ROOT"
-docker build -f cmd/mcpbridge/Dockerfile -t toolbridge-mcpbridge:latest . || {
-    log_error "Docker build failed"
+
+# Build REST API image (required for migrations and API service)
+log_warn "Building toolbridge-api image..."
+docker build -t toolbridge-api:latest . || {
+    log_error "REST API Docker build failed"
     exit 1
 }
-log_info "Docker image built successfully"
+log_info "REST API image built successfully"
+
+# Build MCP Bridge image
+log_warn "Building toolbridge-mcpbridge image..."
+docker build -f cmd/mcpbridge/Dockerfile -t toolbridge-mcpbridge:latest . || {
+    log_error "MCP Bridge Docker build failed"
+    exit 1
+}
+log_info "MCP Bridge image built successfully"
 echo ""
 
 # Step 2: Start the stack
@@ -75,27 +118,27 @@ echo ""
 # Step 3: Wait for services to be healthy
 log_step "Step 3: Waiting for services to be healthy"
 log_warn "Waiting for PostgreSQL..."
-timeout 30 bash -c 'until docker-compose -f '"$COMPOSE_FILE"' exec -T postgres pg_isready -U toolbridge > /dev/null 2>&1; do sleep 1; done' || {
+if ! wait_for_cmd 30 "docker-compose -f '$COMPOSE_FILE' exec -T postgres pg_isready -U toolbridge"; then
     log_error "PostgreSQL did not become ready in time"
     docker-compose -f "$COMPOSE_FILE" logs postgres
     exit 1
-}
+fi
 log_info "PostgreSQL is ready"
 
 log_warn "Waiting for REST API..."
-timeout 30 bash -c 'until curl -sf http://localhost:8081/healthz > /dev/null 2>&1; do sleep 1; done' || {
+if ! wait_for_cmd 30 "curl -sf http://localhost:8081/healthz"; then
     log_error "REST API did not become healthy in time"
     docker-compose -f "$COMPOSE_FILE" logs toolbridge-api
     exit 1
-}
+fi
 log_info "REST API is healthy"
 
 log_warn "Waiting for MCP Bridge (dev mode)..."
-timeout 30 bash -c 'until curl -sf http://localhost:8082/healthz > /dev/null 2>&1; do sleep 1; done' || {
+if ! wait_for_cmd 30 "curl -sf http://localhost:8082/healthz"; then
     log_error "MCP Bridge (dev) did not become healthy in time"
     docker-compose -f "$COMPOSE_FILE" logs mcpbridge-dev
     exit 1
-}
+fi
 log_info "MCP Bridge (dev) is healthy"
 echo ""
 
@@ -103,7 +146,7 @@ echo ""
 log_step "Step 4: Testing REST API"
 
 # Health check
-HEALTH=$(curl -s http://localhost:8081/healthz)
+HEALTH=$(safe_curl -s http://localhost:8081/healthz)
 if [ "$HEALTH" = "ok" ]; then
     log_info "REST API health check passed"
 else
@@ -112,13 +155,18 @@ else
 fi
 
 # Create sync session
-SESSION_RESP=$(curl -s -X POST "http://localhost:8081/v1/sync/sessions" \
+SESSION_RESP=$(safe_curl -s -X POST "http://localhost:8081/v1/sync/sessions" \
     -H "X-Debug-Sub: test-user-docker")
-SESSION_ID=$(echo "$SESSION_RESP" | jq -r '.id')
-if [ "$SESSION_ID" != "null" ] && [ -n "$SESSION_ID" ]; then
-    log_info "REST API session creation works (id=$SESSION_ID)"
+if [ -n "$SESSION_RESP" ]; then
+    SESSION_ID=$(echo "$SESSION_RESP" | jq -r '.id' 2>/dev/null || echo "")
+    if [ "$SESSION_ID" != "null" ] && [ -n "$SESSION_ID" ]; then
+        log_info "REST API session creation works (id=$SESSION_ID)"
+    else
+        log_error "Failed to create session: $SESSION_RESP"
+        exit 1
+    fi
 else
-    log_error "Failed to create session: $SESSION_RESP"
+    log_error "Failed to contact REST API for session creation"
     exit 1
 fi
 echo ""
@@ -127,8 +175,8 @@ echo ""
 log_step "Step 5: Testing MCP Bridge (Dev Mode)"
 
 # Health endpoint
-MCP_HEALTH=$(curl -s http://localhost:8082/healthz)
-if echo "$MCP_HEALTH" | jq -e '.status == "ok"' > /dev/null; then
+MCP_HEALTH=$(safe_curl -s http://localhost:8082/healthz)
+if [ -n "$MCP_HEALTH" ] && safe_jq_check "$MCP_HEALTH" '.status == "ok"'; then
     log_info "MCP health check passed"
 else
     log_error "MCP health check failed: $MCP_HEALTH"
@@ -136,10 +184,10 @@ else
 fi
 
 # Readiness endpoint (dev mode should always be ready)
-MCP_READY=$(curl -s http://localhost:8082/readyz)
-if echo "$MCP_READY" | jq -e '.status == "ready"' > /dev/null; then
+MCP_READY=$(safe_curl -s http://localhost:8082/readyz)
+if [ -n "$MCP_READY" ] && safe_jq_check "$MCP_READY" '.status == "ready"'; then
     log_info "MCP readiness check passed"
-    if echo "$MCP_READY" | jq -e '.devMode == true' > /dev/null; then
+    if safe_jq_check "$MCP_READY" '.devMode == true'; then
         log_info "Dev mode correctly reported in readiness response"
     fi
 else
@@ -148,7 +196,7 @@ else
 fi
 
 # Test initialize endpoint (simplified test without full MCP flow)
-MCP_INIT=$(curl -s -X POST http://localhost:8082/mcp \
+MCP_INIT=$(safe_curl -s -X POST http://localhost:8082/mcp \
     -H "Content-Type: application/json" \
     -H "Mcp-Protocol-Version: 2025-03-26" \
     -H "X-Debug-Sub: test-user-docker" \
@@ -166,16 +214,16 @@ MCP_INIT=$(curl -s -X POST http://localhost:8082/mcp \
         }
     }')
 
-if echo "$MCP_INIT" | jq -e '.result.protocolVersion' > /dev/null; then
+if [ -n "$MCP_INIT" ] && safe_jq_check "$MCP_INIT" '.result.protocolVersion'; then
     log_info "MCP initialize endpoint works"
-    MCP_SESSION_ID=$(echo "$MCP_INIT" | jq -r '.result.serverInfo.sessionId // empty')
+    MCP_SESSION_ID=$(echo "$MCP_INIT" | jq -r '.result.serverInfo.sessionId // empty' 2>/dev/null || echo "")
     if [ -n "$MCP_SESSION_ID" ]; then
         log_info "MCP session created (id=$MCP_SESSION_ID)"
     fi
 else
     # Check if it's an error response
-    if echo "$MCP_INIT" | jq -e '.error' > /dev/null; then
-        ERROR_MSG=$(echo "$MCP_INIT" | jq -r '.error.message')
+    if [ -n "$MCP_INIT" ] && safe_jq_check "$MCP_INIT" '.error'; then
+        ERROR_MSG=$(echo "$MCP_INIT" | jq -r '.error.message' 2>/dev/null || echo "unknown error")
         log_warn "MCP initialize returned error (may be expected): $ERROR_MSG"
     else
         log_error "MCP initialize failed: $MCP_INIT"
@@ -246,8 +294,8 @@ if [ "${TEST_RETRY_LOGIC:-false}" = "true" ]; then
     sleep 5
 
     # Health should still pass
-    RETRY_HEALTH=$(curl -s http://localhost:8083/healthz)
-    if echo "$RETRY_HEALTH" | jq -e '.status == "ok"' > /dev/null; then
+    RETRY_HEALTH=$(safe_curl -s http://localhost:8083/healthz)
+    if [ -n "$RETRY_HEALTH" ] && safe_jq_check "$RETRY_HEALTH" '.status == "ok"'; then
         log_info "Health check passes even with JWT validator not ready"
     else
         log_error "Health check should pass regardless of JWT validator state"
@@ -255,8 +303,8 @@ if [ "${TEST_RETRY_LOGIC:-false}" = "true" ]; then
     fi
 
     # Readiness should fail
-    RETRY_READY=$(curl -s http://localhost:8083/readyz)
-    if echo "$RETRY_READY" | jq -e '.status == "not ready"' > /dev/null; then
+    RETRY_READY=$(safe_curl -s http://localhost:8083/readyz)
+    if [ -n "$RETRY_READY" ] && safe_jq_check "$RETRY_READY" '.status == "not ready"'; then
         log_info "Readiness correctly reports 'not ready' when JWT validator unavailable"
     else
         log_warn "Readiness should be 'not ready' but got: $RETRY_READY"

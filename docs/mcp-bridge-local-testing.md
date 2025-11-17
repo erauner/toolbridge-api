@@ -10,6 +10,71 @@ The local testing setup includes:
 - **scripts/test-mcp-bridge-docker.sh**: Comprehensive automated test suite
 - **Makefile targets**: Easy-to-use commands for testing
 
+## Prerequisites
+
+Before running the tests, ensure you have the following tools installed:
+
+### Required Tools
+
+| Tool | Version | Installation | Purpose |
+|------|---------|--------------|---------|
+| **Docker** | 20.10+ | [Get Docker](https://docs.docker.com/get-docker/) | Container runtime |
+| **docker-compose** | 1.29+ or Docker Compose V2 | Included with Docker Desktop | Service orchestration |
+| **curl** | Any | Pre-installed on macOS/Linux | HTTP testing |
+| **jq** | 1.6+ | `brew install jq` (macOS)<br>`apt install jq` (Ubuntu) | JSON processing |
+
+### Verification
+
+Verify your setup:
+
+```bash
+# Check Docker
+docker --version
+docker-compose --version
+
+# Check utilities
+curl --version
+jq --version
+
+# Verify Docker daemon is running
+docker info
+```
+
+### Port Requirements
+
+The test environment uses these ports (must be available):
+
+| Port | Service | Override Method |
+|------|---------|-----------------|
+| **5432** | PostgreSQL | Edit `docker-compose.mcp-test.yml` ports section |
+| **8081** | REST API | Edit `docker-compose.mcp-test.yml` ports section |
+| **8082** | MCP Bridge (dev) | Edit `docker-compose.mcp-test.yml` ports section |
+| **8083** | MCP Bridge (retry test) | Edit `docker-compose.mcp-test.yml` ports section |
+
+**Port conflict resolution:**
+
+If you have local services running on these ports, you have two options:
+
+1. **Stop conflicting services temporarily:**
+   ```bash
+   # Find what's using a port
+   lsof -i :8081
+
+   # Kill the process (replace PID with actual process ID)
+   kill <PID>
+   ```
+
+2. **Override ports in docker-compose:**
+   ```yaml
+   # Example: Change REST API from 8081 to 8091
+   services:
+     toolbridge-api:
+       ports:
+         - "8091:8081"  # host:container
+   ```
+
+   Note: If you change ports, you'll also need to update the test script's curl commands to use the new ports.
+
 ## Quick Start
 
 ### Option 1: Automated Full Test Suite (Recommended)
@@ -220,27 +285,39 @@ The test environment consists of:
 
 ## Troubleshooting
 
+### Prerequisites Issues
+
+**Problem:** `command not found: jq` or similar errors
+
+**Solution:** Install missing prerequisites - see [Prerequisites](#prerequisites) section above.
+
+### Port Conflicts
+
+**Problem:** `docker-compose up` fails with "port already in use" or "bind: address already in use"
+
+**Solution:** See [Port Requirements](#port-requirements) section above for how to:
+1. Identify and stop conflicting services
+2. Override ports in docker-compose
+
 ### Services don't start
 
-**Problem:** `docker-compose up` fails
+**Problem:** `docker-compose up` fails for other reasons
 
 **Solutions:**
-1. Check if ports are already in use:
-   ```bash
-   lsof -i :5432  # PostgreSQL
-   lsof -i :8081  # REST API
-   lsof -i :8082  # MCP Bridge
-   ```
-
-2. Clean up previous test runs:
+1. Clean up previous test runs:
    ```bash
    make test-mcp-docker-down
    docker system prune -f
    ```
 
-3. Check Docker daemon is running:
+2. Check Docker daemon is running:
    ```bash
    docker info
+   ```
+
+3. Verify you have enough disk space:
+   ```bash
+   docker system df
    ```
 
 ### Tests fail
