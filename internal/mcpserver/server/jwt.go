@@ -211,7 +211,8 @@ func (v *JWTValidator) Ready() bool {
 // StartBackgroundRetry starts a background goroutine that retries JWKS fetches
 // until successful. This ensures readiness eventually becomes true even if
 // Auth0 is temporarily unreachable during startup.
-// This method is idempotent - calling it multiple times will not start multiple goroutines.
+// This method is idempotent - calling it multiple times will not start multiple goroutines,
+// and it's safe to call again after a previous retry cycle has completed.
 func (v *JWTValidator) StartBackgroundRetry() {
 	v.mu.Lock()
 	if v.retryRunning {
@@ -220,6 +221,10 @@ func (v *JWTValidator) StartBackgroundRetry() {
 		log.Debug().Msg("Background retry already running, skipping duplicate start")
 		return
 	}
+
+	// Recreate channels for this retry cycle (safe even if previous cycle closed them)
+	v.stopRetry = make(chan struct{})
+	v.retryDone = make(chan struct{})
 	v.retryRunning = true
 	v.mu.Unlock()
 
