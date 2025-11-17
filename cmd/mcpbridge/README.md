@@ -563,19 +563,18 @@ If smoke tests fail, check:
 - [x] Thread-safe session management
 - [x] Origin validation (DNS rebinding protection)
 
-**Phase 5-6: Tool Implementations** (Planned)
-- [ ] Tool registry and dispatcher
-- [ ] Notes tools (create, list, get, update, delete, pin)
-- [ ] Tasks tools (create, complete, reopen, list)
-- [ ] Comments tools (create, list, update, delete)
-- [ ] Chats tools (create, append, get, list, delete)
-- [ ] Chat messages tools (list, create, update)
-- [ ] Context attachment tools (attach, detach, list, clear)
+**Phase 5-6: Tool Implementations** ✅
+- [x] Tool registry and dispatcher
+- [x] Notes tools (create, list, get, update, delete, pin)
+- [x] Tasks tools (create, complete, reopen, list)
+- [x] Comments tools (create, list, update, delete)
+- [x] Chats tools (create, append, get, list, delete)
+- [x] Chat messages tools (list, create, update)
+- [x] Context attachment tools (attach, detach, list, clear)
 
 **Phase 7: Production Deployment** (Planned)
 - [ ] Dockerfile for Streamable HTTP server
 - [ ] Kubernetes manifests
-- [ ] Fly.io / Railway deployment guides
 - [ ] Production OAuth configuration
 - [ ] Rate limiting and monitoring
 
