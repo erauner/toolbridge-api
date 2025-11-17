@@ -34,7 +34,8 @@ mcpbridge:
   # Allowed origins for CORS/DNS rebinding protection (comma-separated)
   # Example: "https://app.toolbridge.com,https://web.toolbridge.com"
   # Leave empty in dev mode to allow all origins
-  allowedOrigins: ""
+  # Note: Requests without Origin headers (e.g., Claude Desktop) are allowed by default
+  allowedOrigins: "https://claude.ai,https://code.claude.com"
 
   # Auth0 configuration
   auth0:
