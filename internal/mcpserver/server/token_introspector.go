@@ -16,7 +16,7 @@ import (
 // TokenIntrospector performs OAuth 2.0 token introspection per RFC 7662
 // Used as fallback when JWT parsing fails (e.g., for opaque Auth0 tokens)
 type TokenIntrospector struct {
-	endpoint     string // https://<domain>/oauth/token/introspect
+	endpoint     string // https://<domain>/oauth/introspect
 	clientID     string
 	clientSecret string
 	audience     string // Expected audience for validation
@@ -37,7 +37,7 @@ type IntrospectionResponse struct {
 
 // NewTokenIntrospector creates a new token introspector
 func NewTokenIntrospector(domain, clientID, clientSecret, audience, issuer string) *TokenIntrospector {
-	endpoint := fmt.Sprintf("https://%s/oauth/token/introspect", domain)
+	endpoint := fmt.Sprintf("https://%s/oauth/introspect", domain)
 
 	log.Info().
 		Str("endpoint", endpoint).
