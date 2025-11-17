@@ -85,6 +85,17 @@ func HandleCreateTask(ctx context.Context, tc *ToolContext, raw json.RawMessage)
 		return nil, err
 	}
 
+	// If client provided UID, add it to payload
+	if params.UID != nil {
+		uid, err := params.ParseUID()
+		if err != nil {
+			return nil, NewToolError(ErrCodeInvalidParams, "Invalid UID: "+err.Error(), nil)
+		}
+		if uid != nil {
+			params.Payload["uid"] = uid.String()
+		}
+	}
+
 	item, err := tasksClient.Create(ctx, params.Payload)
 	if err != nil {
 		return nil, WrapClientError(err)

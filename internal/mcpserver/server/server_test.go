@@ -480,7 +480,7 @@ func TestMCPServer_ToolsList(t *testing.T) {
 		t.Errorf("Expected no error, got: %s", response.Error.Message)
 	}
 
-	// For Phase 4, tools list should be empty
+	// For Phase 5-6, tools list should contain all registered tools
 	var result map[string]interface{}
 	if err := json.Unmarshal(response.Result, &result); err != nil {
 		t.Fatalf("Failed to unmarshal result: %v", err)
@@ -491,8 +491,27 @@ func TestMCPServer_ToolsList(t *testing.T) {
 		t.Error("Expected tools to be an array")
 	}
 
-	if len(tools) != 0 {
-		t.Errorf("Expected empty tools list, got %d tools", len(tools))
+	// Verify we have the expected number of tools (41 in Phase 5-6)
+	if len(tools) == 0 {
+		t.Error("Expected tools to be registered, got empty list")
+	}
+
+	// Verify tools have expected structure
+	if len(tools) > 0 {
+		firstTool, ok := tools[0].(map[string]interface{})
+		if !ok {
+			t.Error("Expected tool to be an object")
+		} else {
+			if _, hasName := firstTool["name"]; !hasName {
+				t.Error("Expected tool to have 'name' field")
+			}
+			if _, hasDesc := firstTool["description"]; !hasDesc {
+				t.Error("Expected tool to have 'description' field")
+			}
+			if _, hasSchema := firstTool["inputSchema"]; !hasSchema {
+				t.Error("Expected tool to have 'inputSchema' field")
+			}
+		}
 	}
 }
 

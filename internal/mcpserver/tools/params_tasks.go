@@ -51,6 +51,17 @@ func (p *CreateTaskParams) Validate() error {
 	return nil
 }
 
+func (p *CreateTaskParams) ParseUID() (*uuid.UUID, error) {
+	if p.UID == nil {
+		return nil, nil
+	}
+	uid, err := uuid.Parse(*p.UID)
+	if err != nil {
+		return nil, err
+	}
+	return &uid, nil
+}
+
 type UpdateTaskParams struct {
 	UID     string         `json:"uid"`
 	Payload map[string]any `json:"payload"`

@@ -58,6 +58,17 @@ func (p *CreateCommentParams) Validate() error {
 	return nil
 }
 
+func (p *CreateCommentParams) ParseUID() (*uuid.UUID, error) {
+	if p.UID == nil {
+		return nil, nil
+	}
+	uid, err := uuid.Parse(*p.UID)
+	if err != nil {
+		return nil, err
+	}
+	return &uid, nil
+}
+
 // Chats
 type ListChatsParams struct {
 	Cursor         *string `json:"cursor,omitempty"`
@@ -103,6 +114,17 @@ func (p *CreateChatParams) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (p *CreateChatParams) ParseUID() (*uuid.UUID, error) {
+	if p.UID == nil {
+		return nil, nil
+	}
+	uid, err := uuid.Parse(*p.UID)
+	if err != nil {
+		return nil, err
+	}
+	return &uid, nil
 }
 
 // ChatMessages
@@ -153,6 +175,17 @@ func (p *CreateChatMessageParams) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (p *CreateChatMessageParams) ParseUID() (*uuid.UUID, error) {
+	if p.UID == nil {
+		return nil, nil
+	}
+	uid, err := uuid.Parse(*p.UID)
+	if err != nil {
+		return nil, err
+	}
+	return &uid, nil
 }
 
 // Generic params for update/patch/delete/archive

@@ -87,6 +87,17 @@ func HandleCreateComment(ctx context.Context, tc *ToolContext, raw json.RawMessa
 		return nil, err
 	}
 
+	// If client provided UID, add it to payload
+	if params.UID != nil {
+		uid, err := params.ParseUID()
+		if err != nil {
+			return nil, NewToolError(ErrCodeInvalidParams, "Invalid UID: "+err.Error(), nil)
+		}
+		if uid != nil {
+			params.Payload["uid"] = uid.String()
+		}
+	}
+
 	item, err := commentsClient.Create(ctx, params.Payload)
 	if err != nil {
 		return nil, WrapClientError(err)
@@ -173,6 +184,17 @@ func HandleCreateChat(ctx context.Context, tc *ToolContext, raw json.RawMessage)
 		return nil, err
 	}
 
+	// If client provided UID, add it to payload
+	if params.UID != nil {
+		uid, err := params.ParseUID()
+		if err != nil {
+			return nil, NewToolError(ErrCodeInvalidParams, "Invalid UID: "+err.Error(), nil)
+		}
+		if uid != nil {
+			params.Payload["uid"] = uid.String()
+		}
+	}
+
 	item, err := chatsClient.Create(ctx, params.Payload)
 	if err != nil {
 		return nil, WrapClientError(err)
@@ -257,6 +279,17 @@ func HandleCreateChatMessage(ctx context.Context, tc *ToolContext, raw json.RawM
 	chatMessagesClient, err := tc.GetClient("chat_messages")
 	if err != nil {
 		return nil, err
+	}
+
+	// If client provided UID, add it to payload
+	if params.UID != nil {
+		uid, err := params.ParseUID()
+		if err != nil {
+			return nil, NewToolError(ErrCodeInvalidParams, "Invalid UID: "+err.Error(), nil)
+		}
+		if uid != nil {
+			params.Payload["uid"] = uid.String()
+		}
 	}
 
 	item, err := chatMessagesClient.Create(ctx, params.Payload)
