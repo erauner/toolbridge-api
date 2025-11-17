@@ -1,0 +1,143 @@
+# Default values for toolbridge-mcpbridge
+
+# Image configuration
+image:
+  repository: ghcr.io/erauner12/toolbridge-mcpbridge
+  pullPolicy: IfNotPresent
+  tag: "v0.1.0"
+
+# Number of MCP bridge replicas
+replicaCount: 1
+
+# Service account
+serviceAccount:
+  create: true
+  name: toolbridge-mcpbridge
+
+# MCP bridge deployment configuration
+mcpbridge:
+  # API Base URL (ToolBridge REST API)
+  apiBaseUrl: "http://toolbridge-api:80"
+
+  # Development mode (bypass Auth0, use X-Debug-Sub header)
+  devMode: false
+
+  # Debug logging
+  debug: false
+
+  # Log level (debug, info, warn, error)
+  logLevel: "info"
+
+  # Allowed origins for CORS/DNS rebinding protection (comma-separated)
+  # Example: "https://app.toolbridge.com,https://web.toolbridge.com"
+  # Leave empty in dev mode to allow all origins
+  allowedOrigins: ""
+
+  # Auth0 configuration
+  auth0:
+    # Auth0 tenant domain (e.g., your-tenant.us.auth0.com)
+    domain: ""
+
+    # Sync API audience
+    syncApiAudience: ""
+
+    # Client IDs (optional, can be set via secrets)
+    # These are usually not sensitive but can be managed as secrets
+    clientIdNative: ""
+    clientIdWeb: ""
+    clientIdMacos: ""
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Health check configuration
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8082
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8082
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8082
+
+# HTTPRoute (Gateway API ingress)
+ingress:
+  enabled: true
+  gateway:
+    name: envoy-public
+    namespace: network
+  hostname: ""  # Set via override, e.g., mcp.toolbridge.com
+  annotations: {}
+
+  # Retry configuration
+  retry:
+    numRetries: 3
+    perRetryTimeout: 5s  # MCP requests may be slower due to tool execution
+
+  # Timeout configuration
+  timeout:
+    request: 60s  # Longer timeout for MCP tool calls
+
+  # Load balancer configuration
+  loadBalancer:
+    type: RoundRobin
+
+# Certificate configuration
+certificate:
+  enabled: true
+  issuerRef:
+    name: letsencrypt-cloudflare-prod
+    kind: ClusterIssuer
+  dnsNames: []  # Set via override
+
+# Secrets configuration
+secrets:
+  # Auth0 configuration (if storing as secrets)
+  # Client IDs can be public but some prefer to treat them as secrets
+  auth0ClientIdNative: ""
+  auth0ClientIdWeb: ""
+  auth0ClientIdMacos: ""
+  auth0SyncApiAudience: ""
+
+  # Use existing secret instead of creating one
+  existingSecret: ""
+
+# RBAC configuration
+rbac:
+  create: false  # No special permissions needed for MCP bridge
+
+# Pod Security Context
+podSecurityContext: {}
+
+# Security Context
+securityContext: {}
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

@@ -46,9 +46,33 @@ func NewMCPServer(cfg *config.Config) *MCPServer {
 	}
 }
 
+// WarmUp pre-fetches JWKS to make the server ready faster
+// This is optional but recommended during startup.
+// If the initial warmup fails, a background retry goroutine is started
+// to ensure the validator eventually becomes ready even if Auth0 is
+// temporarily unreachable during startup.
+func (s *MCPServer) WarmUp() error {
+	if s.jwtValidator != nil {
+		err := s.jwtValidator.WarmUp()
+		if err != nil {
+			// Start background retry to recover from transient failures
+			log.Info().Msg("Starting background retry for JWT validator warmup")
+			s.jwtValidator.StartBackgroundRetry()
+			return err
+		}
+		return nil
+	}
+	// No warmup needed in dev mode
+	return nil
+}
+
 // Start starts the HTTP server
 func (s *MCPServer) Start(addr string) error {
 	mux := http.NewServeMux()
+
+	// Health endpoints (no auth required for k8s probes)
+	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReady)
 
 	// MCP endpoints
 	mux.HandleFunc("POST /mcp", s.handleMCPPost)
@@ -72,6 +96,11 @@ func (s *MCPServer) Start(addr string) error {
 
 // Shutdown gracefully shuts down the server
 func (s *MCPServer) Shutdown(ctx context.Context) error {
+	// Stop background retry goroutine (safe to call even if not running)
+	if s.jwtValidator != nil {
+		s.jwtValidator.StopBackgroundRetry()
+	}
+
 	if s.httpServer != nil {
 		return s.httpServer.Shutdown(ctx)
 	}
@@ -513,4 +542,48 @@ func (s *MCPServer) sendResult(w http.ResponseWriter, id json.RawMessage, result
 func mustMarshal(v interface{}) json.RawMessage {
 	data, _ := json.Marshal(v)
 	return data
+}
+
+// handleHealth handles GET /healthz (liveness probe)
+// Returns 200 OK if process is alive, no dependencies checked
+func (s *MCPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "ok",
+	})
+}
+
+// handleReady handles GET /readyz (readiness probe)
+// Returns 200 OK if server is ready to accept traffic
+// Checks JWT validator readiness if not in dev mode
+func (s *MCPServer) handleReady(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// In dev mode, always ready (no JWT validator)
+	if s.config.DevMode {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ready",
+			"devMode": true,
+		})
+		return
+	}
+
+	// Check JWT validator readiness
+	if s.jwtValidator == nil || !s.jwtValidator.Ready() {
+		log.Debug().Msg("Readiness check failed: JWT validator not ready")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "not ready",
+			"reason": "JWT validator not initialized",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":       "ready",
+		"jwtValidator": "ready",
+	})
 }

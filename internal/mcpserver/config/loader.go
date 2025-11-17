@@ -97,6 +97,19 @@ func applyEnvironmentOverrides(cfg *Config) {
 		cfg.LogLevel = logLevel
 	}
 
+	// Allowed origins (comma-separated list)
+	if allowedOrigins := os.Getenv("MCP_ALLOWED_ORIGINS"); allowedOrigins != "" {
+		// Split by comma and trim whitespace
+		origins := strings.Split(allowedOrigins, ",")
+		cfg.AllowedOrigins = make([]string, 0, len(origins))
+		for _, origin := range origins {
+			trimmed := strings.TrimSpace(origin)
+			if trimmed != "" {
+				cfg.AllowedOrigins = append(cfg.AllowedOrigins, trimmed)
+			}
+		}
+	}
+
 	// Auth0 configuration from environment
 	if domain := os.Getenv("AUTH0_DOMAIN"); domain != "" {
 		cfg.Auth0.Domain = domain

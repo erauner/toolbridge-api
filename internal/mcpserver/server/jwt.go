@@ -16,13 +16,17 @@ import (
 
 // JWTValidator validates Auth0 JWT tokens
 type JWTValidator struct {
-	mu         sync.RWMutex
-	jwksURL    string
-	audience   string
-	issuer     string
-	publicKeys map[string]*rsa.PublicKey
-	lastFetch  time.Time
-	httpClient *http.Client
+	mu           sync.RWMutex
+	jwksURL      string
+	audience     string
+	issuer       string
+	publicKeys   map[string]*rsa.PublicKey
+	lastFetch    time.Time
+	httpClient   *http.Client
+	ready        bool // true once JWKS has been fetched at least once
+	stopRetry    chan struct{}
+	retryDone    chan struct{}
+	retryRunning bool // true if background retry goroutine is running
 }
 
 // NewJWTValidator creates a new JWT validator
@@ -33,6 +37,8 @@ func NewJWTValidator(domain, audience string) *JWTValidator {
 		issuer:     fmt.Sprintf("https://%s/", domain),
 		publicKeys: make(map[string]*rsa.PublicKey),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
+		stopRetry:  make(chan struct{}),
+		retryDone:  make(chan struct{}),
 	}
 }
 
@@ -185,6 +191,7 @@ func (v *JWTValidator) fetchPublicKey(kid string) (*rsa.PublicKey, error) {
 	}
 
 	v.lastFetch = time.Now()
+	v.ready = true // Mark as ready after first successful fetch
 
 	// Return requested key
 	if key, exists := v.publicKeys[kid]; exists {
@@ -192,6 +199,157 @@ func (v *JWTValidator) fetchPublicKey(kid string) (*rsa.PublicKey, error) {
 	}
 
 	return nil, fmt.Errorf("key ID %s not found in JWKS", kid)
+}
+
+// Ready returns true if the validator has successfully fetched JWKS at least once
+func (v *JWTValidator) Ready() bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.ready
+}
+
+// StartBackgroundRetry starts a background goroutine that retries JWKS fetches
+// until successful. This ensures readiness eventually becomes true even if
+// Auth0 is temporarily unreachable during startup.
+// This method is idempotent - calling it multiple times will not start multiple goroutines,
+// and it's safe to call again after a previous retry cycle has completed.
+func (v *JWTValidator) StartBackgroundRetry() {
+	v.mu.Lock()
+	if v.retryRunning {
+		// Already running, don't start another goroutine
+		v.mu.Unlock()
+		log.Debug().Msg("Background retry already running, skipping duplicate start")
+		return
+	}
+
+	// Recreate channels for this retry cycle (safe even if previous cycle closed them)
+	v.stopRetry = make(chan struct{})
+	v.retryDone = make(chan struct{})
+	v.retryRunning = true
+	v.mu.Unlock()
+
+	log.Info().Msg("Starting background JWKS retry (will retry every 5-60s until successful)")
+
+	go func() {
+		defer func() {
+			v.mu.Lock()
+			v.retryRunning = false
+			v.mu.Unlock()
+			close(v.retryDone)
+			log.Info().Msg("Background JWKS retry stopped")
+		}()
+
+		retryInterval := 5 * time.Second
+		maxRetryInterval := 60 * time.Second
+
+		for {
+			// Check if already ready
+			if v.Ready() {
+				log.Info().Msg("JWT validator ready, stopping background retry")
+				return
+			}
+
+			// Try to fetch JWKS
+			log.Debug().Msg("Background retry: attempting to fetch JWKS")
+			err := v.WarmUp()
+			if err == nil {
+				log.Info().Msg("Background retry succeeded, JWT validator now ready")
+				return
+			}
+
+			log.Warn().Err(err).Dur("retryIn", retryInterval).Msg("Background retry failed, will retry")
+
+			// Wait before retry or stop
+			select {
+			case <-time.After(retryInterval):
+				// Exponential backoff (max 60s)
+				retryInterval *= 2
+				if retryInterval > maxRetryInterval {
+					retryInterval = maxRetryInterval
+				}
+			case <-v.stopRetry:
+				log.Info().Msg("Background retry received stop signal")
+				return
+			}
+		}
+	}()
+}
+
+// StopBackgroundRetry stops the background retry goroutine
+// Only waits if the retry goroutine is actually running to avoid deadlock
+func (v *JWTValidator) StopBackgroundRetry() {
+	v.mu.RLock()
+	isRunning := v.retryRunning
+	v.mu.RUnlock()
+
+	if !isRunning {
+		// Retry was never started (warmup succeeded on first try)
+		return
+	}
+
+	close(v.stopRetry)
+	<-v.retryDone // Wait for goroutine to finish
+}
+
+// WarmUp pre-fetches JWKS to make the validator ready
+// This is optional but recommended during startup to avoid readiness delays
+func (v *JWTValidator) WarmUp() error {
+	log.Debug().Msg("Warming up JWT validator (fetching JWKS)")
+
+	resp, err := v.httpClient.Get(v.jwksURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch JWKS during warmup: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("JWKS warmup request failed with status %d", resp.StatusCode)
+	}
+
+	var jwks struct {
+		Keys []struct {
+			Kid string `json:"kid"`
+			Kty string `json:"kty"`
+			Use string `json:"use"`
+			N   string `json:"n"`
+			E   string `json:"e"`
+			Alg string `json:"alg"`
+		} `json:"keys"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
+		return fmt.Errorf("failed to decode JWKS during warmup: %w", err)
+	}
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	// Parse all keys and cache
+	for _, key := range jwks.Keys {
+		if key.Kty != "RSA" || key.Use != "sig" {
+			continue
+		}
+
+		publicKey, err := parseRSAPublicKey(key.N, key.E)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Str("kid", key.Kid).
+				Msg("Failed to parse RSA public key during warmup")
+			continue
+		}
+
+		v.publicKeys[key.Kid] = publicKey
+		log.Debug().
+			Str("kid", key.Kid).
+			Msg("Cached RSA public key during warmup")
+	}
+
+	v.lastFetch = time.Now()
+	v.ready = true
+
+	log.Info().Int("keyCount", len(v.publicKeys)).Msg("JWT validator warmed up successfully")
+	return nil
 }
 
 // parseRSAPublicKey parses RSA public key from JWKS n and e values
