@@ -6,6 +6,9 @@ metadata:
     {{- include "toolbridge-mcpbridge.labels" . | nindent 4 }}
 data:
   MCP_API_BASE_URL: {{ .Values.mcpbridge.apiBaseUrl | quote }}
+  {{- if .Values.mcpbridge.publicUrl }}
+  MCP_PUBLIC_URL: {{ .Values.mcpbridge.publicUrl | quote }}
+  {{- end }}
   MCP_DEV_MODE: {{ .Values.mcpbridge.devMode | quote }}
   MCP_DEBUG: {{ .Values.mcpbridge.debug | quote }}
   MCP_LOG_LEVEL: {{ .Values.mcpbridge.logLevel | quote }}

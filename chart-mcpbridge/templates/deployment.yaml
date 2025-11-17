@@ -36,6 +36,13 @@ spec:
             configMapKeyRef:
               name: {{ include "toolbridge-mcpbridge.fullname" . }}-config
               key: MCP_API_BASE_URL
+        {{- if .Values.mcpbridge.publicUrl }}
+        - name: MCP_PUBLIC_URL
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-mcpbridge.fullname" . }}-config
+              key: MCP_PUBLIC_URL
+        {{- end }}
         - name: MCP_DEV_MODE
           valueFrom:
             configMapKeyRef:

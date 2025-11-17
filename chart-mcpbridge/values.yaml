@@ -22,6 +22,12 @@ mcpbridge:
   # API Base URL (ToolBridge REST API)
   apiBaseUrl: "http://toolbridge-api:80"
 
+  # Public URL for OAuth metadata (RFC 9728)
+  # This is the externally accessible URL that OAuth clients will connect to
+  # Example: "https://mcp.toolbridge.com"
+  # If not set, the server will auto-detect from X-Forwarded-Proto and Host headers
+  publicUrl: ""
+
   # Development mode (bypass Auth0, use X-Debug-Sub header)
   devMode: false
 
