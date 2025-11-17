@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
@@ -16,22 +17,24 @@ import (
 
 // JWTValidator validates Auth0 JWT tokens
 type JWTValidator struct {
-	mu           sync.RWMutex
-	jwksURL      string
-	audience     string
-	issuer       string
-	publicKeys   map[string]*rsa.PublicKey
-	lastFetch    time.Time
-	httpClient   *http.Client
-	ready        bool // true once JWKS has been fetched at least once
-	stopRetry    chan struct{}
-	retryDone    chan struct{}
-	retryRunning bool // true if background retry goroutine is running
+	mu            sync.RWMutex
+	jwksURL       string
+	audience      string
+	issuer        string
+	publicKeys    map[string]*rsa.PublicKey
+	lastFetch     time.Time
+	httpClient    *http.Client
+	ready         bool // true once JWKS has been fetched at least once
+	stopRetry     chan struct{}
+	retryDone     chan struct{}
+	retryRunning  bool // true if background retry goroutine is running
+	introspector  *TokenIntrospector // Optional fallback for opaque tokens
 }
 
 // NewJWTValidator creates a new JWT validator
-func NewJWTValidator(domain, audience string) *JWTValidator {
-	return &JWTValidator{
+// If introspectionConfig is provided, enables fallback to token introspection for opaque tokens
+func NewJWTValidator(domain, audience string, introspectionConfig ...*IntrospectionConfig) *JWTValidator {
+	v := &JWTValidator{
 		jwksURL:    fmt.Sprintf("https://%s/.well-known/jwks.json", domain),
 		audience:   audience,
 		issuer:     fmt.Sprintf("https://%s/", domain),
@@ -40,6 +43,36 @@ func NewJWTValidator(domain, audience string) *JWTValidator {
 		stopRetry:  make(chan struct{}),
 		retryDone:  make(chan struct{}),
 	}
+
+	// Add introspector if config provided
+	if len(introspectionConfig) > 0 && introspectionConfig[0] != nil {
+		cfg := introspectionConfig[0]
+		// Use configured audience or fallback to validator's audience
+		introspectionAudience := cfg.Audience
+		if introspectionAudience == "" {
+			introspectionAudience = audience
+		}
+		v.introspector = NewTokenIntrospector(
+			domain,
+			cfg.ClientID,
+			cfg.ClientSecret,
+			introspectionAudience,
+		)
+		log.Info().
+			Str("endpoint", v.introspector.endpoint).
+			Bool("introspectionEnabled", true).
+			Msg("Token introspection fallback enabled")
+	}
+
+	return v
+}
+
+// IntrospectionConfig holds introspection client credentials
+// Imported from config package to avoid circular dependency
+type IntrospectionConfig struct {
+	ClientID     string
+	ClientSecret string
+	Audience     string
 }
 
 // Claims represents JWT claims
@@ -49,7 +82,45 @@ type Claims struct {
 }
 
 // ValidateToken validates a JWT token and returns claims
-func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
+// Falls back to token introspection if JWT parsing fails and introspector is configured
+func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, bool, error) {
+	// Attempt JWT validation first (happy path for RS256 tokens)
+	claims, jwtErr := v.validateJWT(tokenString)
+	if jwtErr == nil {
+		return claims, false, nil // Success via JWT path
+	}
+
+	// If introspector is not configured, return JWT error
+	if v.introspector == nil {
+		return nil, false, jwtErr
+	}
+
+	// Log JWT failure at debug level before trying introspection
+	log.Debug().
+		Err(jwtErr).
+		Msg("JWT validation failed, attempting token introspection fallback")
+
+	// Attempt introspection fallback
+	ctx := context.Background()
+	claims, introspectErr := v.introspector.Introspect(ctx, tokenString)
+	if introspectErr != nil {
+		// Both paths failed - log warning with both errors
+		log.Warn().
+			Err(jwtErr).
+			AnErr("introspectionError", introspectErr).
+			Msg("Both JWT validation and introspection failed")
+		return nil, false, fmt.Errorf("token validation failed: jwt_error=%w, introspection_error=%v", jwtErr, introspectErr)
+	}
+
+	// Introspection succeeded
+	log.Info().
+		Str("sub", claims.Subject).
+		Msg("Token validated successfully via introspection fallback")
+	return claims, true, nil // Success via introspection path
+}
+
+// validateJWT performs standard JWT validation (internal helper)
+func (v *JWTValidator) validateJWT(tokenString string) (*Claims, error) {
 	// Parse token without validation first to get key ID
 	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
 	if err != nil {

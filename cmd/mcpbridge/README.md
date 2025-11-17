@@ -103,10 +103,17 @@ Create a config file based on `config/mcpbridge_config.example.json`:
     },
     "syncApi": {
       "audience": "https://api.toolbridge.example.com"
+    },
+    "introspection": {
+      "clientId": "YOUR_M2M_CLIENT_ID",
+      "clientSecret": "YOUR_M2M_CLIENT_SECRET",
+      "audience": "https://api.toolbridge.example.com"
     }
   }
 }
 ```
+
+**Note on Token Introspection**: The `introspection` configuration enables fallback to OAuth 2.0 token introspection (RFC 7662) when JWT parsing fails. This is required for handling opaque access tokens issued by Auth0 when Claude Desktop omits the `audience` parameter in authorization requests. The introspection client must be a confidential M2M application with permission to introspect tokens.
 
 ### Environment Variables
 
@@ -122,6 +129,9 @@ Create a config file based on `config/mcpbridge_config.example.json`:
 | `AUTH0_CLIENT_ID_NATIVE_MACOS` | Auth0 macOS client ID | - |
 | `AUTH0_SYNC_API_AUDIENCE` | Sync API audience | - |
 | `AUTH0_SYNC_API_SCOPE` | Additional scopes for sync API | - |
+| `AUTH0_INTROSPECTION_CLIENT_ID` | M2M client ID for token introspection | - |
+| `AUTH0_INTROSPECTION_CLIENT_SECRET` | M2M client secret for token introspection | - |
+| `AUTH0_INTROSPECTION_AUDIENCE` | Optional audience override for introspection | - |
 
 ### CLI Flags
 

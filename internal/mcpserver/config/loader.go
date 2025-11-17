@@ -179,6 +179,27 @@ func applyEnvironmentOverrides(cfg *Config) {
 		cfg.Auth0.SyncAPI.Scope = scope
 	}
 
+	// Token introspection configuration
+	introspectionClientID := strings.TrimSpace(os.Getenv("AUTH0_INTROSPECTION_CLIENT_ID"))
+	introspectionClientSecret := strings.TrimSpace(os.Getenv("AUTH0_INTROSPECTION_CLIENT_SECRET"))
+	introspectionAudience := strings.TrimSpace(os.Getenv("AUTH0_INTROSPECTION_AUDIENCE"))
+
+	// Create introspection config if either clientID or clientSecret is provided
+	if introspectionClientID != "" || introspectionClientSecret != "" {
+		if cfg.Auth0.Introspection == nil {
+			cfg.Auth0.Introspection = &IntrospectionConfig{}
+		}
+		if introspectionClientID != "" {
+			cfg.Auth0.Introspection.ClientID = introspectionClientID
+		}
+		if introspectionClientSecret != "" {
+			cfg.Auth0.Introspection.ClientSecret = introspectionClientSecret
+		}
+		if introspectionAudience != "" {
+			cfg.Auth0.Introspection.Audience = introspectionAudience
+		}
+	}
+
 	// Apply default scopes after all overrides
 	applyDefaultScopes(&cfg.Auth0)
 }

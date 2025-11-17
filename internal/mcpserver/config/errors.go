@@ -18,6 +18,12 @@ var (
 	// ErrMissingSyncAPI indicates that the syncApi configuration is missing
 	ErrMissingSyncAPI = errors.New("auth0.syncApi is required when not in dev mode")
 
+	// ErrMissingIntrospectionClientID indicates that introspection client ID is missing
+	ErrMissingIntrospectionClientID = errors.New("auth0.introspection.clientId is required when introspection is configured")
+
+	// ErrMissingIntrospectionClientSecret indicates that introspection client secret is missing
+	ErrMissingIntrospectionClientSecret = errors.New("auth0.introspection.clientSecret is required when introspection is configured")
+
 	// ErrConfigFileNotFound indicates that the config file was not found
 	ErrConfigFileNotFound = errors.New("configuration file not found")
 

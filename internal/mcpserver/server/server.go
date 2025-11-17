@@ -29,7 +29,16 @@ func NewMCPServer(cfg *config.Config) *MCPServer {
 
 	// Only create JWT validator if not in dev mode and Auth0 is configured
 	if !cfg.DevMode && cfg.Auth0.SyncAPI != nil {
-		jwtValidator = NewJWTValidator(cfg.Auth0.Domain, cfg.Auth0.SyncAPI.Audience)
+		// Convert introspection config if present
+		var introspectionCfg *IntrospectionConfig
+		if cfg.Auth0.Introspection != nil {
+			introspectionCfg = &IntrospectionConfig{
+				ClientID:     cfg.Auth0.Introspection.ClientID,
+				ClientSecret: cfg.Auth0.Introspection.ClientSecret,
+				Audience:     cfg.Auth0.Introspection.Audience,
+			}
+		}
+		jwtValidator = NewJWTValidator(cfg.Auth0.Domain, cfg.Auth0.SyncAPI.Audience, introspectionCfg)
 	}
 
 	sessionMgr := NewSessionManager(24 * time.Hour)
@@ -166,16 +175,19 @@ func (s *MCPServer) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 		}
 
 		tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := s.jwtValidator.ValidateToken(tokenString)
+		claims, usedIntrospection, err := s.jwtValidator.ValidateToken(tokenString)
 		if err != nil {
-			log.Warn().Err(err).Msg("JWT validation failed")
+			log.Warn().Err(err).Bool("introspectionFallback", usedIntrospection).Msg("Access token validation failed")
 			s.sendError(w, nil, InvalidRequest, "invalid token")
 			return
 		}
 
 		userID = claims.Subject
 		expiresAt = claims.ExpiresAt.Time
-	}
+
+		if usedIntrospection {
+			log.Debug().Str("sub", userID).Msg("Token validated via introspection")
+		}
 
 	// Parse JSON-RPC request
 	var req JSONRPCRequest
@@ -373,14 +385,17 @@ func (s *MCPServer) handleMCPGet(w http.ResponseWriter, r *http.Request) {
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := s.jwtValidator.ValidateToken(tokenString)
+		claims, usedIntrospection, err := s.jwtValidator.ValidateToken(tokenString)
 		if err != nil {
-			log.Warn().Err(err).Msg("JWT validation failed")
+			log.Warn().Err(err).Bool("introspectionFallback", usedIntrospection).Msg("Access token validation failed")
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
 
 		userID = claims.Subject
+		if usedIntrospection {
+			log.Debug().Str("sub", userID).Msg("Token validated via introspection")
+		}
 	}
 
 	// Get session
@@ -443,8 +458,11 @@ func (s *MCPServer) handleMCPDelete(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") && s.jwtValidator != nil {
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := s.jwtValidator.ValidateToken(tokenString)
+		claims, usedIntrospection, err := s.jwtValidator.ValidateToken(tokenString)
 		if err == nil {
+			if usedIntrospection {
+				log.Debug().Str("sub", claims.Subject).Msg("Token validated via introspection")
+			}
 			// Verify session belongs to this user
 			session, err := s.sessionMgr.GetSession(sessionID)
 			if err == nil && session.UserID != claims.Subject {
