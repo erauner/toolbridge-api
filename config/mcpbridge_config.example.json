@@ -32,11 +32,6 @@
     "syncApi": {
       "audience": "https://api.toolbridge.example.com",
       "scope": "read:sync write:sync"
-    },
-    "introspection": {
-      "clientId": "YOUR_M2M_CLIENT_ID",
-      "clientSecret": "YOUR_M2M_CLIENT_SECRET",
-      "audience": "https://api.toolbridge.example.com"
     }
   }
 }

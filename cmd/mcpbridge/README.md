@@ -103,20 +103,10 @@ Create a config file based on `config/mcpbridge_config.example.json`:
     },
     "syncApi": {
       "audience": "https://api.toolbridge.example.com"
-    },
-    "introspection": {
-      "clientId": "YOUR_M2M_CLIENT_ID",
-      "clientSecret": "YOUR_M2M_CLIENT_SECRET",
-      "audience": "https://api.toolbridge.example.com"
     }
   }
 }
 ```
-
-**Note on Token Introspection**: The `introspection` configuration enables fallback to OAuth 2.0 token introspection (RFC 7662) when JWT parsing fails. This is required for handling opaque access tokens issued by Auth0 when Claude Desktop omits the `audience` parameter in authorization requests. The introspection client must be a confidential M2M application with:
-- Permission to introspect tokens
-- `client_secret_post` authentication method configured in Auth0
-- Appropriate scopes/grants to validate tokens for your API audience
 
 ### Environment Variables
 
@@ -132,9 +122,6 @@ Create a config file based on `config/mcpbridge_config.example.json`:
 | `AUTH0_CLIENT_ID_NATIVE_MACOS` | Auth0 macOS client ID | - |
 | `AUTH0_SYNC_API_AUDIENCE` | Sync API audience | - |
 | `AUTH0_SYNC_API_SCOPE` | Additional scopes for sync API | - |
-| `AUTH0_INTROSPECTION_CLIENT_ID` | M2M client ID for token introspection | - |
-| `AUTH0_INTROSPECTION_CLIENT_SECRET` | M2M client secret for token introspection | - |
-| `AUTH0_INTROSPECTION_AUDIENCE` | Optional audience override for introspection | - |
 
 ### CLI Flags
 
@@ -204,12 +191,7 @@ The MCP bridge includes a Helm chart for Kubernetes deployment.
 
 ### Prerequisites
 
-1. **Auth0 Configuration**:
-   - Create M2M application for token introspection
-   - Ensure it has `client_secret_post` authentication method
-   - Note the client ID and secret
-
-2. **Helm Values File**:
+1. **Helm Values File**:
 
 Create a `values-production.yaml` file:
 
@@ -228,12 +210,6 @@ mcpbridge:
     domain: "your-tenant.us.auth0.com"
     syncApiAudience: "https://api.toolbridge.example.com"
     clientIdNative: "YOUR_NATIVE_CLIENT_ID"
-
-secrets:
-  # Token introspection credentials (REQUIRED for opaque token support)
-  auth0IntrospectionClientId: "YOUR_M2M_CLIENT_ID"
-  auth0IntrospectionClientSecret: "YOUR_M2M_CLIENT_SECRET"
-  auth0IntrospectionAudience: "https://api.toolbridge.example.com"
 
 ingress:
   enabled: true
@@ -259,26 +235,7 @@ kubectl get pods -l app.kubernetes.io/name=toolbridge-mcpbridge
 kubectl logs -l app.kubernetes.io/name=toolbridge-mcpbridge --tail=100
 ```
 
-### Verify Token Introspection
-
-After deployment, check logs for introspection initialization:
-
-```bash
-kubectl logs -l app.kubernetes.io/name=toolbridge-mcpbridge | grep introspection
-```
-
-Expected log entries:
-```json
-{"level":"info","endpoint":"https://your-tenant.us.auth0.com/oauth/token/introspect","clientId":"YOUR_M2M_CLIENT_ID","authMethod":"client_secret_post","message":"Token introspector initialized (credentials will be sent in form body)"}
-{"level":"info","introspectionEnabled":true,"message":"Token introspection fallback enabled"}
-```
-
 ### Troubleshooting
-
-**401 errors during introspection:**
-- Verify M2M client uses `client_secret_post` authentication method in Auth0
-- Check client secret is correct in Kubernetes secret
-- Ensure M2M client has permission to introspect tokens
 
 **Pod not ready:**
 ```bash
