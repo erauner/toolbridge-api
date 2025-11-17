@@ -116,8 +116,8 @@ func (s *MCPServer) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate protocol version
-	protocolVersion := r.Header.Get("Mcp-Protocol-Version")
+	// Get protocol version (defaults to 2025-06-18 if not specified)
+	protocolVersion := getProtocolVersion(r)
 	if !isSupportedProtocolVersion(protocolVersion) {
 		log.Warn().
 			Str("version", protocolVersion).
@@ -327,8 +327,8 @@ func (s *MCPServer) handleMCPGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate protocol version
-	protocolVersion := r.Header.Get("Mcp-Protocol-Version")
+	// Get protocol version (defaults to 2025-06-18 if not specified)
+	protocolVersion := getProtocolVersion(r)
 	if !isSupportedProtocolVersion(protocolVersion) {
 		log.Warn().
 			Str("version", protocolVersion).
@@ -480,6 +480,16 @@ func (s *MCPServer) createRESTClient(tokenProvider *PassthroughTokenProvider, us
 
 	sessionMgr := client.NewSessionManager(s.config.APIBaseURL, tokenProvider, audience)
 	return client.NewHTTPClient(s.config.APIBaseURL, tokenProvider, sessionMgr, audience, debugSub)
+}
+
+// getProtocolVersion returns the MCP protocol version from the request header
+// If the header is missing or empty, defaults to the latest version (2025-06-18)
+func getProtocolVersion(r *http.Request) string {
+	version := r.Header.Get("Mcp-Protocol-Version")
+	if version == "" {
+		return "2025-06-18" // Default to latest version
+	}
+	return version
 }
 
 // isSupportedProtocolVersion checks if the given MCP protocol version is supported
