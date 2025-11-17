@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -70,7 +69,7 @@ func (sm *SessionManager) GetSession(sessionID string) (*MCPSession, error) {
 
 	session, exists := sm.sessions[sessionID]
 	if !exists {
-		return nil, fmt.Errorf("session not found")
+		return nil, tools.ErrSessionNotFound
 	}
 
 	return session, nil
@@ -106,7 +105,7 @@ func (sm *SessionManager) AddAttachment(sessionID string, att tools.Attachment) 
 
 	session, exists := sm.sessions[sessionID]
 	if !exists {
-		return fmt.Errorf("session not found")
+		return tools.ErrSessionNotFound
 	}
 
 	// Enforce attachment limit (prevent memory growth)
@@ -140,7 +139,7 @@ func (sm *SessionManager) RemoveAttachment(sessionID, entityUID, entityKind stri
 
 	session, exists := sm.sessions[sessionID]
 	if !exists {
-		return fmt.Errorf("session not found")
+		return tools.ErrSessionNotFound
 	}
 
 	// Find and remove the attachment (filter by both UID and kind for precision)
@@ -176,7 +175,7 @@ func (sm *SessionManager) ListAttachments(sessionID string) ([]tools.Attachment,
 
 	session, exists := sm.sessions[sessionID]
 	if !exists {
-		return nil, fmt.Errorf("session not found")
+		return nil, tools.ErrSessionNotFound
 	}
 
 	// Return a copy to prevent external modification
@@ -193,7 +192,7 @@ func (sm *SessionManager) ClearAttachments(sessionID string) error {
 
 	session, exists := sm.sessions[sessionID]
 	if !exists {
-		return fmt.Errorf("session not found")
+		return tools.ErrSessionNotFound
 	}
 
 	session.Attachments = make([]tools.Attachment, 0)

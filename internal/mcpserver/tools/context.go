@@ -12,6 +12,7 @@ var (
 	ErrAttachmentLimitExceeded = errors.New("attachment limit exceeded")
 	ErrAttachmentAlreadyExists = errors.New("entity already attached")
 	ErrAttachmentNotFound      = errors.New("attachment not found")
+	ErrSessionNotFound         = errors.New("session not found or expired")
 )
 
 // SessionManager interface for attachment management (to avoid circular imports)

@@ -34,7 +34,7 @@ func HandleAttachContext(ctx context.Context, tc *ToolContext, raw json.RawMessa
 
 	if err := tc.SessionManager.AddAttachment(tc.SessionID, attachment); err != nil {
 		// Map known client errors to ErrCodeInvalidParams
-		if errors.Is(err, ErrAttachmentAlreadyExists) || errors.Is(err, ErrAttachmentLimitExceeded) {
+		if errors.Is(err, ErrAttachmentAlreadyExists) || errors.Is(err, ErrAttachmentLimitExceeded) || errors.Is(err, ErrSessionNotFound) {
 			return nil, NewToolError(ErrCodeInvalidParams, err.Error(), nil)
 		}
 		// Unknown/internal errors
@@ -75,7 +75,7 @@ func HandleDetachContext(ctx context.Context, tc *ToolContext, raw json.RawMessa
 	// Remove attachment from session (by both UID and kind to target specific attachment)
 	if err := tc.SessionManager.RemoveAttachment(tc.SessionID, uid.String(), params.EntityKind); err != nil {
 		// Map known client errors to ErrCodeInvalidParams
-		if errors.Is(err, ErrAttachmentNotFound) {
+		if errors.Is(err, ErrAttachmentNotFound) || errors.Is(err, ErrSessionNotFound) {
 			return nil, NewToolError(ErrCodeInvalidParams, err.Error(), nil)
 		}
 		// Unknown/internal errors
@@ -103,6 +103,10 @@ func HandleListContext(ctx context.Context, tc *ToolContext, raw json.RawMessage
 	// Retrieve attachments from session
 	attachments, err := tc.SessionManager.ListAttachments(tc.SessionID)
 	if err != nil {
+		// Map session not found to client error
+		if errors.Is(err, ErrSessionNotFound) {
+			return nil, NewToolError(ErrCodeInvalidParams, err.Error(), nil)
+		}
 		return nil, NewToolError(ErrCodeInternal, "Failed to list context: "+err.Error(), nil)
 	}
 
@@ -124,6 +128,10 @@ func HandleClearContext(ctx context.Context, tc *ToolContext, raw json.RawMessag
 
 	// Clear all attachments from session
 	if err := tc.SessionManager.ClearAttachments(tc.SessionID); err != nil {
+		// Map session not found to client error
+		if errors.Is(err, ErrSessionNotFound) {
+			return nil, NewToolError(ErrCodeInvalidParams, err.Error(), nil)
+		}
 		return nil, NewToolError(ErrCodeInternal, "Failed to clear context: "+err.Error(), nil)
 	}
 
