@@ -30,7 +30,7 @@ services:
 
   # Database Migration Job
   migrate:
-    image: ghcr.io/erauner12/toolbridge-api:latest
+    image: toolbridge-api:latest
     container_name: toolbridge-migrate-test
     depends_on:
       postgres:
@@ -42,13 +42,14 @@ services:
       DB_NAME: toolbridge
       DB_USER: toolbridge
       POSTGRES_PASSWORD: dev-password
-    command: ["/bin/sh", "/app/scripts/migrate.sh"]
+    entrypoint: ["/bin/sh"]
+    command: ["/app/scripts/migrate.sh"]
     networks:
       - mcp-test
 
   # ToolBridge REST API
   toolbridge-api:
-    image: ghcr.io/erauner12/toolbridge-api:latest
+    image: toolbridge-api:latest
     container_name: toolbridge-api-test
     depends_on:
       migrate:
@@ -61,7 +62,7 @@ services:
     ports:
       - "8081:8081"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8081/healthz"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -85,7 +86,7 @@ services:
       - "8082:8082"
     command: ["--dev", "--debug"]
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8082/healthz"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -113,7 +114,7 @@ services:
     command: ["--debug"]
     healthcheck:
       # Health should pass even if JWT validator isn't ready
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8082/healthz"]
       interval: 5s
       timeout: 3s
       retries: 5

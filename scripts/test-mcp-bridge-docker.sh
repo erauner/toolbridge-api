@@ -104,7 +104,7 @@ log_step "Step 4: Testing REST API"
 
 # Health check
 HEALTH=$(curl -s http://localhost:8081/healthz)
-if echo "$HEALTH" | jq -e '.status == "ok"' > /dev/null; then
+if [ "$HEALTH" = "ok" ]; then
     log_info "REST API health check passed"
 else
     log_error "REST API health check failed: $HEALTH"
