@@ -27,8 +27,12 @@ mcp = FastMCP(
 # Import tools to register them with the server
 # This triggers the @tool decorators which register tools with the mcp instance
 from toolbridge_mcp.tools import notes  # noqa: F401, E402
+from toolbridge_mcp.tools import tasks  # noqa: F401, E402
+from toolbridge_mcp.tools import comments  # noqa: F401, E402
+from toolbridge_mcp.tools import chats  # noqa: F401, E402
+from toolbridge_mcp.tools import chat_messages  # noqa: F401, E402
 
-logger.info("ToolBridge MCP server initialized")
+logger.info("ToolBridge MCP server initialized with 40 tools (8 per entity x 5 entities)")
 
 
 # Optional: Add health check endpoint
