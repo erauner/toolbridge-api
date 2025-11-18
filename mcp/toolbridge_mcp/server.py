@@ -20,8 +20,6 @@ logger.add(
 # Create MCP server instance
 mcp = FastMCP(
     name="ToolBridge",
-    version="0.1.0",
-    description="MCP server for ToolBridge note-taking and task management API",
 )
 
 # Import tools to register them with the server
