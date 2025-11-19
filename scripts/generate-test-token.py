@@ -4,16 +4,32 @@ Generate HS256 JWT token for testing ToolBridge API
 
 This creates a token compatible with the production API's dual auth mode.
 The token includes Auth0-compatible claims (iss, aud) but uses HS256 signing.
+
+Usage:
+    export JWT_SECRET="your-jwt-secret-from-k8s"
+    python scripts/generate-test-token.py
 """
 import jwt
 import time
 import sys
+import os
 from datetime import datetime, timedelta
 
-# Production API configuration (from K8s)
-JWT_SECRET = "ZQS+HjOePeZGMbK5VnbSSkc/s+lcT4NVVcNidbUBGEQ="
-AUTH0_ISSUER = "https://dev-zysv6k3xo7pkwmcb.us.auth0.com/"
-AUTH0_AUDIENCE = "https://toolbridgeapi.erauner.dev"
+# API configuration from environment
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+if not JWT_SECRET:
+    print("ERROR: JWT_SECRET environment variable is required", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Get it from K8s:", file=sys.stderr)
+    print('  kubectl get secret toolbridge-secret -n toolbridge -o jsonpath=\'{.data.jwt-secret}\' | base64 -d', file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Then:", file=sys.stderr)
+    print('  export JWT_SECRET="your-secret-here"', file=sys.stderr)
+    print('  python scripts/generate-test-token.py', file=sys.stderr)
+    sys.exit(1)
+
+AUTH0_ISSUER = os.getenv("AUTH0_ISSUER", "https://dev-zysv6k3xo7pkwmcb.us.auth0.com/")
+AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "https://toolbridgeapi.erauner.dev")
 
 # Token claims
 now = int(time.time())
