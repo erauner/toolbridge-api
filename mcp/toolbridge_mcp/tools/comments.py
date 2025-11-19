@@ -12,7 +12,7 @@ from loguru import logger
 
 from toolbridge_mcp.async_client import get_client
 from toolbridge_mcp.utils.requests import call_get, call_post, call_put, call_patch, call_delete
-from toolbridge_mcp.server import mcp
+from toolbridge_mcp.mcp_instance import mcp
 
 
 # Pydantic models matching Go API responses
