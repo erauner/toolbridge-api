@@ -3,18 +3,17 @@ Session management for MCP tool requests.
 
 Each MCP tool invocation creates a new sync session with the Go API.
 This session-per-request approach is simple and doesn't require cleanup.
+
+Note: Sessions are NOT cached or reused. Every call to create_session
+creates a fresh session to avoid stale session issues when sessions expire.
 """
 
 from typing import Dict
-from contextvars import ContextVar
 
 import httpx
 from loguru import logger
 
 from toolbridge_mcp.config import settings
-
-# Context variable to store session info for the current request
-_session_context: ContextVar[Dict[str, str]] = ContextVar("session_context", default={})
 
 
 class SessionError(Exception):
@@ -25,6 +24,9 @@ class SessionError(Exception):
 async def create_session(client: httpx.AsyncClient, auth_header: str, user_id: str) -> Dict[str, str]:
     """
     Create a new sync session with the Go API.
+
+    This always creates a fresh session - no caching or reuse.
+    This ensures MCP tools can recover from session expiration.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -39,7 +41,7 @@ async def create_session(client: httpx.AsyncClient, auth_header: str, user_id: s
         httpx.HTTPStatusError: If request fails
     """
     try:
-        logger.debug(f"Creating sync session for user: {user_id}")
+        logger.debug(f"Creating fresh sync session for user: {user_id}")
 
         response = await client.post(
             "/v1/sync/sessions",
@@ -61,9 +63,6 @@ async def create_session(client: httpx.AsyncClient, auth_header: str, user_id: s
 
         logger.debug(f"✓ Session created: {session_id} (epoch={session_epoch})")
 
-        # Store in context for this request
-        _session_context.set(session_headers)
-
         return session_headers
 
     except httpx.HTTPStatusError as e:
@@ -72,22 +71,3 @@ async def create_session(client: httpx.AsyncClient, auth_header: str, user_id: s
     except Exception as e:
         logger.error(f"Unexpected error creating session: {e}")
         raise SessionError(f"Session creation failed: {e}") from e
-
-
-def get_session_headers() -> Dict[str, str]:
-    """
-    Get session headers for the current request context.
-
-    Returns:
-        Dict with session headers, or empty dict if no session
-    """
-    return _session_context.get()
-
-
-def clear_session():
-    """
-    Clear session context.
-
-    This is primarily for testing/cleanup.
-    """
-    _session_context.set({})

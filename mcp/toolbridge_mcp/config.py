@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     tenant_header_secret: str
     
     # Go API connection
-    go_api_base_url: str = "http://localhost:8080"
+    go_api_base_url: str = "http://localhost:8081"
     
     # Logging
     log_level: str = "INFO"

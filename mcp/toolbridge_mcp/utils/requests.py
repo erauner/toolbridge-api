@@ -5,7 +5,8 @@ These helpers extract the Authorization header from the current MCP request
 context and forward it to the Go API along with tenant headers (which are
 added automatically by TenantDirectTransport).
 
-Session management: Each request creates a sync session before calling the API.
+Session management: Each request creates a fresh sync session before calling
+the API. Sessions are NOT cached or reused to avoid stale session issues.
 """
 
 from typing import Any, Dict, Optional
@@ -15,7 +16,7 @@ import jwt as pyjwt
 from fastmcp.server.dependencies import get_http_headers
 from loguru import logger
 
-from toolbridge_mcp.utils.session import create_session, get_session_headers
+from toolbridge_mcp.utils.session import create_session
 
 
 class AuthorizationError(Exception):
@@ -92,9 +93,10 @@ def extract_user_id_from_jwt(auth_header: str) -> str:
 
 async def ensure_session(client: httpx.AsyncClient, auth_header: str) -> Dict[str, str]:
     """
-    Ensure a sync session exists for the current request.
+    Create a fresh sync session for this request.
 
-    Creates a new session if one doesn't exist in the context.
+    Always creates a new session - no caching or reuse.
+    This ensures MCP tools can recover from session expiration.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -103,12 +105,7 @@ async def ensure_session(client: httpx.AsyncClient, auth_header: str) -> Dict[st
     Returns:
         Dict with session headers
     """
-    # Check if session already exists in context
-    session_headers = get_session_headers()
-    if session_headers:
-        return session_headers
-
-    # Create new session
+    # Always create a fresh session for each request
     user_id = extract_user_id_from_jwt(auth_header)
     return await create_session(client, auth_header, user_id)
 
@@ -121,7 +118,7 @@ async def call_get(
     """
     Make GET request to Go API.
 
-    Creates a sync session if one doesn't exist, then includes session headers.
+    Creates a fresh sync session for this request and includes session headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -157,7 +154,7 @@ async def call_post(
     """
     Make POST request to Go API.
 
-    Creates a sync session if one doesn't exist, then includes session headers.
+    Creates a fresh sync session for this request and includes session headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -194,7 +191,7 @@ async def call_put(
     """
     Make PUT request to Go API.
 
-    Creates a sync session if one doesn't exist, then includes session headers.
+    Creates a fresh sync session for this request and includes session headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -234,7 +231,7 @@ async def call_patch(
     """
     Make PATCH request to Go API.
 
-    Creates a sync session if one doesn't exist, then includes session headers.
+    Creates a fresh sync session for this request and includes session headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -269,7 +266,7 @@ async def call_delete(
     """
     Make DELETE request to Go API.
 
-    Creates a sync session if one doesn't exist, then includes session headers.
+    Creates a fresh sync session for this request and includes session headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
