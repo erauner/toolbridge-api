@@ -209,13 +209,17 @@ async def test_mcp_to_go_api_flow():
 
             # Retrieve the note to verify
             logger.info("Retrieving note...")
+            get_headers = {
+                "Authorization": f"Bearer {token}",
+                "X-Sync-Session": session_id,
+                "X-Sync-Epoch": str(epoch),
+            }
+            if tenant_headers:
+                get_headers.update(tenant_headers)
+
             get_response = await client.get(
                 f"{GO_API_BASE_URL}/v1/notes/{note_uid}",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "X-Sync-Session": session_id,
-                    "X-Sync-Epoch": str(epoch),
-                },
+                headers=get_headers,
             )
 
             if get_response.status_code != 200:
@@ -227,13 +231,17 @@ async def test_mcp_to_go_api_flow():
 
             # Clean up: delete the test note
             logger.info("Cleaning up test note...")
+            delete_headers = {
+                "Authorization": f"Bearer {token}",
+                "X-Sync-Session": session_id,
+                "X-Sync-Epoch": str(epoch),
+            }
+            if tenant_headers:
+                delete_headers.update(tenant_headers)
+
             delete_response = await client.delete(
                 f"{GO_API_BASE_URL}/v1/notes/{note_uid}",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "X-Sync-Session": session_id,
-                    "X-Sync-Epoch": str(epoch),
-                },
+                headers=delete_headers,
             )
 
             if delete_response.status_code != 200:
