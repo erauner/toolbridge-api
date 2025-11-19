@@ -6,7 +6,7 @@
 ## 🎉 What We Accomplished
 
 ### 1. ✅ K8s Secret Configuration
-- **Generated** tenant header secret: `g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=`
+- **Generated** tenant header secret: `<TENANT_HEADER_SECRET_FROM_K8S>`
 - **Added** to K8s SOPS secret at `homelab-k8s/apps/toolbridge-api/production-overlays/toolbridge-secret.sops.yaml`
 - **Committed and pushed** to GitHub
 - **Auto-synced** by ArgoCD
@@ -29,7 +29,7 @@
 - **Configured secrets:**
   - `TOOLBRIDGE_GO_API_BASE_URL=https://toolbridgeapi.erauner.dev`
   - `TOOLBRIDGE_TENANT_ID=staging-tenant-001`
-  - `TOOLBRIDGE_TENANT_HEADER_SECRET=g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=`
+  - `TOOLBRIDGE_TENANT_HEADER_SECRET=<TENANT_HEADER_SECRET_FROM_K8S>`
   - `TOOLBRIDGE_LOG_LEVEL=INFO`
 - **Deployed** successfully
 - **Status:** App is running and responding
@@ -60,7 +60,7 @@
 
 2. **Integration Tests:** Need correct JWT secret
    - Current: Using `dev-secret` (incorrect)
-   - Actual: `ZQS+HjOePeZGMbK5VnbSSkc/s+lcT4NVVcNidbUBGEQ=` (from K8s)
+   - Actual: `<JWT_SECRET_FROM_K8S>` (from K8s)
 
 ## 🔧 Next Steps (Ready to Execute)
 
@@ -76,7 +76,7 @@
    cd /Users/erauner/git/side/toolbridge-api
    export MCP_BASE_URL="https://toolbridge-mcp-staging.fly.dev"
    export GO_API_BASE_URL="https://toolbridgeapi.erauner.dev"
-   export JWT_SECRET="ZQS+HjOePeZGMbK5VnbSSkc/s+lcT4NVVcNidbUBGEQ="
+   export JWT_SECRET="<JWT_SECRET_FROM_K8S>"
    export TENANT_ID="staging-tenant-001"
    
    uv run python scripts/test-mcp-staging.py
@@ -140,12 +140,12 @@
 
 **Tenant Header Secret (K8s + Fly.io):**
 ```
-g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=
+<TENANT_HEADER_SECRET_FROM_K8S>
 ```
 
 **JWT Secret (K8s - for testing):**
 ```
-ZQS+HjOePeZGMbK5VnbSSkc/s+lcT4NVVcNidbUBGEQ=
+<JWT_SECRET_FROM_K8S>
 ```
 
 **Tenant ID:**
@@ -184,7 +184,7 @@ curl -N https://toolbridge-mcp-staging.fly.dev/sse
 # Run integration tests
 cd /Users/erauner/git/side/toolbridge-api
 export MCP_BASE_URL="https://toolbridge-mcp-staging.fly.dev"
-export JWT_SECRET="ZQS+HjOePeZGMbK5VnbSSkc/s+lcT4NVVcNidbUBGEQ="
+export JWT_SECRET="<JWT_SECRET_FROM_K8S>"
 uv run python scripts/test-mcp-staging.py
 ```
 

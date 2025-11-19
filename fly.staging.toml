@@ -58,14 +58,16 @@ kill_timeout = "5s"
     timeout = "2s"
     grace_period = "10s"
 
-  [[services.http_checks]]
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "15s"
-    method = "GET"
-    path = "/sse"
-    protocol = "http"
-    tls_skip_verify = false
+  # Health checks disabled - FastMCP SSE endpoint requires authentication
+  # TODO: Add dedicated public health endpoint in future PR
+  # [[services.http_checks]]
+  #   interval = "30s"
+  #   timeout = "5s"
+  #   grace_period = "15s"
+  #   method = "GET"
+  #   path = "/sse"
+  #   protocol = "http"
+  #   tls_skip_verify = false
 
 [http_service]
   internal_port = 8001

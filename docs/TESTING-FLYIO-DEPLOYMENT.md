@@ -46,7 +46,7 @@ echo "$TENANT_SECRET" > /tmp/tenant-secret.txt
 
 **Generated for you:**
 ```
-g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=
+<TENANT_HEADER_SECRET_FROM_K8S>
 ```
 
 ### Step 1.2: Add to K8s SOPS Secret
@@ -64,7 +64,7 @@ Add this line under `stringData:`:
 ```yaml
 stringData:
   # ... existing keys ...
-  tenant-header-secret: "g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw="
+  tenant-header-secret: "<TENANT_HEADER_SECRET_FROM_K8S>"
 ```
 
 ### Step 1.3: Commit and Sync
@@ -87,7 +87,7 @@ kubectl rollout status deployment/toolbridge-api -n toolbridge
 ```bash
 # Check the secret now has the new key
 kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.tenant-header-secret}' | base64 -d
-# Should output: g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=
+# Should output: <TENANT_HEADER_SECRET_FROM_K8S>
 ```
 
 ## Phase 2: Test Docker Build Locally
@@ -120,7 +120,7 @@ docker run --rm -d --name toolbridge-mcp-test \
   -p 8001:8001 \
   -e TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
   -e TOOLBRIDGE_TENANT_ID="local-test-tenant" \
-  -e TOOLBRIDGE_TENANT_HEADER_SECRET="g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=" \
+  -e TOOLBRIDGE_TENANT_HEADER_SECRET="<TENANT_HEADER_SECRET_FROM_K8S>" \
   -e TOOLBRIDGE_LOG_LEVEL="DEBUG" \
   toolbridge-mcp:local
 
@@ -193,7 +193,7 @@ fly apps list | grep toolbridge-mcp-staging
 fly secrets set \
   TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
   TOOLBRIDGE_TENANT_ID="staging-tenant-001" \
-  TOOLBRIDGE_TENANT_HEADER_SECRET="g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=" \
+  TOOLBRIDGE_TENANT_HEADER_SECRET="<TENANT_HEADER_SECRET_FROM_K8S>" \
   TOOLBRIDGE_LOG_LEVEL="INFO" \
   -a toolbridge-mcp-staging
 ```
@@ -466,7 +466,7 @@ fly ssh console -a toolbridge-mcp-staging
 Save these securely (e.g., 1Password):
 
 ```
-TOOLBRIDGE_TENANT_HEADER_SECRET=g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw=
+TOOLBRIDGE_TENANT_HEADER_SECRET=<TENANT_HEADER_SECRET_FROM_K8S>
 TOOLBRIDGE_TENANT_ID=staging-tenant-001
 TOOLBRIDGE_GO_API_BASE_URL=https://toolbridgeapi.erauner.dev
 ```

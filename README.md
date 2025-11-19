@@ -88,6 +88,28 @@ curl 'http://localhost:8081/v1/sync/notes/pull?limit=100' \
   -H 'X-Debug-Sub: demo-user'
 ```
 
+## Secrets Management
+
+**For local development and testing:**
+
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Get production secrets from K8s:
+   ```bash
+   # JWT Secret
+   kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.jwt-secret}' | base64 -d
+
+   # Tenant Header Secret (for MCP deployments)
+   kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.tenant-header-secret}' | base64 -d
+   ```
+
+3. Fill in your `.env` file with the retrieved secrets
+
+**Never commit `.env`** - it's already in `.gitignore`. Use `.env.example` for documentation only.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -96,6 +118,7 @@ curl 'http://localhost:8081/v1/sync/notes/pull?limit=100' \
 | `JWT_HS256_SECRET` | `dev-secret-change-in-production` | JWT signing secret |
 | `HTTP_ADDR` | `:8081` | HTTP server address |
 | `ENV` | `dev` | Environment (`dev` enables pretty logs) |
+| `TENANT_HEADER_SECRET` | (optional) | HMAC secret for tenant header validation (MCP mode) |
 
 ## Authentication
 

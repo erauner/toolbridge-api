@@ -77,7 +77,7 @@ import jwt
 from datetime import datetime, timedelta
 
 # Configuration
-JWT_SECRET = "ZQS+HjOePeZGMbK5VnbSSkc/s+lcT4NVVcNidbUBGEQ="  # From K8s secret
+JWT_SECRET = "<JWT_SECRET_FROM_K8S>"  # From K8s secret
 USER_ID = "claude-desktop-user"  # Your user ID
 TENANT_ID = "staging-tenant-001"
 
@@ -283,7 +283,7 @@ For convenience, here's a script that sets everything up:
 echo "🚀 Setting up Claude Desktop for ToolBridge MCP"
 
 # Generate JWT token
-JWT_SECRET="ZQS+HjOePeZGMbK5VnbSSkc/s+lcT4NVVcNidbUBGEQ="
+JWT_SECRET="<JWT_SECRET_FROM_K8S>"
 USER_ID="claude-desktop-user"
 TENANT_ID="staging-tenant-001"
 
