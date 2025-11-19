@@ -152,6 +152,7 @@ secrets:
   dbUsername: ""         # Database username
   dbPassword: ""         # Database password (base64)
   databaseUrl: ""        # Complete DATABASE_URL (base64)
+  tenantHeaderSecret: "" # Tenant header HMAC secret (required when api.mcp.enabled=true)
 
   # Use existing secret instead of creating one
   existingSecret: ""
