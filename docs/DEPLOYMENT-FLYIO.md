@@ -33,6 +33,22 @@ This guide covers deploying the **MCP-only** Python proxy service to Fly.io stag
           PostgreSQL (CloudNativePG in K8s)
 ```
 
+## 🔒 Security Checklist (Critical!)
+
+**Before deploying**, ensure you've completed these security steps:
+
+- [ ] **Secrets exist in K8s** - Verify `kubectl get secret toolbridge-secret -n toolbridge` returns jwt-secret + tenant-header-secret
+- [ ] **Secrets match Fly.io** - Both services must use the same TENANT_HEADER_SECRET
+- [ ] **Secrets are rotated** - If this is a re-deployment after exposure, generate new secrets first
+- [ ] **Local .env configured** - Copy `.env.example` to `.env` and fill in secrets for testing
+
+**📘 Detailed Reference:** See [SECRETS-REFERENCE.md](./SECRETS-REFERENCE.md) for:
+- How to generate secrets securely
+- K8s secret structure and encryption (SOPS)
+- Fly.io secrets management
+- Secret rotation procedures
+- Validation and troubleshooting
+
 ## Prerequisites
 
 1. **Fly.io CLI installed:**

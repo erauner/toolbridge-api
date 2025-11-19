@@ -203,12 +203,25 @@ if [[ ! $REPLY =~ ^[Nn]$ ]]; then
     FLY_APP_URL="https://${FLY_APP_NAME}.fly.dev"
     
     echo "Running integration tests..."
-    cd "$(dirname "$0")"
-    
+    cd "$(dirname "$0")/.."
+
     export MCP_BASE_URL="${FLY_APP_URL}"
     export GO_API_BASE_URL="${GO_API_URL}"
-    export JWT_SECRET="dev-secret"  # You may need to update this
     export TENANT_ID="${TENANT_ID}"
+
+    # Try to load JWT_SECRET from .env, otherwise fetch from K8s
+    if [ -f ".env" ]; then
+        echo "Loading JWT_SECRET from .env..."
+        export $(grep "^JWT_SECRET=" .env | xargs)
+    else
+        echo "Fetching JWT_SECRET from K8s..."
+        export JWT_SECRET=$(kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.jwt-secret}' 2>/dev/null | base64 -d)
+    fi
+
+    if [ -z "$JWT_SECRET" ]; then
+        echo -e "${YELLOW}⚠ JWT_SECRET not found. Integration tests will likely fail.${NC}"
+        echo "Create .env file or ensure kubectl access to K8s cluster."
+    fi
     
     if [ -f "test-mcp-staging.py" ]; then
         python3 test-mcp-staging.py
