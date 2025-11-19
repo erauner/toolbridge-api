@@ -17,6 +17,7 @@ from fastmcp.server.dependencies import get_http_headers
 from loguru import logger
 
 from toolbridge_mcp.utils.session import create_session
+from toolbridge_mcp.config import settings
 
 
 class AuthorizationError(Exception):
@@ -31,9 +32,11 @@ class JWTDecodeError(Exception):
 
 async def get_auth_header() -> str:
     """
-    Extract Authorization header from current MCP request context.
+    Extract Authorization header from current MCP request context or config.
 
-    Uses FastMCP's dependency injection to access request headers.
+    Supports two modes:
+    1. Shared token (testing): Use JWT_TOKEN from config if available
+    2. Per-user token (production): Extract from MCP request Authorization header
 
     Returns:
         Authorization header value (e.g., "Bearer eyJ...")
@@ -41,15 +44,22 @@ async def get_auth_header() -> str:
     Raises:
         AuthorizationError: If Authorization header is missing
     """
+    # Option 1: Use configured shared token (for testing/staging)
+    if settings.jwt_token:
+        logger.debug("Using configured JWT token (shared mode)")
+        return f"Bearer {settings.jwt_token}"
+
+    # Option 2: Extract from MCP request (for production OAuth)
     headers = get_http_headers()
     auth = headers.get("authorization") or headers.get("Authorization")
 
     if not auth:
-        logger.error("Missing Authorization header in MCP request")
+        logger.error("Missing Authorization header in MCP request and no JWT_TOKEN configured")
         raise AuthorizationError(
-            "Missing Authorization header. MCP client must provide JWT token."
+            "Missing Authorization header. MCP client must provide JWT token or configure TOOLBRIDGE_JWT_TOKEN."
         )
 
+    logger.debug("Using Authorization header from MCP request (per-user mode)")
     return auth
 
 

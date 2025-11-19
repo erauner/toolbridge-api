@@ -39,6 +39,7 @@ Fly.io configuration optimized for MCP proxy staging deployment:
 - `TOOLBRIDGE_GO_API_BASE_URL` → Points to K8s ingress
 - `TOOLBRIDGE_TENANT_ID` → Tenant identifier
 - `TOOLBRIDGE_TENANT_HEADER_SECRET` → HMAC signing secret (matches K8s)
+- `TOOLBRIDGE_JWT_TOKEN` → Shared JWT token for backend API authentication
 - `TOOLBRIDGE_LOG_LEVEL` → Configurable logging
 
 ### 3. Comprehensive Deployment Documentation
@@ -119,12 +120,12 @@ Updated existing docs to reference Fly.io deployment:
 │  MCP Client (Claude Desktop, etc.)     │
 └──────────────┬──────────────────────────┘
                │ HTTPS/MCP Protocol
-               │ Authorization: Bearer {jwt}
+               │ (No auth required - shared tenant mode)
                ▼
 ┌─────────────────────────────────────────┐
 │  Fly.io: Python MCP Proxy               │
 │  (toolbridge-mcp-staging.fly.dev)       │
-│  - Validates JWT                        │
+│  - Uses shared JWT token                │
 │  - Generates signed tenant headers      │
 │  - Forwards to K8s Go API               │
 │                                         │
@@ -133,6 +134,7 @@ Updated existing docs to reference Fly.io deployment:
 │  VM: 1 CPU, 512MB RAM                   │
 └──────────────┬──────────────────────────┘
                │ HTTPS
+               │ Authorization: Bearer {shared-jwt}
                │ X-TB-Tenant-ID
                │ X-TB-Timestamp
                │ X-TB-Signature
@@ -140,7 +142,7 @@ Updated existing docs to reference Fly.io deployment:
 ┌─────────────────────────────────────────┐
 │  K8s: Go REST API                       │
 │  (toolbridgeapi.erauner.dev)            │
-│  - Validates JWT                        │
+│  - Validates shared JWT                 │
 │  - Validates tenant headers             │
 │  - Executes business logic              │
 │                                         │
@@ -151,6 +153,38 @@ Updated existing docs to reference Fly.io deployment:
                ▼
           PostgreSQL (K8s)
 ```
+
+## Authentication Model
+
+### Current Implementation (Shared JWT Token)
+
+The current deployment uses a **shared JWT token** approach for simplicity and rapid deployment:
+
+- **MCP Client → MCP Proxy:** No authentication required (unauthenticated SSE connection)
+- **MCP Proxy → Go API:** Uses shared JWT token from `TOOLBRIDGE_JWT_TOKEN` environment variable
+- **Tenant Isolation:** Enforced via HMAC-signed tenant headers (`X-TB-Tenant-ID`, `X-TB-Signature`)
+
+**Benefits:**
+✅ Simple setup - no OAuth configuration needed
+✅ Works immediately with Claude Desktop and MCP Inspector
+✅ All requests isolated to a single tenant (staging-tenant-001)
+✅ Backend API properly authenticated with JWT
+
+**Limitations:**
+⚠️ All MCP clients share the same user identity (`claude-desktop-user`)
+⚠️ Cannot support multi-user scenarios
+⚠️ No per-user permissions or data isolation
+
+### Future: OAuth/PKCE Support
+
+Per-user authentication with OAuth will be added in a future PR:
+
+- **MCP Client → MCP Proxy:** OAuth PKCE flow for user authentication
+- **User-specific JWT:** Each Claude Desktop user gets their own JWT token
+- **Per-user data isolation:** Notes/tasks/chats isolated by user ID
+- **Auth0 Integration:** Leverages existing Auth0 infrastructure
+
+**Tracking:** TODO - Create GitHub issue for OAuth/PKCE implementation
 
 ## Benefits of MCP-Only Deployment
 
@@ -191,12 +225,18 @@ Updated existing docs to reference Fly.io deployment:
    fly apps create toolbridge-mcp-staging
    ```
 
-3. **Set Fly.io secrets:**
+3. **Generate JWT token:**
+   ```bash
+   python3 scripts/generate-test-token.py
+   ```
+
+4. **Set Fly.io secrets:**
    ```bash
    fly secrets set -a toolbridge-mcp-staging \
      TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
      TOOLBRIDGE_TENANT_ID="staging-tenant-001" \
-     TOOLBRIDGE_TENANT_HEADER_SECRET="<from-k8s-secret>"
+     TOOLBRIDGE_TENANT_HEADER_SECRET="<from-k8s-secret>" \
+     TOOLBRIDGE_JWT_TOKEN="<from-generate-test-token.py>"
    ```
 
 ### Deployment (Repeatable)
