@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
@@ -96,6 +97,7 @@ func parseLimit(q string, def, max int) int {
 }
 
 // Routes creates the HTTP router with all sync endpoints
+// If tenantHeaderSecret is provided, tenant header validation is enabled for MCP deployments
 func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 	r := chi.NewRouter()
 
@@ -119,6 +121,16 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 	// All sync endpoints require authentication
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(s.DB, jwt))
+
+		// Optional tenant header validation for MCP deployments
+		// When TENANT_HEADER_SECRET is set, validates HMAC-signed tenant headers from Python MCP service
+		tenantHeaderSecret := os.Getenv("TENANT_HEADER_SECRET")
+		if tenantHeaderSecret != "" {
+			log.Info().Msg("Tenant header validation enabled for MCP deployment")
+			r.Use(auth.TenantHeaderMiddleware(tenantHeaderSecret, 300)) // 5 minute window
+		} else {
+			log.Debug().Msg("Tenant header validation disabled (non-MCP deployment)")
+		}
 
 		// Session management (no session or rate limit required for these)
 		r.Post("/v1/sync/sessions", s.BeginSession)

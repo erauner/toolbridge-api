@@ -1,0 +1,98 @@
+# Multi-stage Dockerfile for ToolBridge with FastMCP Integration
+# Combines Go REST API and Python MCP service in a single container
+
+# ============================================================================
+# Stage 1: Build Go binary
+# ============================================================================
+FROM golang:1.24-alpine AS go-builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+
+# Copy go mod files and download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build binary (no gRPC support needed for MCP deployment)
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/toolbridge-api ./cmd/server
+
+# ============================================================================
+# Stage 2: Install Python dependencies
+# ============================================================================
+FROM python:3.12-slim AS python-builder
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+WORKDIR /app/mcp
+
+# Copy Python project files
+COPY mcp/pyproject.toml ./
+
+# Install dependencies into virtual environment
+RUN uv sync --no-dev --frozen
+
+# ============================================================================
+# Stage 3: Runtime image
+# ============================================================================
+FROM python:3.12-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    wget \
+    supervisor \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Go binary from builder
+COPY --from=go-builder /app/toolbridge-api /app/toolbridge-api
+
+# Copy Python virtual environment from builder
+COPY --from=python-builder /app/mcp/.venv /app/mcp/.venv
+
+# Copy Python source code
+COPY mcp /app/mcp
+
+# Copy supervisor configuration
+COPY deployment/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy migration scripts (needed for healthcheck and startup)
+COPY migrations /app/migrations
+COPY scripts /app/scripts
+
+# Make scripts executable
+RUN chmod +x /app/scripts/*.sh
+
+# Create non-root user
+RUN useradd -m -u 1000 app && \
+    chown -R app:app /app && \
+    mkdir -p /var/log/supervisor && \
+    chown -R app:app /var/log/supervisor
+
+USER app
+
+# Environment variables
+ENV PATH="/app/mcp/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Health check (Go API)
+# MCP service health is checked by supervisor internally
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
+
+# Expose ports
+# 8080: Go REST API (primary)
+# 8001: Python MCP service
+EXPOSE 8080 8001
+
+# Start supervisor to manage both services
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -1,0 +1,110 @@
+# Fly.io configuration template for ToolBridge MCP deployment
+# This template is for per-tenant Fly.io apps running both Go API and Python MCP service
+#
+# Usage:
+#   1. Copy this file for each tenant: fly-tenant-{tenant_id}.toml
+#   2. Replace {TENANT_ID} with actual tenant ID
+#   3. Set secrets: fly secrets set -a toolbridge-tenant-{tenant_id} ...
+#   4. Deploy: fly deploy -c fly-tenant-{tenant_id}.toml
+
+app = "toolbridge-tenant-{TENANT_ID}"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile.mcp"
+
+[env]
+  # Application environment
+  ENV = "production"
+  HTTP_ADDR = ":8080"
+  
+  # Python MCP configuration
+  TOOLBRIDGE_GO_API_BASE_URL = "http://localhost:8080"
+  TOOLBRIDGE_LOG_LEVEL = "INFO"
+
+# HTTP service (Go API)
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"
+    protocol = "http"
+
+# MCP service (Python)
+[[services]]
+  internal_port = 8001
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 8001
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 50
+    soft_limit = 40
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+# VM configuration
+[vm]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 2048
+
+# Metrics
+[metrics]
+  port = 9091
+  path = "/metrics"
+
+# ============================================================================
+# Secrets Configuration
+# ============================================================================
+# Set these via `fly secrets set -a toolbridge-tenant-{tenant_id}`:
+#
+# Required:
+#   DATABASE_URL              - PostgreSQL connection string
+#   JWT_HS256_SECRET          - JWT signing secret (same across all tenants)
+#   TENANT_HEADER_SECRET      - HMAC signing secret for tenant headers (same across all tenants)
+#   TOOLBRIDGE_TENANT_ID      - Unique tenant identifier for this app
+#
+# Optional (Auth0):
+#   AUTH0_DOMAIN              - Auth0 domain (e.g., "dev-xxx.us.auth0.com")
+#   AUTH0_AUDIENCE            - Expected audience claim for Auth0 tokens
+#
+# Example:
+#   fly secrets set -a toolbridge-tenant-abc123 \
+#     DATABASE_URL="postgres://user:pass@host:5432/db" \
+#     JWT_HS256_SECRET="$(openssl rand -base64 32)" \
+#     TENANT_HEADER_SECRET="$(openssl rand -base64 32)" \
+#     TOOLBRIDGE_TENANT_ID="abc123"
+# ============================================================================
