@@ -100,20 +100,27 @@ spec:
             configMapKeyRef:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: DB_SSLMODE
-        {{- if .Values.api.auth0 }}
-        {{- if .Values.api.auth0.domain }}
-        - name: AUTH0_DOMAIN
+        {{- if .Values.api.jwt }}
+        {{- if .Values.api.jwt.issuer }}
+        - name: JWT_ISSUER
           valueFrom:
             configMapKeyRef:
               name: {{ include "toolbridge-api.fullname" . }}-config
-              key: AUTH0_DOMAIN
+              key: JWT_ISSUER
         {{- end }}
-        {{- if .Values.api.auth0.audience }}
-        - name: AUTH0_AUDIENCE
+        {{- if .Values.api.jwt.jwksUrl }}
+        - name: JWT_JWKS_URL
           valueFrom:
             configMapKeyRef:
               name: {{ include "toolbridge-api.fullname" . }}-config
-              key: AUTH0_AUDIENCE
+              key: JWT_JWKS_URL
+        {{- end }}
+        {{- if .Values.api.jwt.audience }}
+        - name: JWT_AUDIENCE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: JWT_AUDIENCE
         {{- end }}
         {{- end }}
         {{- if .Values.api.mcp.oauthAudience }}

@@ -24,6 +24,14 @@ api:
   env: production
   httpAddr: ":8080"
 
+  # JWT/OIDC authentication configuration (optional)
+  # Supports any OIDC provider: WorkOS AuthKit, Auth0, Okta, etc.
+  # If not configured, API will only accept HS256 tokens (dev/testing mode)
+  jwt:
+    issuer: ""     # e.g., "https://your-app.authkit.app" or "https://your-tenant.auth0.com"
+    jwksUrl: ""    # e.g., "https://your-app.authkit.app/oauth2/jwks" or "https://your-tenant.auth0.com/.well-known/jwks.json"
+    audience: ""   # Optional: Primary expected audience claim (e.g., "https://api.example.com")
+
   # MCP (Model Context Protocol) configuration
   # Enable tenant header validation for MCP deployments
   mcp:

@@ -53,24 +53,26 @@ func main() {
 	jwtSecret := env("JWT_HS256_SECRET", "dev-secret-change-in-production")
 	isDevMode := env("ENV", "") == "dev"
 
-	// Auth0 configuration for production RS256 tokens
-	auth0Domain := env("AUTH0_DOMAIN", "")
-	auth0Audience := env("AUTH0_AUDIENCE", "")
+	// Generic OIDC provider configuration for production RS256 tokens
+	// Supports any OIDC provider (WorkOS AuthKit, Auth0, Okta, etc.)
+	jwtIssuer := env("JWT_ISSUER", "")
+	jwksURL := env("JWT_JWKS_URL", "")
+	jwtAudience := env("JWT_AUDIENCE", "")
 
-	// Security validation: Auth0 domain and audience must be set together
-	// If only domain is set, we'd accept tokens for ANY API in the tenant (security risk)
-	// If only audience is set, we'd have no JWKS to validate signatures against
-	if (auth0Domain != "" && auth0Audience == "") || (auth0Domain == "" && auth0Audience != "") {
+	// Security validation: JWKS URL and issuer must be set together
+	// If only JWKS is set, we'd accept tokens from any issuer using those keys (security risk)
+	// If only issuer is set, we'd have no JWKS to validate signatures against
+	if (jwksURL != "" && jwtIssuer == "") || (jwksURL == "" && jwtIssuer != "") {
 		log.Fatal().
-			Str("domain", auth0Domain).
-			Str("audience", auth0Audience).
-			Msg("FATAL: AUTH0_DOMAIN and AUTH0_AUDIENCE must both be set or both be empty. " +
-				"Setting only domain would accept tokens for any API in the tenant. " +
-				"Setting only audience would have no JWKS to validate signatures.")
+			Str("issuer", jwtIssuer).
+			Str("jwks_url", jwksURL).
+			Msg("FATAL: JWT_ISSUER and JWT_JWKS_URL must both be set or both be empty. " +
+				"Setting only JWKS would accept tokens from any issuer. " +
+				"Setting only issuer would have no JWKS to validate signatures.")
 	}
 
 	// Additional accepted audiences (for MCP OAuth tokens, token exchange, etc.)
-	// These are in addition to the primary Auth0Audience
+	// These are in addition to the primary JWT_AUDIENCE
 	acceptedAudiences := []string{}
 	if mcpAudience := env("MCP_OAUTH_AUDIENCE", ""); mcpAudience != "" {
 		acceptedAudiences = append(acceptedAudiences, mcpAudience)
@@ -80,8 +82,9 @@ func main() {
 	jwtCfg := auth.JWTCfg{
 		HS256Secret:       jwtSecret,
 		DevMode:           isDevMode,
-		Auth0Domain:       auth0Domain,
-		Auth0Audience:     auth0Audience,
+		Issuer:            jwtIssuer,
+		JWKSURL:           jwksURL,
+		Audience:          jwtAudience,
 		AcceptedAudiences: acceptedAudiences,
 	}
 
@@ -99,33 +102,34 @@ func main() {
 	}
 
 	// Security validation: Always require a strong HS256 secret in production mode
-	// This provides defense-in-depth even when Auth0 is configured, since the middleware
+	// This provides defense-in-depth even when upstream OIDC is configured, since the middleware
 	// still accepts HS256 tokens. Without this check, an attacker could forge HS256 tokens
-	// using the default secret and bypass Auth0 validation entirely.
+	// using the default secret and bypass upstream validation entirely.
 	if !isDevMode {
 		if jwtSecret == "" || jwtSecret == "dev-secret-change-in-production" {
 			log.Fatal().
 				Str("secret", jwtSecret).
-				Bool("auth0_enabled", auth0Domain != "" && auth0Audience != "").
+				Bool("oidc_enabled", jwtIssuer != "" && jwksURL != "").
 				Msg("FATAL: Cannot start in production mode with default or missing JWT_HS256_SECRET. " +
-					"Even with Auth0 configured, a strong HS256 secret is required for defense-in-depth " +
+					"Even with upstream OIDC configured, a strong HS256 secret is required for defense-in-depth " +
 					"since the middleware still accepts HS256 tokens. " +
 					"Set JWT_HS256_SECRET to a secure random value (e.g., openssl rand -base64 32)")
 		}
 	}
 
-	// Initialize Auth0 JWKS cache (shared by both HTTP and gRPC)
+	// Initialize upstream IdP JWKS cache (shared by both HTTP and gRPC)
 	// Must be called before starting servers to ensure gRPC interceptors can validate tokens
 	if err := auth.InitJWKSCache(jwtCfg); err != nil {
-		log.Warn().Err(err).Msg("failed to pre-fetch Auth0 JWKS (will retry on first request)")
+		log.Warn().Err(err).Msg("failed to pre-fetch JWKS (will retry on first request)")
 	}
 
 	// Log authentication mode
-	if auth0Domain != "" && auth0Audience != "" {
+	if jwtIssuer != "" && jwksURL != "" {
 		log.Info().
-			Str("domain", auth0Domain).
-			Str("audience", auth0Audience).
-			Msg("Auth0 RS256 authentication enabled")
+			Str("issuer", jwtIssuer).
+			Str("jwks_url", jwksURL).
+			Str("audience", jwtAudience).
+			Msg("Upstream OIDC RS256 authentication enabled")
 	} else if !isDevMode {
 		log.Info().Msg("HS256 authentication enabled (dev/testing mode)")
 	}

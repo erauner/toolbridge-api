@@ -81,11 +81,13 @@ spec:
 # Required
 DATABASE_URL=postgres://user:pass@host/db
 ENV=production  # Disables X-Debug-Sub header
-JWT_HS256_SECRET=<strong-secret>  # Required in production (even with Auth0)
+JWT_HS256_SECRET=<strong-secret>  # Required in production (even with upstream OIDC)
 
-# Auth0 RS256 JWT validation (recommended for production)
-AUTH0_DOMAIN=your-tenant.us.auth0.com
-AUTH0_AUDIENCE=https://toolbridgeapi.erauner.dev
+# Upstream OIDC RS256 JWT validation (recommended for production)
+# Supports WorkOS AuthKit, Auth0, Okta, or any OIDC provider
+JWT_ISSUER=https://your-app.authkit.app  # Or: https://your-tenant.auth0.com
+JWT_JWKS_URL=https://your-app.authkit.app/oauth2/jwks  # Or: https://your-tenant.auth0.com/.well-known/jwks.json
+JWT_AUDIENCE=https://toolbridgeapi.erauner.dev  # Optional
 
 # Optional
 HTTP_ADDR=:8081  # Default REST API port
