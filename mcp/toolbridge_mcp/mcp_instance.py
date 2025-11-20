@@ -26,20 +26,22 @@ auth_provider = Auth0Provider(
         "openid",
         "profile",
         "email",
-        "read:notes",
-        "write:notes",
-        "read:tasks",
-        "write:tasks",
-        "read:comments",
-        "write:comments",
-        "read:chats",
-        "write:chats",
+        "sync:read",
+        "sync:write",
     ],
-    # MCP server audience (this server's URL)
-    audience=settings.oauth_audience,
+    # Request access to backend API (not MCP server's own audience)
+    audience=settings.backend_api_audience,
+    # Allow Claude's callback URLs for Dynamic Client Registration
+    allowed_client_redirect_uris=[
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback",
+    ],
+    # Skip FastMCP's consent page to avoid CSP issues with claude.ai
+    # Auth0 will handle consent instead
+    require_authorization_consent=False,
 )
 
-logger.info(f"✓ Auth0Provider configured: domain={settings.oauth_domain}, audience={settings.oauth_audience}")
+logger.info(f"✓ Auth0Provider configured: domain={settings.oauth_domain}, audience={settings.backend_api_audience}")
 
 # Create MCP server instance with OAuth authentication
 mcp = FastMCP(
