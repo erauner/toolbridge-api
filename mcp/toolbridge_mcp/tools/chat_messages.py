@@ -5,7 +5,8 @@ Provides tools for creating, reading, updating, deleting, and listing chat messa
 via the ToolBridge Go REST API. Chat messages are always linked to a parent chat.
 """
 
-from typing import Annotated, List, Optional, Any, Dict
+from typing import Annotated, List, Optional, Any, Dict, Union
+import json
 
 from pydantic import BaseModel, Field
 from loguru import logger
@@ -131,8 +132,8 @@ async def create_chat_message(
     content: Annotated[str, Field(description="Message content")],
     sender: Annotated[Optional[str], Field(description="Sender name or ID")] = None,
     message_type: Annotated[Optional[str], Field(description="Message type (text, system, etc.)")] = None,
-    tags: Annotated[Optional[List[str]], Field(description="Optional tags for categorization")] = None,
-    additional_fields: Annotated[Optional[Dict[str, Any]], Field(description="Additional custom fields")] = None,
+    tags: Annotated[Optional[Union[List[str], str]], Field(description="Optional tags for categorization")] = None,
+    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields")] = None,
 ) -> ChatMessage:
     """
     Create a new chat message.
@@ -183,10 +184,43 @@ async def create_chat_message(
             payload["sender"] = sender
         if message_type:
             payload["messageType"] = message_type
+        # Parse tags if it\'s a JSON string
+
         if tags:
+
+            if isinstance(tags, str):
+
+                try:
+
+                    tags = json.loads(tags)
+
+                except json.JSONDecodeError as e:
+
+                    raise ValueError(f"Invalid JSON string for tags: {e}")
+
             payload["tags"] = tags
         
+        # Parse additional_fields if it\'s a JSON string
+
+        
         if additional_fields:
+
+        
+            if isinstance(additional_fields, str):
+
+        
+                try:
+
+        
+                    additional_fields = json.loads(additional_fields)
+
+        
+                except json.JSONDecodeError as e:
+
+        
+                    raise ValueError(f"Invalid JSON string for additional_fields: {e}")
+
+        
             payload.update(additional_fields)
         
         logger.info(f"Creating chat message: chat_uid={chat_uid}")
@@ -201,7 +235,7 @@ async def update_chat_message(
     uid: Annotated[str, Field(description="Unique identifier of the chat message")],
     content: Annotated[str, Field(description="Message content")],
     if_match: Annotated[Optional[int], Field(description="Expected version for optimistic locking")] = None,
-    additional_fields: Annotated[Optional[Dict[str, Any]], Field(description="Additional custom fields")] = None,
+    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields")] = None,
 ) -> ChatMessage:
     """
     Replace a chat message (full update).
@@ -234,7 +268,27 @@ async def update_chat_message(
             "content": content,
         }
         
+        # Parse additional_fields if it\'s a JSON string
+
+        
         if additional_fields:
+
+        
+            if isinstance(additional_fields, str):
+
+        
+                try:
+
+        
+                    additional_fields = json.loads(additional_fields)
+
+        
+                except json.JSONDecodeError as e:
+
+        
+                    raise ValueError(f"Invalid JSON string for additional_fields: {e}")
+
+        
             payload.update(additional_fields)
         
         logger.info(f"Updating chat message: uid={uid}, if_match={if_match}")
@@ -247,7 +301,7 @@ async def update_chat_message(
 @mcp.tool()
 async def patch_chat_message(
     uid: Annotated[str, Field(description="Unique identifier of the chat message")],
-    updates: Annotated[Dict[str, Any], Field(description="Fields to update (partial)")],
+    updates: Annotated[Union[Dict[str, Any], str], Field(description="Fields to update (partial)")],
 ) -> ChatMessage:
     """
     Partially update a chat message.
@@ -273,6 +327,13 @@ async def patch_chat_message(
         ... })
     """
     async with get_client() as client:
+        # Parse updates if it's a JSON string
+        if isinstance(updates, str):
+            try:
+                updates = json.loads(updates)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON string for updates: {e}")
+
         logger.info(f"Patching chat message: uid={uid}, updates={list(updates.keys())}")
         response = await call_patch(client, f"/v1/chat_messages/{uid}", json=updates)
         data = response.json()
@@ -338,7 +399,7 @@ async def archive_chat_message(
 async def process_chat_message(
     uid: Annotated[str, Field(description="Unique identifier of the chat message")],
     action: Annotated[str, Field(description="Action to perform (mark_read, mark_delivered)")],
-    metadata: Annotated[Optional[Dict[str, Any]], Field(description="Optional action metadata")] = None,
+    metadata: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Optional action metadata")] = None,
 ) -> ChatMessage:
     """
     Process a chat message action (state machine transition).
@@ -364,7 +425,13 @@ async def process_chat_message(
     """
     async with get_client() as client:
         payload = {"action": action}
+        # Parse metadata if it\'s a JSON string
         if metadata:
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON string for metadata: {e}")
             payload["metadata"] = metadata
         
         logger.info(f"Processing chat message: uid={uid}, action={action}")

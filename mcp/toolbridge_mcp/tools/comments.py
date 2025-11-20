@@ -5,7 +5,8 @@ Provides tools for creating, reading, updating, deleting, and listing comments
 via the ToolBridge Go REST API. Comments are linked to parent entities (notes, tasks, etc.).
 """
 
-from typing import Annotated, List, Optional, Any, Dict
+from typing import Annotated, List, Optional, Any, Dict, Union
+import json
 
 from pydantic import BaseModel, Field
 from loguru import logger
@@ -131,8 +132,8 @@ async def create_comment(
     parent_type: Annotated[str, Field(description="Type of parent entity (note, task, chat)")],
     parent_uid: Annotated[str, Field(description="UID of parent entity")],
     author: Annotated[Optional[str], Field(description="Comment author name")] = None,
-    tags: Annotated[Optional[List[str]], Field(description="Optional tags for categorization")] = None,
-    additional_fields: Annotated[Optional[Dict[str, Any]], Field(description="Additional custom fields")] = None,
+    tags: Annotated[Optional[Union[List[str], str]], Field(description="Optional tags for categorization")] = None,
+    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields")] = None,
 ) -> Comment:
     """
     Create a new comment.
@@ -184,10 +185,43 @@ async def create_comment(
         
         if author:
             payload["author"] = author
+        # Parse tags if it\'s a JSON string
+
         if tags:
+
+            if isinstance(tags, str):
+
+                try:
+
+                    tags = json.loads(tags)
+
+                except json.JSONDecodeError as e:
+
+                    raise ValueError(f"Invalid JSON string for tags: {e}")
+
             payload["tags"] = tags
         
+        # Parse additional_fields if it\'s a JSON string
+
+        
         if additional_fields:
+
+        
+            if isinstance(additional_fields, str):
+
+        
+                try:
+
+        
+                    additional_fields = json.loads(additional_fields)
+
+        
+                except json.JSONDecodeError as e:
+
+        
+                    raise ValueError(f"Invalid JSON string for additional_fields: {e}")
+
+        
             payload.update(additional_fields)
         
         logger.info(f"Creating comment: parent_type={parent_type}, parent_uid={parent_uid}")
@@ -202,7 +236,7 @@ async def update_comment(
     uid: Annotated[str, Field(description="Unique identifier of the comment")],
     content: Annotated[str, Field(description="Comment content")],
     if_match: Annotated[Optional[int], Field(description="Expected version for optimistic locking")] = None,
-    additional_fields: Annotated[Optional[Dict[str, Any]], Field(description="Additional custom fields")] = None,
+    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields")] = None,
 ) -> Comment:
     """
     Replace a comment (full update).
@@ -235,7 +269,27 @@ async def update_comment(
             "content": content,
         }
         
+        # Parse additional_fields if it\'s a JSON string
+
+        
         if additional_fields:
+
+        
+            if isinstance(additional_fields, str):
+
+        
+                try:
+
+        
+                    additional_fields = json.loads(additional_fields)
+
+        
+                except json.JSONDecodeError as e:
+
+        
+                    raise ValueError(f"Invalid JSON string for additional_fields: {e}")
+
+        
             payload.update(additional_fields)
         
         logger.info(f"Updating comment: uid={uid}, if_match={if_match}")
@@ -248,7 +302,7 @@ async def update_comment(
 @mcp.tool()
 async def patch_comment(
     uid: Annotated[str, Field(description="Unique identifier of the comment")],
-    updates: Annotated[Dict[str, Any], Field(description="Fields to update (partial)")],
+    updates: Annotated[Union[Dict[str, Any], str], Field(description="Fields to update (partial)")],
 ) -> Comment:
     """
     Partially update a comment.
@@ -274,6 +328,13 @@ async def patch_comment(
         ... })
     """
     async with get_client() as client:
+        # Parse updates if it's a JSON string
+        if isinstance(updates, str):
+            try:
+                updates = json.loads(updates)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON string for updates: {e}")
+
         logger.info(f"Patching comment: uid={uid}, updates={list(updates.keys())}")
         response = await call_patch(client, f"/v1/comments/{uid}", json=updates)
         data = response.json()
@@ -339,7 +400,7 @@ async def archive_comment(
 async def process_comment(
     uid: Annotated[str, Field(description="Unique identifier of the comment")],
     action: Annotated[str, Field(description="Action to perform (resolve, reopen)")],
-    metadata: Annotated[Optional[Dict[str, Any]], Field(description="Optional action metadata")] = None,
+    metadata: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Optional action metadata")] = None,
 ) -> Comment:
     """
     Process a comment action (state machine transition).
@@ -365,7 +426,13 @@ async def process_comment(
     """
     async with get_client() as client:
         payload = {"action": action}
+        # Parse metadata if it\'s a JSON string
         if metadata:
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON string for metadata: {e}")
             payload["metadata"] = metadata
         
         logger.info(f"Processing comment: uid={uid}, action={action}")

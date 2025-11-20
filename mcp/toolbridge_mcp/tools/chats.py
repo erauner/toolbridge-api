@@ -5,7 +5,8 @@ Provides tools for creating, reading, updating, deleting, and listing chats
 via the ToolBridge Go REST API.
 """
 
-from typing import Annotated, List, Optional, Any, Dict
+from typing import Annotated, List, Optional, Any, Dict, Union
+import json
 
 from pydantic import BaseModel, Field
 from loguru import logger
@@ -129,10 +130,10 @@ async def get_chat(
 async def create_chat(
     title: Annotated[str, Field(description="Chat title")],
     description: Annotated[Optional[str], Field(description="Chat description")] = None,
-    participants: Annotated[Optional[List[str]], Field(description="List of participant IDs")] = None,
+    participants: Annotated[Optional[Union[List[str], str]], Field(description="List of participant IDs")] = None,
     archived: Annotated[bool, Field(description="Whether chat is archived")] = False,
-    tags: Annotated[Optional[List[str]], Field(description="Optional tags for categorization")] = None,
-    additional_fields: Annotated[Optional[Dict[str, Any]], Field(description="Additional custom fields")] = None,
+    tags: Annotated[Optional[Union[List[str], str]], Field(description="Optional tags for categorization")] = None,
+    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields")] = None,
 ) -> Chat:
     """
     Create a new chat.
@@ -176,12 +177,58 @@ async def create_chat(
         
         if description:
             payload["description"] = description
+        # Parse participants if it\'s a JSON string
+
         if participants:
+
+            if isinstance(participants, str):
+
+                try:
+
+                    participants = json.loads(participants)
+
+                except json.JSONDecodeError as e:
+
+                    raise ValueError(f"Invalid JSON string for participants: {e}")
+
             payload["participants"] = participants
+        # Parse tags if it\'s a JSON string
+
         if tags:
+
+            if isinstance(tags, str):
+
+                try:
+
+                    tags = json.loads(tags)
+
+                except json.JSONDecodeError as e:
+
+                    raise ValueError(f"Invalid JSON string for tags: {e}")
+
             payload["tags"] = tags
         
+        # Parse additional_fields if it\'s a JSON string
+
+        
         if additional_fields:
+
+        
+            if isinstance(additional_fields, str):
+
+        
+                try:
+
+        
+                    additional_fields = json.loads(additional_fields)
+
+        
+                except json.JSONDecodeError as e:
+
+        
+                    raise ValueError(f"Invalid JSON string for additional_fields: {e}")
+
+        
             payload.update(additional_fields)
         
         logger.info(f"Creating chat: title={title}")
@@ -197,7 +244,7 @@ async def update_chat(
     title: Annotated[str, Field(description="Chat title")],
     description: Annotated[Optional[str], Field(description="Chat description")] = None,
     if_match: Annotated[Optional[int], Field(description="Expected version for optimistic locking")] = None,
-    additional_fields: Annotated[Optional[Dict[str, Any]], Field(description="Additional custom fields")] = None,
+    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields")] = None,
 ) -> Chat:
     """
     Replace a chat (full update).
@@ -234,7 +281,27 @@ async def update_chat(
         if description:
             payload["description"] = description
         
+        # Parse additional_fields if it\'s a JSON string
+
+        
         if additional_fields:
+
+        
+            if isinstance(additional_fields, str):
+
+        
+                try:
+
+        
+                    additional_fields = json.loads(additional_fields)
+
+        
+                except json.JSONDecodeError as e:
+
+        
+                    raise ValueError(f"Invalid JSON string for additional_fields: {e}")
+
+        
             payload.update(additional_fields)
         
         logger.info(f"Updating chat: uid={uid}, if_match={if_match}")
@@ -247,7 +314,7 @@ async def update_chat(
 @mcp.tool()
 async def patch_chat(
     uid: Annotated[str, Field(description="Unique identifier of the chat")],
-    updates: Annotated[Dict[str, Any], Field(description="Fields to update (partial)")],
+    updates: Annotated[Union[Dict[str, Any], str], Field(description="Fields to update (partial)")],
 ) -> Chat:
     """
     Partially update a chat.
@@ -273,6 +340,13 @@ async def patch_chat(
         ... })
     """
     async with get_client() as client:
+        # Parse updates if it's a JSON string
+        if isinstance(updates, str):
+            try:
+                updates = json.loads(updates)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON string for updates: {e}")
+
         logger.info(f"Patching chat: uid={uid}, updates={list(updates.keys())}")
         response = await call_patch(client, f"/v1/chats/{uid}", json=updates)
         data = response.json()
@@ -338,7 +412,7 @@ async def archive_chat(
 async def process_chat(
     uid: Annotated[str, Field(description="Unique identifier of the chat")],
     action: Annotated[str, Field(description="Action to perform (resolve, reopen)")],
-    metadata: Annotated[Optional[Dict[str, Any]], Field(description="Optional action metadata")] = None,
+    metadata: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Optional action metadata")] = None,
 ) -> Chat:
     """
     Process a chat action (state machine transition).
@@ -364,7 +438,13 @@ async def process_chat(
     """
     async with get_client() as client:
         payload = {"action": action}
+        # Parse metadata if it\'s a JSON string
         if metadata:
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON string for metadata: {e}")
             payload["metadata"] = metadata
         
         logger.info(f"Processing chat: uid={uid}, action={action}")
