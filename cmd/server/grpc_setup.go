@@ -5,11 +5,13 @@ package main
 
 import (
 	"net"
+	"net/http"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
 	"github.com/erauner12/toolbridge-api/internal/grpcapi"
 	"github.com/erauner12/toolbridge-api/internal/httpapi"
 	syncv1 "github.com/erauner12/toolbridge-api/gen/go/sync/v1"
+	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -17,6 +19,7 @@ import (
 )
 
 var grpcServerInstance *grpc.Server
+var grpcWebWrapper *grpcweb.WrappedGrpcServer
 
 // startGRPCServer initializes and starts the gRPC server
 func startGRPCServer(pool *pgxpool.Pool, srv *httpapi.Server, jwtCfg auth.JWTCfg) {
@@ -60,6 +63,16 @@ func startGRPCServer(pool *pgxpool.Pool, srv *httpapi.Server, jwtCfg auth.JWTCfg
 
 	reflection.Register(grpcServerInstance) // Enable reflection for grpcurl testing
 
+	// Wrap gRPC server for gRPC-Web support
+	grpcWebWrapper = grpcweb.WrapServer(
+		grpcServerInstance,
+		grpcweb.WithOriginFunc(func(origin string) bool {
+			// Allow all origins for now (TODO: restrict in production)
+			return true
+		}),
+		grpcweb.WithCorsForRegisteredEndpointsOnly(false),
+	)
+
 	// Start gRPC server in goroutine
 	go func() {
 		log.Info().Str("addr", grpcAddr).Msg("starting gRPC server")
@@ -68,7 +81,7 @@ func startGRPCServer(pool *pgxpool.Pool, srv *httpapi.Server, jwtCfg auth.JWTCfg
 		}
 	}()
 
-	log.Info().Msg("Both HTTP (REST) and gRPC servers running in parallel")
+	log.Info().Msg("Both HTTP (REST), gRPC, and gRPC-Web servers running in parallel")
 }
 
 // stopGRPCServer gracefully stops the gRPC server
@@ -77,4 +90,19 @@ func stopGRPCServer() {
 		grpcServerInstance.GracefulStop()
 		log.Info().Msg("gRPC server stopped")
 	}
+}
+
+// ServeGRPCWeb handles gRPC-Web requests on the HTTP server
+// Returns true if the request was a gRPC-Web request and was handled
+func ServeGRPCWeb(w http.ResponseWriter, r *http.Request) bool {
+	if grpcWebWrapper == nil {
+		return false
+	}
+
+	if grpcWebWrapper.IsGrpcWebRequest(r) || grpcWebWrapper.IsAcceptableGrpcCorsRequest(r) {
+		grpcWebWrapper.ServeHTTP(w, r)
+		return true
+	}
+
+	return false
 }

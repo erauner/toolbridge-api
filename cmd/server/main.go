@@ -131,9 +131,24 @@ func main() {
 	}
 
 	httpAddr := env("HTTP_ADDR", ":8081")
+
+	// Create REST API routes handler
+	restHandler := srv.Routes(jwtCfg)
+
+	// Wrap handler to check for gRPC-Web requests first
+	// (only active when building with -tags grpc)
+	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try to handle as gRPC-Web request
+		if ServeGRPCWeb(w, r) {
+			return
+		}
+		// Fall back to REST API
+		restHandler.ServeHTTP(w, r)
+	})
+
 	httpServer := &http.Server{
 		Addr:         httpAddr,
-		Handler:      srv.Routes(jwtCfg),
+		Handler:      httpHandler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
