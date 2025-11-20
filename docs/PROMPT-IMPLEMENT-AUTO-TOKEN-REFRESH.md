@@ -92,8 +92,8 @@ Response:
 **Environment Variables:**
 ```bash
 # New (auto-refresh mode)
-TOOLBRIDGE_AUTH0_CLIENT_ID=UNs1xyZLmyYe8V1fvyt1E1Hz2Trp9d5R
-TOOLBRIDGE_AUTH0_CLIENT_SECRET=X0WDZZNPFJWyeQCeA9_zj8-F7KTiAZW7xuPKp0gYnKXWnE7EWpiyG5afJ6gF6Vcg
+TOOLBRIDGE_AUTH0_CLIENT_ID=<client-id-from-terraform>
+TOOLBRIDGE_AUTH0_CLIENT_SECRET=<client-secret-from-terraform>
 TOOLBRIDGE_AUTH0_DOMAIN=dev-zysv6k3xo7pkwmcb.us.auth0.com
 TOOLBRIDGE_AUTH0_AUDIENCE=https://toolbridgeapi.erauner.dev
 
@@ -130,20 +130,20 @@ terraform output -json mcp_introspection_client | jq -r '.client_id, .client_sec
 
 # 2. Test locally
 cd ~/git/side/toolbridge-api/mcp
-export TOOLBRIDGE_AUTH0_CLIENT_ID="UNs1xyZLmyYe8V1fvyt1E1Hz2Trp9d5R"
-export TOOLBRIDGE_AUTH0_CLIENT_SECRET="X0WDZZNPFJWyeQCeA9_zj8-F7KTiAZW7xuPKp0gYnKXWnE7EWpiyG5afJ6gF6Vcg"
+export TOOLBRIDGE_AUTH0_CLIENT_ID="<client-id-from-terraform>"
+export TOOLBRIDGE_AUTH0_CLIENT_SECRET="<client-secret-from-terraform>"
 export TOOLBRIDGE_AUTH0_DOMAIN="dev-zysv6k3xo7pkwmcb.us.auth0.com"
 export TOOLBRIDGE_AUTH0_AUDIENCE="https://toolbridgeapi.erauner.dev"
 export TOOLBRIDGE_TENANT_ID="staging-tenant-001"
-export TOOLBRIDGE_TENANT_HEADER_SECRET="g126uRl39u75Jb3v+80G7RmW7BO0iCtWjSq9ai1ukzw="
+export TOOLBRIDGE_TENANT_HEADER_SECRET="<tenant-secret-from-k8s>"
 export TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev"
 
 uv run python -m toolbridge_mcp.server
 
 # 3. Deploy to Fly.io
 fly secrets set \
-  TOOLBRIDGE_AUTH0_CLIENT_ID="UNs1xyZLmyYe8V1fvyt1E1Hz2Trp9d5R" \
-  TOOLBRIDGE_AUTH0_CLIENT_SECRET="X0WDZZNPFJWyeQCeA9_zj8-F7KTiAZW7xuPKp0gYnKXWnE7EWpiyG5afJ6gF6Vcg" \
+  TOOLBRIDGE_AUTH0_CLIENT_ID="<client-id-from-terraform>" \
+  TOOLBRIDGE_AUTH0_CLIENT_SECRET="<client-secret-from-terraform>" \
   TOOLBRIDGE_AUTH0_DOMAIN="dev-zysv6k3xo7pkwmcb.us.auth0.com" \
   TOOLBRIDGE_AUTH0_AUDIENCE="https://toolbridgeapi.erauner.dev" \
   -a toolbridge-mcp-staging
