@@ -1,5 +1,17 @@
 # Auth0 Token Refresh Workaround
 
+> **⚠️ DEPRECATED**: This workaround has been replaced with automatic token refresh.
+>
+> **New Implementation**: See ADR `docs/adr/0001-auth0-automatic-token-refresh.md`
+>
+> The MCP server now includes a built-in `TokenManager` that automatically fetches and refreshes Auth0 tokens using client credentials flow. Configure `TOOLBRIDGE_AUTH0_CLIENT_ID` and `TOOLBRIDGE_AUTH0_CLIENT_SECRET` instead of manually managing tokens.
+>
+> **Migration**: Update Fly.io secrets with Auth0 credentials and remove the manual refresh cron job. See deployment guide in the ADR.
+
+---
+
+# Historical Documentation (Legacy)
+
 ## Problem Statement
 
 The Fly.io MCP server requires valid Auth0 RS256 access tokens to authenticate with the Go API. Currently, the access token is manually stored as a Fly.io secret (`TOOLBRIDGE_JWT_TOKEN`), but Auth0 tokens expire after 24 hours.

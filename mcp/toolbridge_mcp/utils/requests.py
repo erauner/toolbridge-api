@@ -32,36 +32,78 @@ class JWTDecodeError(Exception):
     pass
 
 
+# Module-level flag for logging deprecation warning only once
+_static_token_warning_shown = False
+
+
 async def get_auth_header() -> str:
     """
-    Extract Authorization header from current MCP request context or config.
+    Get Authorization header with valid Auth0 token.
 
-    Supports two modes:
-    1. Shared token (testing): Use JWT_TOKEN from config if available
-    2. Per-user token (production): Extract from MCP request Authorization header
+    Supports three authentication modes (auto-detected from config):
+    1. Auth0 auto-refresh: Fetch tokens using client credentials (recommended)
+    2. Static token: Use pre-configured JWT_TOKEN (deprecated)
+    3. Passthrough: Extract from MCP request Authorization header (per-user mode)
+
+    Uses the runtime auth mode which may differ from configured mode if Auth0
+    initialization failed during startup (automatic fallback to static/passthrough).
 
     Returns:
         Authorization header value (e.g., "Bearer eyJ...")
 
     Raises:
-        AuthorizationError: If Authorization header is missing
+        AuthorizationError: If no authentication method configured or token fetch fails
     """
-    # Option 1: Use configured shared token (for testing/staging)
-    if settings.jwt_token:
-        logger.debug("Using configured JWT token (shared mode)")
+    global _static_token_warning_shown
+
+    # Import runtime auth mode getter
+    from toolbridge_mcp.server import get_runtime_auth_mode
+
+    auth_mode = get_runtime_auth_mode()
+
+    # Mode 1: Auth0 automatic token refresh (recommended)
+    if auth_mode == "auth0":
+        from toolbridge_mcp.auth import get_access_token, TokenError
+
+        try:
+            logger.debug("Fetching Auth0 token from TokenManager")
+            token = await get_access_token()
+            return f"Bearer {token}"
+        except TokenError as e:
+            logger.error(f"Auth0 token acquisition failed: {e}")
+            raise AuthorizationError(
+                "Failed to acquire Auth0 token. Check TOOLBRIDGE_AUTH0_CLIENT_ID/SECRET "
+                "and Auth0 service availability."
+            ) from e
+        except Exception as e:
+            logger.error(f"Unexpected error getting Auth0 token: {e}")
+            raise AuthorizationError(f"Auth0 token error: {e}") from e
+
+    # Mode 2: Static JWT token (deprecated)
+    if auth_mode == "static":
+        if not _static_token_warning_shown:
+            logger.warning(
+                "Using static JWT token (DEPRECATED). "
+                "Configure TOOLBRIDGE_AUTH0_CLIENT_ID/SECRET for automatic refresh."
+            )
+            _static_token_warning_shown = True
+        logger.debug("Using configured static JWT token")
         return f"Bearer {settings.jwt_token}"
 
-    # Option 2: Extract from MCP request (for production OAuth)
+    # Mode 3: Passthrough (extract from MCP request headers)
     headers = get_http_headers()
     auth = headers.get("authorization") or headers.get("Authorization")
 
     if not auth:
-        logger.error("Missing Authorization header in MCP request and no JWT_TOKEN configured")
+        logger.error("No authentication configured")
         raise AuthorizationError(
-            "Missing Authorization header. MCP client must provide JWT token or configure TOOLBRIDGE_JWT_TOKEN."
+            "Missing authentication. Configure one of:\n"
+            "  - TOOLBRIDGE_AUTH0_CLIENT_ID/SECRET (automatic refresh)\n"
+            "  - TOOLBRIDGE_JWT_TOKEN (static token)\n"
+            "  - Provide Authorization header in MCP requests (per-user mode)"
         )
 
-    logger.debug("Using Authorization header from MCP request (per-user mode)")
+    logger.debug("Using Authorization header from MCP request (passthrough mode)")
     return auth
 
 

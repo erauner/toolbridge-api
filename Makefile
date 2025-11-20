@@ -1,4 +1,4 @@
-.PHONY: help dev dev-grpc test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean format format-python format-check format-check-python lint-python lint-fix-python
+.PHONY: help dev dev-grpc test test-unit test-integration test-smoke test-mcp-auth test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean format format-python format-check format-check-python lint-python lint-fix-python
 
 # Docker configuration
 DOCKER_REGISTRY ?= ghcr.io
@@ -28,6 +28,7 @@ help:
 	@echo "  make test-integration - Run HTTP integration tests (requires DB)"
 	@echo "  make test-grpc        - Run gRPC integration tests (requires DB)"
 	@echo "  make test-smoke       - Run smoke tests against running server"
+	@echo "  make test-mcp-auth    - Run MCP auth fallback tests (Auth0 failure scenarios)"
 	@echo "  make test-e2e         - Run end-to-end tests (starts server, runs smoke, stops)"
 	@echo "  make test-all         - Run complete test suite (unit + HTTP + gRPC + e2e)"
 	@echo "  make ci               - Run CI pipeline locally (lint + test-all)"
@@ -109,6 +110,12 @@ test-smoke:
 	@echo "Running smoke tests..."
 	@./scripts/smoke-test.sh
 
+# Run MCP auth fallback tests (unit tests for Auth0 fallback behavior)
+test-mcp-auth:
+	@echo "Running MCP auth fallback tests..."
+	cd mcp && uv run python test_auth_fallback.py
+	@echo "✓ MCP auth fallback tests passed"
+
 # Run end-to-end tests (full stack: start server, run smoke tests, stop server)
 test-e2e:
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -162,6 +169,10 @@ test-all:
 	@echo "Phase 4: End-to-End Tests (full stack)"
 	@echo "────────────────────────────────────────────"
 	@$(MAKE) test-e2e
+	@echo ""
+	@echo "Phase 5: MCP Auth Fallback Tests (Python)"
+	@echo "────────────────────────────────────────────"
+	@$(MAKE) test-mcp-auth
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "✓ All Tests Passed!"
