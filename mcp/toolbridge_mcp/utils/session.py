@@ -1,8 +1,11 @@
 """
-Session management for MCP tool requests.
+Session management for MCP tool requests with per-user authentication.
 
 Each MCP tool invocation creates a new sync session with the Go API.
 This session-per-request approach is simple and doesn't require cleanup.
+
+Path B OAuth 2.1: Backend JWT contains per-user identity (sub claim),
+so the Go API automatically creates sessions for the correct user.
 
 Note: Sessions are NOT cached or reused. Every call to create_session
 creates a fresh session to avoid stale session issues when sessions expire.
@@ -31,10 +34,14 @@ async def create_session(
     This always creates a fresh session - no caching or reuse.
     This ensures MCP tools can recover from session expiration.
 
+    Path B OAuth 2.1: The backend JWT (auth_header) contains the user's
+    identity (sub claim), so the Go API automatically creates a session
+    for the correct user. No X-Debug-Sub header needed.
+
     Args:
         client: httpx client (with TenantDirectTransport)
-        auth_header: Authorization header (e.g., "Bearer eyJ...")
-        user_id: User ID to create session for (extracted from JWT sub claim)
+        auth_header: Backend JWT Authorization header (e.g., "Bearer eyJ...")
+        user_id: User ID for logging purposes (extracted from backend JWT)
 
     Returns:
         Dict with session headers: {"X-Sync-Session": "...", "X-Sync-Epoch": "..."}
@@ -46,11 +53,12 @@ async def create_session(
     try:
         logger.debug(f"Creating fresh sync session for user: {user_id}")
 
+        # The backend JWT contains the user identity (sub claim)
+        # Go API JWT middleware will extract it automatically
         response = await client.post(
             "/v1/sync/sessions",
             headers={
                 "Authorization": auth_header,
-                "X-Debug-Sub": user_id,  # In dev mode, this sets the user
             },
         )
         response.raise_for_status()

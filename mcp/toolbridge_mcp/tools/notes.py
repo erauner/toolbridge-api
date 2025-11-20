@@ -9,6 +9,7 @@ from typing import Annotated, List, Optional, Any, Dict, Union
 import json
 
 from pydantic import BaseModel, Field, field_validator
+from fastmcp.server.dependencies import get_access_token
 from loguru import logger
 
 from toolbridge_mcp.async_client import get_client
@@ -56,9 +57,10 @@ async def list_notes(
     include_deleted: Annotated[bool, Field(description="Include soft-deleted notes")] = False,
 ) -> NotesListResponse:
     """
-    List notes with cursor-based pagination.
+    List notes with cursor-based pagination (per-user).
 
-    Returns notes for the authenticated tenant. Supports filtering and pagination.
+    Returns notes for the authenticated user's tenant. Each user can only see
+    their own tenant's notes. OAuth authentication enforced by FastMCP.
     Use the next_cursor from the response to fetch additional pages.
 
     Args:
@@ -79,6 +81,17 @@ async def list_notes(
         # Include deleted notes
         >>> await list_notes(include_deleted=True)
     """
+    # Optional: Get authenticated user info for logging
+    # FastMCP has already validated the OAuth token via Auth0Provider
+    try:
+        token = get_access_token()
+        user_id = token.claims.get("sub", "unknown")
+        tenant_id = token.claims.get("tenant_id", "default")
+    except Exception:
+        # Graceful fallback if token unavailable (shouldn't happen in OAuth mode)
+        user_id = "unknown"
+        tenant_id = "unknown"
+    
     async with get_client() as client:
         params = {"limit": limit}
         if cursor:
@@ -87,7 +100,8 @@ async def list_notes(
             params["includeDeleted"] = "true"
 
         logger.info(
-            f"Listing notes: limit={limit}, cursor={cursor}, include_deleted={include_deleted}"
+            f"Listing notes for user={user_id}, tenant={tenant_id}: "
+            f"limit={limit}, cursor={cursor}, include_deleted={include_deleted}"
         )
         response = await call_get(client, "/v1/notes", params=params)
         data = response.json()

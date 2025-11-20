@@ -47,18 +47,6 @@ func main() {
 	}
 	defer pool.Close()
 
-	// HTTP server setup
-	srv := &httpapi.Server{
-		DB:              pool,
-		RateLimitConfig: httpapi.DefaultRateLimitConfig,
-		// Initialize services
-		NoteSvc:        syncservice.NewNoteService(pool),
-		TaskSvc:        syncservice.NewTaskService(pool),
-		CommentSvc:     syncservice.NewCommentService(pool),
-		ChatSvc:        syncservice.NewChatService(pool),
-		ChatMessageSvc: syncservice.NewChatMessageService(pool),
-	}
-
 	// JWT configuration
 	// DevMode ONLY enabled when ENV is explicitly set to "dev" (allows X-Debug-Sub header)
 	// Secure by default: if ENV is unset or misspelled, DevMode stays false
@@ -81,11 +69,33 @@ func main() {
 				"Setting only audience would have no JWKS to validate signatures.")
 	}
 
+	// Additional accepted audiences (for MCP OAuth tokens, token exchange, etc.)
+	// These are in addition to the primary Auth0Audience
+	acceptedAudiences := []string{}
+	if mcpAudience := env("MCP_OAUTH_AUDIENCE", ""); mcpAudience != "" {
+		acceptedAudiences = append(acceptedAudiences, mcpAudience)
+		log.Info().Str("mcp_audience", mcpAudience).Msg("MCP OAuth audience accepted")
+	}
+
 	jwtCfg := auth.JWTCfg{
-		HS256Secret:   jwtSecret,
-		DevMode:       isDevMode,
-		Auth0Domain:   auth0Domain,
-		Auth0Audience: auth0Audience,
+		HS256Secret:       jwtSecret,
+		DevMode:           isDevMode,
+		Auth0Domain:       auth0Domain,
+		Auth0Audience:     auth0Audience,
+		AcceptedAudiences: acceptedAudiences,
+	}
+
+	// HTTP server setup
+	srv := &httpapi.Server{
+		DB:              pool,
+		RateLimitConfig: httpapi.DefaultRateLimitConfig,
+		JWTCfg:          jwtCfg,
+		// Initialize services
+		NoteSvc:        syncservice.NewNoteService(pool),
+		TaskSvc:        syncservice.NewTaskService(pool),
+		CommentSvc:     syncservice.NewCommentService(pool),
+		ChatSvc:        syncservice.NewChatService(pool),
+		ChatMessageSvc: syncservice.NewChatMessageService(pool),
 	}
 
 	// Security validation: Always require a strong HS256 secret in production mode

@@ -24,10 +24,11 @@ const CtxUserID ctxKey = "uid"
 
 // JWTCfg holds JWT authentication configuration
 type JWTCfg struct {
-	HS256Secret  string // HMAC secret for HS256 tokens (dev/testing)
-	DevMode      bool   // Allow X-Debug-Sub header (DANGEROUS: only for local dev)
-	Auth0Domain  string // Auth0 domain (e.g., "dev-xxx.us.auth0.com") for RS256 token validation
-	Auth0Audience string // Expected audience claim for Auth0 tokens
+	HS256Secret      string   // HMAC secret for HS256 tokens (dev/testing)
+	DevMode          bool     // Allow X-Debug-Sub header (DANGEROUS: only for local dev)
+	Auth0Domain      string   // Auth0 domain (e.g., "dev-xxx.us.auth0.com") for RS256 token validation
+	Auth0Audience    string   // Primary expected audience claim for Auth0 tokens
+	AcceptedAudiences []string // Additional accepted audiences (for MCP OAuth tokens, backend tokens, etc.)
 }
 
 // JWKS caching for Auth0 public keys
@@ -233,21 +234,42 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 	}
 
 	// Validate audience (Auth0 tokens only)
+	// Accepts primary audience OR any of the additional accepted audiences
 	if cfg.Auth0Audience != "" {
+		// Build list of all accepted audiences
+		acceptedAuds := []string{cfg.Auth0Audience}
+		if len(cfg.AcceptedAudiences) > 0 {
+			acceptedAuds = append(acceptedAuds, cfg.AcceptedAudiences...)
+		}
+
 		audValid := false
 		switch aud := claims["aud"].(type) {
 		case string:
-			audValid = aud == cfg.Auth0Audience
-		case []interface{}:
-			for _, a := range aud {
-				if s, ok := a.(string); ok && s == cfg.Auth0Audience {
+			// Token has single audience - check if it matches any accepted audience
+			for _, accepted := range acceptedAuds {
+				if aud == accepted {
 					audValid = true
 					break
 				}
 			}
+		case []interface{}:
+			// Token has multiple audiences - check if any matches accepted audiences
+			for _, a := range aud {
+				if s, ok := a.(string); ok {
+					for _, accepted := range acceptedAuds {
+						if s == accepted {
+							audValid = true
+							break
+						}
+					}
+					if audValid {
+						break
+					}
+				}
+			}
 		}
 		if !audValid {
-			return "", fmt.Errorf("invalid audience: expected %s, got %v", cfg.Auth0Audience, claims["aud"])
+			return "", fmt.Errorf("invalid audience: expected one of %v, got %v", acceptedAuds, claims["aud"])
 		}
 	}
 

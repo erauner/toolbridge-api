@@ -4,8 +4,6 @@ Configuration management for ToolBridge MCP service.
 Loads settings from environment variables with TOOLBRIDGE_ prefix.
 """
 
-from typing import Literal
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,24 +17,22 @@ class Settings(BaseSettings):
     # Go API connection
     go_api_base_url: str = "http://localhost:8081"
 
-    # Auth0 configuration (automatic token refresh mode)
-    # When all four Auth0 settings are provided, the MCP server will automatically
-    # fetch and refresh tokens using OAuth2 client credentials flow.
-    auth0_client_id: str | None = None
-    auth0_client_secret: str | None = None
-    auth0_domain: str = "dev-zysv6k3xo7pkwmcb.us.auth0.com"
-    auth0_audience: str = "https://toolbridgeapi.erauner.dev"
+    # OAuth Provider Configuration (Path B)
+    # These configure FastMCP's Auth0Provider for per-user authentication
+    # Users authenticate via browser through Auth0 OAuth 2.1 + PKCE flow
+    oauth_client_id: str  # Auth0 SPA or Web App client ID
+    oauth_client_secret: str | None = None  # Optional for public clients
+    oauth_domain: str = "dev-zysv6k3xo7pkwmcb.us.auth0.com"
+    oauth_audience: str = "https://toolbridge-mcp.fly.dev"  # THIS MCP server audience
+    oauth_base_url: str = "https://toolbridge-mcp-staging.fly.dev"  # Public MCP URL
 
-    # Token refresh configuration
-    # How many seconds before token expiry to trigger refresh (default 5 minutes)
-    token_refresh_buffer_seconds: int = 300
-    # HTTP timeout for Auth0 requests in seconds
-    auth0_timeout_seconds: float = 10.0
+    # Backend API Configuration
+    # The Go API that MCP server calls after token exchange
+    backend_api_audience: str = "https://toolbridgeapi.erauner.dev"
 
-    # Authentication (deprecated - use Auth0 client credentials instead)
-    # Shared JWT token for backend API authentication
-    # DEPRECATED: Use TOOLBRIDGE_AUTH0_CLIENT_ID/SECRET for automatic refresh
-    jwt_token: str | None = None
+    # JWT Signing (Optional - for token exchange Option 2)
+    # Private key for signing backend JWTs if not using backend /token-exchange endpoint
+    jwt_signing_key: str | None = None
 
     # Logging
     log_level: str = "INFO"
@@ -56,30 +52,13 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    def auth_mode(self) -> Literal["auth0", "static", "passthrough"]:
-        """
-        Determine current authentication mode.
-
-        Returns:
-            - "auth0": Automatic token refresh using client credentials
-            - "static": Static JWT token (deprecated)
-            - "passthrough": Per-user tokens from MCP request headers
-        """
-        # Check if all required Auth0 credentials are present
-        if (
-            self.auth0_client_id
-            and self.auth0_client_secret
-            and self.auth0_domain
-            and self.auth0_audience
-        ):
-            return "auth0"
-
-        # Fall back to static token if configured
-        if self.jwt_token:
-            return "static"
-
-        # Default to passthrough mode (per-user authentication)
-        return "passthrough"
+    def validate_oauth_config(self) -> None:
+        """Validate OAuth provider configuration at startup."""
+        if not self.oauth_client_id:
+            raise ValueError(
+                "TOOLBRIDGE_OAUTH_CLIENT_ID is required for OAuth 2.1 authentication. "
+                "Create an Auth0 application and set this environment variable."
+            )
 
 
 # Global settings instance

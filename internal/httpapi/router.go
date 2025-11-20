@@ -18,6 +18,7 @@ import (
 type Server struct {
 	DB              *pgxpool.Pool
 	RateLimitConfig RateLimitInfo // Centralized rate limit configuration
+	JWTCfg          auth.JWTCfg   // JWT authentication configuration
 	// Services
 	NoteSvc        *syncservice.NoteService
 	TaskSvc        *syncservice.TaskService
@@ -131,6 +132,11 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		} else {
 			log.Debug().Msg("Tenant header validation disabled (non-MCP deployment)")
 		}
+
+		// Token exchange (Path B OAuth 2.1)
+		// Converts MCP OAuth tokens to backend JWTs
+		// No session or tenant headers required (this is used to bootstrap authentication)
+		r.Post("/auth/token-exchange", s.TokenExchange)
 
 		// Session management (no session or rate limit required for these)
 		r.Post("/v1/sync/sessions", s.BeginSession)

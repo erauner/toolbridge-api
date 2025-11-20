@@ -23,3 +23,6 @@ data:
   AUTH0_AUDIENCE: {{ .Values.api.auth0.audience | quote }}
   {{- end }}
   {{- end }}
+  {{- if .Values.api.mcp.oauthAudience }}
+  MCP_OAUTH_AUDIENCE: {{ .Values.api.mcp.oauthAudience | quote }}
+  {{- end }}
