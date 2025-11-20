@@ -21,23 +21,23 @@ from toolbridge_mcp.mcp_instance import mcp
 
 class Task(BaseModel):
     """Individual task with version and metadata."""
-    
+
     uid: str
     version: int
     updated_at: str = Field(alias="updatedAt")
     deleted_at: Optional[str] = Field(default=None, alias="deletedAt")
     payload: Dict[str, Any]
-    
+
     class Config:
         populate_by_name = True
 
 
 class TasksListResponse(BaseModel):
     """Paginated list of tasks."""
-    
+
     items: List[Task]
     next_cursor: Optional[str] = Field(default=None, alias="nextCursor")
-    
+
     class Config:
         populate_by_name = True
 
@@ -47,31 +47,35 @@ class TasksListResponse(BaseModel):
 
 @mcp.tool()
 async def list_tasks(
-    limit: Annotated[int, Field(ge=1, le=1000, description="Maximum number of tasks to return")] = 100,
-    cursor: Annotated[Optional[str], Field(description="Pagination cursor from previous response")] = None,
+    limit: Annotated[
+        int, Field(ge=1, le=1000, description="Maximum number of tasks to return")
+    ] = 100,
+    cursor: Annotated[
+        Optional[str], Field(description="Pagination cursor from previous response")
+    ] = None,
     include_deleted: Annotated[bool, Field(description="Include soft-deleted tasks")] = False,
 ) -> TasksListResponse:
     """
     List tasks with cursor-based pagination.
-    
+
     Returns tasks for the authenticated tenant. Supports filtering and pagination.
     Use the next_cursor from the response to fetch additional pages.
-    
+
     Args:
         limit: Maximum number of tasks to return (1-1000, default 100)
         cursor: Optional pagination cursor from previous response
         include_deleted: Whether to include soft-deleted tasks (default False)
-    
+
     Returns:
         TasksListResponse containing items and optional next_cursor
-    
+
     Examples:
         # List first 10 tasks
         >>> await list_tasks(limit=10)
-        
+
         # List next page
         >>> await list_tasks(limit=10, cursor="...")
-        
+
         # Include deleted tasks
         >>> await list_tasks(include_deleted=True)
     """
@@ -81,11 +85,13 @@ async def list_tasks(
             params["cursor"] = cursor
         if include_deleted:
             params["includeDeleted"] = "true"
-        
-        logger.info(f"Listing tasks: limit={limit}, cursor={cursor}, include_deleted={include_deleted}")
+
+        logger.info(
+            f"Listing tasks: limit={limit}, cursor={cursor}, include_deleted={include_deleted}"
+        )
         response = await call_get(client, "/v1/tasks", params=params)
         data = response.json()
-        
+
         return TasksListResponse(**data)
 
 
@@ -96,21 +102,21 @@ async def get_task(
 ) -> Task:
     """
     Retrieve a single task by UID.
-    
+
     Args:
         uid: Unique identifier of the task (UUID format)
         include_deleted: Whether to allow retrieving soft-deleted tasks
-    
+
     Returns:
         Task object with full details
-    
+
     Raises:
         httpx.HTTPStatusError: 404 if task not found, 410 if deleted (unless include_deleted=True)
-    
+
     Examples:
         # Get a specific task
         >>> await get_task("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
-        
+
         # Get a deleted task
         >>> await get_task("c1d9b7dc-...", include_deleted=True)
     """
@@ -118,11 +124,11 @@ async def get_task(
         params = {}
         if include_deleted:
             params["includeDeleted"] = "true"
-        
+
         logger.info(f"Getting task: uid={uid}")
         response = await call_get(client, f"/v1/tasks/{uid}", params=params)
         data = response.json()
-        
+
         return Task(**data)
 
 
@@ -130,11 +136,21 @@ async def get_task(
 async def create_task(
     title: Annotated[str, Field(description="Task title")],
     description: Annotated[Optional[str], Field(description="Task description")] = None,
-    status: Annotated[Optional[str], Field(description="Task status (todo, in_progress, done)")] = None,
-    priority: Annotated[Optional[str], Field(description="Task priority (low, medium, high)")] = None,
+    status: Annotated[
+        Optional[str], Field(description="Task status (todo, in_progress, done)")
+    ] = None,
+    priority: Annotated[
+        Optional[str], Field(description="Task priority (low, medium, high)")
+    ] = None,
     due_date: Annotated[Optional[str], Field(description="Due date (ISO 8601 format)")] = None,
-    tags: Annotated[Optional[Union[List[str], str]], Field(description="Optional tags for categorization (as list or JSON string)")] = None,
-    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields (as dict or JSON string)")] = None,
+    tags: Annotated[
+        Optional[Union[List[str], str]],
+        Field(description="Optional tags for categorization (as list or JSON string)"),
+    ] = None,
+    additional_fields: Annotated[
+        Optional[Union[Dict[str, Any], str]],
+        Field(description="Additional custom fields (as dict or JSON string)"),
+    ] = None,
 ) -> Task:
     """
     Create a new task.
@@ -216,8 +232,13 @@ async def update_task(
     title: Annotated[str, Field(description="Task title")],
     description: Annotated[Optional[str], Field(description="Task description")] = None,
     status: Annotated[Optional[str], Field(description="Task status")] = None,
-    if_match: Annotated[Optional[int], Field(description="Expected version for optimistic locking")] = None,
-    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields (as dict or JSON string)")] = None,
+    if_match: Annotated[
+        Optional[int], Field(description="Expected version for optimistic locking")
+    ] = None,
+    additional_fields: Annotated[
+        Optional[Union[Dict[str, Any], str]],
+        Field(description="Additional custom fields (as dict or JSON string)"),
+    ] = None,
 ) -> Task:
     """
     Replace a task (full update).
@@ -276,7 +297,10 @@ async def update_task(
 @mcp.tool()
 async def patch_task(
     uid: Annotated[str, Field(description="Unique identifier of the task")],
-    updates: Annotated[Union[Dict[str, Any], str], Field(description="Fields to update (partial, as dict or JSON string)")],
+    updates: Annotated[
+        Union[Dict[str, Any], str],
+        Field(description="Fields to update (partial, as dict or JSON string)"),
+    ],
 ) -> Task:
     """
     Partially update a task.
@@ -322,16 +346,16 @@ async def delete_task(
 ) -> Task:
     """
     Soft delete a task.
-    
+
     Marks the task as deleted (sets deletedAt timestamp) but doesn't remove it
     from the database. Deleted tasks can still be retrieved with include_deleted=True.
-    
+
     Args:
         uid: Unique identifier of the task
-    
+
     Returns:
         Deleted task with deletedAt timestamp set
-    
+
     Examples:
         >>> await delete_task("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
     """
@@ -339,7 +363,7 @@ async def delete_task(
         logger.info(f"Deleting task: uid={uid}")
         response = await call_delete(client, f"/v1/tasks/{uid}")
         data = response.json()
-        
+
         return Task(**data)
 
 
@@ -349,16 +373,16 @@ async def archive_task(
 ) -> Task:
     """
     Archive a task.
-    
+
     Sets the task's status to "archived". Archived tasks remain accessible
     but are typically hidden from default views.
-    
+
     Args:
         uid: Unique identifier of the task
-    
+
     Returns:
         Task with status="archived"
-    
+
     Examples:
         >>> await archive_task("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
     """
@@ -366,7 +390,7 @@ async def archive_task(
         logger.info(f"Archiving task: uid={uid}")
         response = await call_post(client, f"/v1/tasks/{uid}/archive", json={})
         data = response.json()
-        
+
         return Task(**data)
 
 
@@ -374,7 +398,10 @@ async def archive_task(
 async def process_task(
     uid: Annotated[str, Field(description="Unique identifier of the task")],
     action: Annotated[str, Field(description="Action to perform (start, complete, reopen)")],
-    metadata: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Optional action metadata (as dict or JSON string)")] = None,
+    metadata: Annotated[
+        Optional[Union[Dict[str, Any], str]],
+        Field(description="Optional action metadata (as dict or JSON string)"),
+    ] = None,
 ) -> Task:
     """
     Process a task action (state machine transition).

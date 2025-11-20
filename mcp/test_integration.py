@@ -104,10 +104,7 @@ async def test_notes_crud():
 
     # 4. Patch note (partial update)
     logger.info("4. Patching note...")
-    patched_note = await patch_note(
-        uid=note_uid,
-        updates={"content": "Updated content via PATCH"}
-    )
+    patched_note = await patch_note(uid=note_uid, updates={"content": "Updated content via PATCH"})
     assert patched_note.version == 2, "Version should increment"
     assert patched_note.payload.get("content") == "Updated content via PATCH"
     logger.success(f"✓ Patched note: version={patched_note.version}")
@@ -185,9 +182,7 @@ async def test_tasks_crud():
     # Process task (state machine transition)
     logger.info("3. Processing task (start action)...")
     processed_task = await process_task(
-        uid=task_uid,
-        action="start",
-        metadata={"started_by": "integration-test"}
+        uid=task_uid, action="start", metadata={"started_by": "integration-test"}
     )
     logger.success(f"✓ Processed task: action=start")
 
@@ -204,7 +199,11 @@ async def test_tasks_crud():
 async def test_chats_and_messages():
     """Test chats and chat messages."""
     from toolbridge_mcp.tools.chats import create_chat, get_chat, delete_chat
-    from toolbridge_mcp.tools.chat_messages import create_chat_message, get_chat_message, list_chat_messages
+    from toolbridge_mcp.tools.chat_messages import (
+        create_chat_message,
+        get_chat_message,
+        list_chat_messages,
+    )
 
     logger.info("━━━ Testing Chats & Messages ━━━")
 
@@ -292,9 +291,7 @@ async def test_comments():
     # Process comment
     logger.info("4. Processing comment (resolve action)...")
     processed_comment = await process_comment(
-        uid=comment_uid,
-        action="resolve",
-        metadata={"resolved_by": "integration-test"}
+        uid=comment_uid, action="resolve", metadata={"resolved_by": "integration-test"}
     )
     logger.success(f"✓ Processed comment: action=resolve")
 
@@ -328,6 +325,7 @@ async def main():
         except Exception as e:
             logger.error(f"✗ {name} FAILED: {e}")
             import traceback
+
             traceback.print_exc()
             results.append((name, False))
 

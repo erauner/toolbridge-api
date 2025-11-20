@@ -1,4 +1,4 @@
-.PHONY: help dev dev-grpc test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean
+.PHONY: help dev dev-grpc test test-unit test-integration test-smoke test-all test-e2e ci build docker-build docker-build-local docker-build-multiarch docker-release docker-up docker-down helm-lint helm-package helm-push helm-release clean format format-python format-check format-check-python lint-python lint-fix-python
 
 # Docker configuration
 DOCKER_REGISTRY ?= ghcr.io
@@ -51,6 +51,13 @@ help:
 	@echo ""
 	@echo "Database:"
 	@echo "  make migrate          - Run migrations against local DB"
+	@echo ""
+	@echo "Code Quality:"
+	@echo "  make format           - Format all code (Go + Python)"
+	@echo "  make format-python    - Format Python/MCP code with ruff"
+	@echo "  make format-check     - Check formatting without changes"
+	@echo "  make lint-python      - Lint Python code"
+	@echo "  make lint-fix-python  - Auto-fix Python linting issues"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean            - Clean build artifacts"
@@ -254,6 +261,44 @@ clean:
 deps:
 	go mod download
 	go mod tidy
+
+# Python/MCP formatting and linting
+
+# Format Python code with ruff
+format-python:
+	@echo "Formatting Python code with ruff..."
+	cd mcp && uv run ruff format .
+	@echo "✓ Python code formatted"
+
+# Check Python formatting without making changes
+format-check-python:
+	@echo "Checking Python code formatting..."
+	cd mcp && uv run ruff format --check .
+	@echo "✓ Python formatting check passed"
+
+# Lint Python code with ruff
+lint-python:
+	@echo "Linting Python code with ruff..."
+	cd mcp && uv run ruff check .
+	@echo "✓ Python lint passed"
+
+# Fix Python linting issues automatically
+lint-fix-python:
+	@echo "Fixing Python linting issues..."
+	cd mcp && uv run ruff check --fix .
+	@echo "✓ Python lint issues fixed"
+
+# Format all code (Go + Python)
+format: format-python
+	@echo "Formatting Go code..."
+	@go fmt ./...
+	@echo "✓ All code formatted"
+
+# Check all formatting (Go + Python)
+format-check: format-check-python
+	@echo "Checking Go code formatting..."
+	@test -z "$$(gofmt -l .)" || (echo "Go code not formatted. Run: make format" && exit 1)
+	@echo "✓ All formatting checks passed"
 
 # Helm chart management
 

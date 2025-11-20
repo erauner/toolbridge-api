@@ -18,9 +18,9 @@ _client_factory: Optional[Callable[[], AsyncContextManager[httpx.AsyncClient]]] 
 def set_client_factory(factory: Callable[[], AsyncContextManager[httpx.AsyncClient]]) -> None:
     """
     Override the default client factory.
-    
+
     This is primarily used for testing to inject mock clients.
-    
+
     Args:
         factory: Async context manager function that yields an httpx.AsyncClient
     """
@@ -33,14 +33,14 @@ def set_client_factory(factory: Callable[[], AsyncContextManager[httpx.AsyncClie
 async def get_client() -> AsyncGenerator[httpx.AsyncClient, None]:
     """
     Get an AsyncClient as a context manager.
-    
+
     If a custom factory has been set via set_client_factory(), uses that.
     Otherwise, creates a client with TenantDirectTransport.
-    
+
     Usage:
         async with get_client() as client:
             response = await client.get("/v1/notes")
-    
+
     Yields:
         httpx.AsyncClient configured with tenant transport
     """
@@ -52,7 +52,7 @@ async def get_client() -> AsyncGenerator[httpx.AsyncClient, None]:
         # Use default TenantDirectTransport
         from toolbridge_mcp.transports.tenant_direct import TenantDirectTransport
         from toolbridge_mcp.config import settings
-        
+
         transport = TenantDirectTransport()
         async with httpx.AsyncClient(
             transport=transport,

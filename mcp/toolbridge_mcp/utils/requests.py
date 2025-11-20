@@ -22,11 +22,13 @@ from toolbridge_mcp.config import settings
 
 class AuthorizationError(Exception):
     """Raised when Authorization header is missing from MCP request."""
+
     pass
 
 
 class JWTDecodeError(Exception):
     """Raised when JWT token cannot be decoded."""
+
     pass
 
 

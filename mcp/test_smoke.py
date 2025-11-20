@@ -35,7 +35,7 @@ async def test_tenant_header_signing():
 
     # Verify signature is hexadecimal (64 chars for SHA-256)
     assert len(headers["X-TB-Signature"]) == 64, "Invalid signature length"
-    assert all(c in '0123456789abcdef' for c in headers["X-TB-Signature"]), "Signature not hex"
+    assert all(c in "0123456789abcdef" for c in headers["X-TB-Signature"]), "Signature not hex"
 
     logger.success("✓ Tenant header signing works correctly")
     return True
@@ -79,7 +79,7 @@ async def test_pydantic_models():
         "version": 1,
         "updatedAt": "2025-11-18T10:00:00Z",
         "deletedAt": None,
-        "payload": {"title": "Test Note", "content": "Test content"}
+        "payload": {"title": "Test Note", "content": "Test content"},
     }
     note = Note(**note_data)
     assert note.uid == "test-note-123"
@@ -87,10 +87,7 @@ async def test_pydantic_models():
     assert note.payload["title"] == "Test Note"
 
     # Test NotesListResponse
-    list_data = {
-        "items": [note_data],
-        "nextCursor": "cursor-123"
-    }
+    list_data = {"items": [note_data], "nextCursor": "cursor-123"}
     notes_list = NotesListResponse(**list_data)
     assert len(notes_list.items) == 1
     assert notes_list.next_cursor == "cursor-123"
@@ -101,7 +98,7 @@ async def test_pydantic_models():
         "version": 1,
         "updatedAt": "2025-11-18T10:00:00Z",
         "deletedAt": None,
-        "payload": {"title": "Test Task", "status": "todo"}
+        "payload": {"title": "Test Task", "status": "todo"},
     }
     task = Task(**task_data)
     assert task.uid == "test-task-123"
@@ -112,7 +109,7 @@ async def test_pydantic_models():
         "version": 1,
         "updatedAt": "2025-11-18T10:00:00Z",
         "deletedAt": None,
-        "payload": {"title": "Test Chat"}
+        "payload": {"title": "Test Chat"},
     }
     chat = Chat(**chat_data)
     assert chat.uid == "test-chat-123"
@@ -123,7 +120,7 @@ async def test_pydantic_models():
         "version": 1,
         "updatedAt": "2025-11-18T10:00:00Z",
         "deletedAt": None,
-        "payload": {"content": "Test message", "chatUid": "test-chat-123"}
+        "payload": {"content": "Test message", "chatUid": "test-chat-123"},
     }
     message = ChatMessage(**message_data)
     assert message.uid == "test-message-123"
@@ -134,7 +131,7 @@ async def test_pydantic_models():
         "version": 1,
         "updatedAt": "2025-11-18T10:00:00Z",
         "deletedAt": None,
-        "payload": {"content": "Test comment", "parentType": "note", "parentUid": "test-note-123"}
+        "payload": {"content": "Test comment", "parentType": "note", "parentUid": "test-note-123"},
     }
     comment = Comment(**comment_data)
     assert comment.uid == "test-comment-123"
@@ -151,7 +148,7 @@ async def test_mcp_server_import():
         from toolbridge_mcp import server
 
         # Verify MCP instance exists
-        assert hasattr(server, 'mcp'), "MCP server instance not found"
+        assert hasattr(server, "mcp"), "MCP server instance not found"
         assert server.mcp is not None, "MCP server instance is None"
 
         # Verify tools are registered (FastMCP should have decorated functions)

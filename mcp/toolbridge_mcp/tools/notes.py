@@ -21,23 +21,23 @@ from toolbridge_mcp.mcp_instance import mcp
 
 class Note(BaseModel):
     """Individual note with version and metadata."""
-    
+
     uid: str
     version: int
     updated_at: str = Field(alias="updatedAt")
     deleted_at: Optional[str] = Field(default=None, alias="deletedAt")
     payload: Dict[str, Any]
-    
+
     class Config:
         populate_by_name = True
 
 
 class NotesListResponse(BaseModel):
     """Paginated list of notes."""
-    
+
     items: List[Note]
     next_cursor: Optional[str] = Field(default=None, alias="nextCursor")
-    
+
     class Config:
         populate_by_name = True
 
@@ -47,31 +47,35 @@ class NotesListResponse(BaseModel):
 
 @mcp.tool()
 async def list_notes(
-    limit: Annotated[int, Field(ge=1, le=1000, description="Maximum number of notes to return")] = 100,
-    cursor: Annotated[Optional[str], Field(description="Pagination cursor from previous response")] = None,
+    limit: Annotated[
+        int, Field(ge=1, le=1000, description="Maximum number of notes to return")
+    ] = 100,
+    cursor: Annotated[
+        Optional[str], Field(description="Pagination cursor from previous response")
+    ] = None,
     include_deleted: Annotated[bool, Field(description="Include soft-deleted notes")] = False,
 ) -> NotesListResponse:
     """
     List notes with cursor-based pagination.
-    
+
     Returns notes for the authenticated tenant. Supports filtering and pagination.
     Use the next_cursor from the response to fetch additional pages.
-    
+
     Args:
         limit: Maximum number of notes to return (1-1000, default 100)
         cursor: Optional pagination cursor from previous response
         include_deleted: Whether to include soft-deleted notes (default False)
-    
+
     Returns:
         NotesListResponse containing items and optional next_cursor
-    
+
     Examples:
         # List first 10 notes
         >>> await list_notes(limit=10)
-        
+
         # List next page
         >>> await list_notes(limit=10, cursor="...")
-        
+
         # Include deleted notes
         >>> await list_notes(include_deleted=True)
     """
@@ -81,11 +85,13 @@ async def list_notes(
             params["cursor"] = cursor
         if include_deleted:
             params["includeDeleted"] = "true"
-        
-        logger.info(f"Listing notes: limit={limit}, cursor={cursor}, include_deleted={include_deleted}")
+
+        logger.info(
+            f"Listing notes: limit={limit}, cursor={cursor}, include_deleted={include_deleted}"
+        )
         response = await call_get(client, "/v1/notes", params=params)
         data = response.json()
-        
+
         return NotesListResponse(**data)
 
 
@@ -96,21 +102,21 @@ async def get_note(
 ) -> Note:
     """
     Retrieve a single note by UID.
-    
+
     Args:
         uid: Unique identifier of the note (UUID format)
         include_deleted: Whether to allow retrieving soft-deleted notes
-    
+
     Returns:
         Note object with full details
-    
+
     Raises:
         httpx.HTTPStatusError: 404 if note not found, 410 if deleted (unless include_deleted=True)
-    
+
     Examples:
         # Get a specific note
         >>> await get_note("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
-        
+
         # Get a deleted note
         >>> await get_note("c1d9b7dc-...", include_deleted=True)
     """
@@ -118,11 +124,11 @@ async def get_note(
         params = {}
         if include_deleted:
             params["includeDeleted"] = "true"
-        
+
         logger.info(f"Getting note: uid={uid}")
         response = await call_get(client, f"/v1/notes/{uid}", params=params)
         data = response.json()
-        
+
         return Note(**data)
 
 
@@ -130,8 +136,14 @@ async def get_note(
 async def create_note(
     title: Annotated[str, Field(description="Note title")],
     content: Annotated[str, Field(description="Note content (markdown supported)")],
-    tags: Annotated[Optional[Union[List[str], str]], Field(description="Optional tags for categorization (as list or JSON string)")] = None,
-    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields (as dict or JSON string)")] = None,
+    tags: Annotated[
+        Optional[Union[List[str], str]],
+        Field(description="Optional tags for categorization (as list or JSON string)"),
+    ] = None,
+    additional_fields: Annotated[
+        Optional[Union[Dict[str, Any], str]],
+        Field(description="Additional custom fields (as dict or JSON string)"),
+    ] = None,
 ) -> Note:
     """
     Create a new note.
@@ -209,8 +221,13 @@ async def update_note(
     uid: Annotated[str, Field(description="Unique identifier of the note")],
     title: Annotated[str, Field(description="Note title")],
     content: Annotated[str, Field(description="Note content")],
-    if_match: Annotated[Optional[int], Field(description="Expected version for optimistic locking")] = None,
-    additional_fields: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Additional custom fields (as dict or JSON string)")] = None,
+    if_match: Annotated[
+        Optional[int], Field(description="Expected version for optimistic locking")
+    ] = None,
+    additional_fields: Annotated[
+        Optional[Union[Dict[str, Any], str]],
+        Field(description="Additional custom fields (as dict or JSON string)"),
+    ] = None,
 ) -> Note:
     """
     Replace a note (full update).
@@ -264,7 +281,10 @@ async def update_note(
 @mcp.tool()
 async def patch_note(
     uid: Annotated[str, Field(description="Unique identifier of the note")],
-    updates: Annotated[Union[Dict[str, Any], str], Field(description="Fields to update (partial, as dict or JSON string)")],
+    updates: Annotated[
+        Union[Dict[str, Any], str],
+        Field(description="Fields to update (partial, as dict or JSON string)"),
+    ],
 ) -> Note:
     """
     Partially update a note.
@@ -310,16 +330,16 @@ async def delete_note(
 ) -> Note:
     """
     Soft delete a note.
-    
+
     Marks the note as deleted (sets deletedAt timestamp) but doesn't remove it
     from the database. Deleted notes can still be retrieved with include_deleted=True.
-    
+
     Args:
         uid: Unique identifier of the note
-    
+
     Returns:
         Deleted note with deletedAt timestamp set
-    
+
     Examples:
         >>> await delete_note("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
     """
@@ -327,7 +347,7 @@ async def delete_note(
         logger.info(f"Deleting note: uid={uid}")
         response = await call_delete(client, f"/v1/notes/{uid}")
         data = response.json()
-        
+
         return Note(**data)
 
 
@@ -337,16 +357,16 @@ async def archive_note(
 ) -> Note:
     """
     Archive a note.
-    
+
     Sets the note's status to "archived". Archived notes remain accessible
     but are typically hidden from default views.
-    
+
     Args:
         uid: Unique identifier of the note
-    
+
     Returns:
         Note with status="archived"
-    
+
     Examples:
         >>> await archive_note("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
     """
@@ -354,7 +374,7 @@ async def archive_note(
         logger.info(f"Archiving note: uid={uid}")
         response = await call_post(client, f"/v1/notes/{uid}/archive", json={})
         data = response.json()
-        
+
         return Note(**data)
 
 
@@ -362,7 +382,10 @@ async def archive_note(
 async def process_note(
     uid: Annotated[str, Field(description="Unique identifier of the note")],
     action: Annotated[str, Field(description="Action to perform (pin, unpin, archive, unarchive)")],
-    metadata: Annotated[Optional[Union[Dict[str, Any], str]], Field(description="Optional action metadata (as dict or JSON string)")] = None,
+    metadata: Annotated[
+        Optional[Union[Dict[str, Any], str]],
+        Field(description="Optional action metadata (as dict or JSON string)"),
+    ] = None,
 ) -> Note:
     """
     Process a note action (state machine transition).
