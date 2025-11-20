@@ -18,10 +18,13 @@ from toolbridge_mcp.config import settings
 
 class SessionError(Exception):
     """Raised when session creation fails."""
+
     pass
 
 
-async def create_session(client: httpx.AsyncClient, auth_header: str, user_id: str) -> Dict[str, str]:
+async def create_session(
+    client: httpx.AsyncClient, auth_header: str, user_id: str
+) -> Dict[str, str]:
     """
     Create a new sync session with the Go API.
 

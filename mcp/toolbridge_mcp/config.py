@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # Security
     # Timestamp validation window in seconds (default 5 minutes)
     max_timestamp_skew_seconds: int = 300
-    
+
     model_config = SettingsConfigDict(
         env_prefix="TOOLBRIDGE_",
         env_file=".env",

@@ -353,12 +353,7 @@ func (s *Server) DeleteNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, 200, map[string]any{
-		"uid":       item.UID,
-		"version":   item.Version,
-		"updatedAt": item.UpdatedAt,
-		"deletedAt": item.DeletedAt,
-	})
+	writeJSON(w, 200, item)
 }
 
 // ArchiveNote handles POST /v1/notes/{uid}/archive
@@ -745,12 +740,7 @@ func (s *Server) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, 200, map[string]any{
-		"uid":       item.UID,
-		"version":   item.Version,
-		"updatedAt": item.UpdatedAt,
-		"deletedAt": item.DeletedAt,
-	})
+	writeJSON(w, 200, item)
 }
 
 // ArchiveTask handles POST /v1/tasks/{uid}/archive
@@ -1135,12 +1125,7 @@ func (s *Server) DeleteChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, 200, map[string]any{
-		"uid":       item.UID,
-		"version":   item.Version,
-		"updatedAt": item.UpdatedAt,
-		"deletedAt": item.DeletedAt,
-	})
+	writeJSON(w, 200, item)
 }
 
 // ArchiveChat handles POST /v1/chats/{uid}/archive
@@ -1523,12 +1508,7 @@ func (s *Server) DeleteComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, 200, map[string]any{
-		"uid":       item.UID,
-		"version":   item.Version,
-		"updatedAt": item.UpdatedAt,
-		"deletedAt": item.DeletedAt,
-	})
+	writeJSON(w, 200, item)
 }
 
 // ArchiveComment handles POST /v1/comments/{uid}/archive
@@ -1911,12 +1891,7 @@ func (s *Server) DeleteChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, 200, map[string]any{
-		"uid":       item.UID,
-		"version":   item.Version,
-		"updatedAt": item.UpdatedAt,
-		"deletedAt": item.DeletedAt,
-	})
+	writeJSON(w, 200, item)
 }
 
 // ArchiveChatMessage handles POST /v1/chat_messages/{uid}/archive
