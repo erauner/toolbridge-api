@@ -116,6 +116,14 @@ spec:
               key: AUTH0_AUDIENCE
         {{- end }}
         {{- end }}
+        {{- if .Values.api.mcp.oauthAudience }}
+        # MCP OAuth audience for Path B per-user authentication
+        - name: MCP_OAUTH_AUDIENCE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: MCP_OAUTH_AUDIENCE
+        {{- end }}
 
         # Sensitive values from Secret
         - name: POSTGRES_PASSWORD

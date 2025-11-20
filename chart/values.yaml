@@ -28,6 +28,7 @@ api:
   # Enable tenant header validation for MCP deployments
   mcp:
     enabled: false  # Set to true to enable tenant header validation
+    oauthAudience: ""  # Optional: MCP OAuth audience for Path B (e.g., https://toolbridge-mcp.fly.dev)
 
   # Resource limits
   resources:
