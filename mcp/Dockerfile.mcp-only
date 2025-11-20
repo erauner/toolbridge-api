@@ -1,0 +1,73 @@
+# MCP-Only Dockerfile for ToolBridge FastMCP Service
+# This image runs ONLY the Python MCP proxy service
+# The Go API is expected to be running externally (e.g., in K8s)
+#
+# Usage:
+#   docker build -f Dockerfile.mcp-only -t toolbridge-mcp:staging .
+#   docker run -p 8001:8001 \
+#     -e TOOLBRIDGE_GO_API_BASE_URL=https://toolbridgeapi.erauner.dev \
+#     -e TOOLBRIDGE_TENANT_ID=staging-tenant \
+#     -e TOOLBRIDGE_TENANT_HEADER_SECRET=secret \
+#     toolbridge-mcp:staging
+
+# ============================================================================
+# Stage 1: Install Python dependencies
+# ============================================================================
+FROM python:3.12-slim AS builder
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+WORKDIR /app/mcp
+
+# Copy Python project files
+COPY pyproject.toml uv.lock README.md ./
+
+# Install dependencies into virtual environment
+RUN uv sync --no-dev --frozen
+
+# ============================================================================
+# Stage 2: Runtime image
+# ============================================================================
+FROM python:3.12-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/mcp
+
+# Copy Python virtual environment from builder
+COPY --from=builder /app/mcp/.venv /app/mcp/.venv
+
+# Copy Python source code
+COPY toolbridge_mcp ./toolbridge_mcp
+
+# Create non-root user
+RUN useradd -m -u 1000 app && \
+    chown -R app:app /app
+
+USER app
+
+# Environment variables
+ENV PATH="/app/mcp/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    # Default values (override via fly secrets or docker run -e)
+    TOOLBRIDGE_HOST=0.0.0.0 \
+    TOOLBRIDGE_PORT=8001 \
+    TOOLBRIDGE_LOG_LEVEL=INFO
+
+# Health check disabled - FastMCP requires authentication on all endpoints
+# TODO: Add dedicated unauthenticated /health endpoint in future PR
+# HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+#   CMD wget --no-verbose --tries=1 --spider http://localhost:8001/health || exit 1
+
+# Expose MCP service port
+EXPOSE 8001
+
+# Start FastMCP server directly
+CMD ["python", "-m", "toolbridge_mcp.server"]
