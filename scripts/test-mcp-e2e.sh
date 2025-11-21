@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-GO_API_PORT=8081
+GO_API_PORT=8080
 MCP_PORT=8001
 GO_API_PID=""
 MCP_PID=""

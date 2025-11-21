@@ -24,26 +24,27 @@ const CtxUserID ctxKey = "uid"
 
 // JWTCfg holds JWT authentication configuration
 type JWTCfg struct {
-	HS256Secret      string   // HMAC secret for HS256 tokens (dev/testing)
-	DevMode          bool     // Allow X-Debug-Sub header (DANGEROUS: only for local dev)
-	Auth0Domain      string   // Auth0 domain (e.g., "dev-xxx.us.auth0.com") for RS256 token validation
-	Auth0Audience    string   // Primary expected audience claim for Auth0 tokens
+	HS256Secret       string   // HMAC secret for HS256 tokens (dev/testing)
+	DevMode           bool     // Allow X-Debug-Sub header (DANGEROUS: only for local dev)
+	Issuer            string   // Upstream IdP issuer (e.g., "https://your-app.authkit.app")
+	JWKSURL           string   // JWKS endpoint URL (e.g., "https://your-app.authkit.app/oauth2/jwks")
+	Audience          string   // Optional primary expected audience claim
 	AcceptedAudiences []string // Additional accepted audiences (for MCP OAuth tokens, backend tokens, etc.)
 }
 
-// JWKS caching for Auth0 public keys
+// JWKS caching for upstream IdP public keys
 type jwksCache struct {
-	mu          sync.RWMutex
-	keys        map[string]*rsa.PublicKey
-	lastFetch   time.Time
-	cacheTTL    time.Duration
-	auth0Domain string
-	httpClient  *http.Client // HTTP client with timeout for JWKS fetching
+	mu         sync.RWMutex
+	keys       map[string]*rsa.PublicKey
+	lastFetch  time.Time
+	cacheTTL   time.Duration
+	jwksURL    string        // Explicit JWKS URL instead of deriving from domain
+	httpClient *http.Client // HTTP client with timeout for JWKS fetching
 }
 
 var globalJWKSCache *jwksCache
 
-// JWKS response structure from Auth0
+// JWKS response structure from OIDC provider
 type jwksResponse struct {
 	Keys []jwk `json:"keys"`
 }
@@ -56,7 +57,7 @@ type jwk struct {
 	E   string `json:"e"`
 }
 
-// fetchJWKS fetches and caches Auth0 public keys for RS256 validation
+// fetchJWKS fetches and caches public keys from upstream IdP for RS256 validation
 // If forceRefresh is true, bypasses TTL check to handle key rotations
 func (c *jwksCache) fetchJWKS(forceRefresh bool) error {
 	c.mu.Lock()
@@ -67,8 +68,7 @@ func (c *jwksCache) fetchJWKS(forceRefresh bool) error {
 		return nil
 	}
 
-	url := fmt.Sprintf("https://%s/.well-known/jwks.json", c.auth0Domain)
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.httpClient.Get(c.jwksURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch JWKS: %w", err)
 	}
@@ -128,7 +128,7 @@ func (c *jwksCache) fetchJWKS(forceRefresh bool) error {
 
 	c.keys = keys
 	c.lastFetch = time.Now()
-	log.Info().Int("key_count", len(keys)).Msg("refreshed Auth0 JWKS cache")
+	log.Info().Int("key_count", len(keys)).Msg("refreshed JWKS cache")
 
 	return nil
 }
@@ -174,25 +174,25 @@ func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
 
 // ValidateToken validates a JWT token and returns the subject claim
 // Returns the subject (sub) claim if valid, or an error if validation fails
-// Supports both RS256 (Auth0) and HS256 (dev/testing) tokens
+// Supports both RS256 (upstream IdP / WorkOS) and HS256 (backend / dev) tokens
 func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 	if tokenString == "" {
 		return "", errors.New("token is empty")
 	}
 
-	// Ensure JWKS cache is initialized if Auth0 is configured
-	if cfg.Auth0Domain != "" && globalJWKSCache == nil {
-		return "", errors.New("Auth0 JWKS cache not initialized")
+	// Ensure JWKS cache is initialized if upstream IdP is configured
+	if cfg.JWKSURL != "" && globalJWKSCache == nil {
+		return "", errors.New("JWKS cache not initialized")
 	}
 
 	claims := jwt.MapClaims{}
 	t, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
-		// Support both RS256 (Auth0) and HS256 (dev/testing)
+		// Support both RS256 (upstream IdP) and HS256 (backend / dev)
 		switch t.Method.(type) {
 		case *jwt.SigningMethodRSA:
-			// Auth0 RS256 token - fetch public key from JWKS
+			// RS256 token from upstream IdP - fetch public key from JWKS
 			if globalJWKSCache == nil {
-				return nil, errors.New("Auth0 JWKS cache not initialized")
+				return nil, errors.New("JWKS cache not initialized")
 			}
 
 			// Extract kid (key ID) from token header
@@ -210,7 +210,7 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 			return pubKey, nil
 
 		case *jwt.SigningMethodHMAC:
-			// HS256 token (dev/testing) - use shared secret
+			// HS256 token (backend / dev) - use shared secret
 			if cfg.HS256Secret == "" {
 				return nil, errors.New("HS256 secret not configured")
 			}
@@ -225,51 +225,66 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 		return "", fmt.Errorf("jwt validation failed: %w", err)
 	}
 
-	// Validate issuer (Auth0 tokens only)
-	if cfg.Auth0Domain != "" {
-		expectedIssuer := fmt.Sprintf("https://%s/", cfg.Auth0Domain)
-		if iss, ok := claims["iss"].(string); !ok || iss != expectedIssuer {
-			return "", fmt.Errorf("invalid issuer: expected %s, got %v", expectedIssuer, claims["iss"])
-		}
-	}
+	// Extract token_type to differentiate backend tokens from external IdP tokens
+	tokenType, _ := claims["token_type"].(string)
+	issuer, _ := claims["iss"].(string)
 
-	// Validate audience (Auth0 tokens only)
-	// Accepts primary audience OR any of the additional accepted audiences
-	if cfg.Auth0Audience != "" {
-		// Build list of all accepted audiences
-		acceptedAuds := []string{cfg.Auth0Audience}
-		if len(cfg.AcceptedAudiences) > 0 {
-			acceptedAuds = append(acceptedAuds, cfg.AcceptedAudiences...)
-		}
+	// Backend tokens: Skip issuer/audience checks (internal tokens with token_type="backend")
+	// Legacy backend tokens: HS256 tokens with iss="toolbridge-api" but no token_type claim
+	// External tokens: Validate issuer and audience against upstream IdP config
+	isBackendToken := tokenType == "backend" || (tokenType == "" && issuer == "toolbridge-api")
 
-		audValid := false
-		switch aud := claims["aud"].(type) {
-		case string:
-			// Token has single audience - check if it matches any accepted audience
-			for _, accepted := range acceptedAuds {
-				if aud == accepted {
-					audValid = true
-					break
-				}
+	if isBackendToken {
+		// Backend token (new or legacy) - validated by signature, no additional checks needed
+	} else {
+		// External IdP token (WorkOS AuthKit, etc.) - validate issuer and audience
+		if cfg.Issuer != "" {
+			if iss, ok := claims["iss"].(string); !ok || iss != cfg.Issuer {
+				return "", fmt.Errorf("invalid issuer: expected %s, got %v", cfg.Issuer, claims["iss"])
 			}
-		case []interface{}:
-			// Token has multiple audiences - check if any matches accepted audiences
-			for _, a := range aud {
-				if s, ok := a.(string); ok {
-					for _, accepted := range acceptedAuds {
-						if s == accepted {
-							audValid = true
-							break
-						}
-					}
-					if audValid {
+		}
+
+		// Validate audience if configured
+		// Accepts primary audience OR any of the additional accepted audiences
+		if cfg.Audience != "" || len(cfg.AcceptedAudiences) > 0 {
+			// Build list of all accepted audiences
+			acceptedAuds := []string{}
+			if cfg.Audience != "" {
+				acceptedAuds = append(acceptedAuds, cfg.Audience)
+			}
+			if len(cfg.AcceptedAudiences) > 0 {
+				acceptedAuds = append(acceptedAuds, cfg.AcceptedAudiences...)
+			}
+
+			audValid := false
+			switch aud := claims["aud"].(type) {
+			case string:
+				// Token has single audience - check if it matches any accepted audience
+				for _, accepted := range acceptedAuds {
+					if aud == accepted {
+						audValid = true
 						break
 					}
 				}
+			case []interface{}:
+				// Token has multiple audiences - check if any matches accepted audiences
+				for _, a := range aud {
+					if s, ok := a.(string); ok {
+						for _, accepted := range acceptedAuds {
+							if s == accepted {
+								audValid = true
+								break
+							}
+						}
+						if audValid {
+							break
+						}
+					}
+				}
 			}
-		}
-		if !audValid {
-			return "", fmt.Errorf("invalid audience: expected one of %v, got %v", acceptedAuds, claims["aud"])
+			if !audValid {
+				return "", fmt.Errorf("invalid audience: expected one of %v, got %v", acceptedAuds, claims["aud"])
+			}
 		}
 	}
 
@@ -282,11 +297,11 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 	return sub, nil
 }
 
-// InitJWKSCache initializes the global JWKS cache for Auth0 RS256 validation
-// Should be called once at application startup if Auth0 is configured
+// InitJWKSCache initializes the global JWKS cache for upstream IdP RS256 validation
+// Should be called once at application startup if JWKSURL is configured
 func InitJWKSCache(cfg JWTCfg) error {
-	if cfg.Auth0Domain == "" {
-		return nil // No Auth0 configured, skip initialization
+	if cfg.JWKSURL == "" {
+		return nil // No upstream IdP configured, skip initialization
 	}
 
 	if globalJWKSCache != nil {
@@ -294,9 +309,9 @@ func InitJWKSCache(cfg JWTCfg) error {
 	}
 
 	globalJWKSCache = &jwksCache{
-		keys:        make(map[string]*rsa.PublicKey),
-		cacheTTL:    1 * time.Hour,
-		auth0Domain: cfg.Auth0Domain,
+		keys:     make(map[string]*rsa.PublicKey),
+		cacheTTL: 1 * time.Hour,
+		jwksURL:  cfg.JWKSURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second, // Prevent hanging on slow/stalled JWKS endpoint
 		},
@@ -304,21 +319,21 @@ func InitJWKSCache(cfg JWTCfg) error {
 
 	// Pre-fetch JWKS on startup
 	if err := globalJWKSCache.fetchJWKS(false); err != nil {
-		log.Warn().Err(err).Msg("failed to pre-fetch Auth0 JWKS (will retry on first request)")
+		log.Warn().Err(err).Msg("failed to pre-fetch JWKS (will retry on first request)")
 		return err
 	}
 
-	log.Info().Str("domain", cfg.Auth0Domain).Msg("Auth0 RS256 validation enabled")
+	log.Info().Str("jwks_url", cfg.JWKSURL).Msg("upstream IdP RS256 validation enabled")
 	return nil
 }
 
 // Middleware creates HTTP middleware for JWT authentication
 // Supports three modes:
-// 1. Production RS256: Auth0 Bearer tokens with RS256 signature validation
+// 1. Production RS256: Upstream IdP Bearer tokens with RS256 signature validation
 // 2. Development HS256: Bearer tokens with HMAC secret (for testing)
 // 3. Development X-Debug-Sub: Bypass JWT validation (ONLY when DevMode=true)
 func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
-	// Initialize JWKS cache for Auth0 RS256 validation
+	// Initialize JWKS cache for upstream IdP RS256 validation
 	_ = InitJWKSCache(cfg)
 
 	// Log warning if dev mode is enabled

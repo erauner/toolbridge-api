@@ -15,12 +15,15 @@ data:
   DB_NAME: {{ .Values.config.dbName | quote }}
   DB_USER: {{ .Values.config.dbUser | quote }}
   DB_SSLMODE: {{ .Values.config.dbSslMode | quote }}
-  {{- if .Values.api.auth0 }}
-  {{- if .Values.api.auth0.domain }}
-  AUTH0_DOMAIN: {{ .Values.api.auth0.domain | quote }}
+  {{- if .Values.api.jwt }}
+  {{- if .Values.api.jwt.issuer }}
+  JWT_ISSUER: {{ .Values.api.jwt.issuer | quote }}
   {{- end }}
-  {{- if .Values.api.auth0.audience }}
-  AUTH0_AUDIENCE: {{ .Values.api.auth0.audience | quote }}
+  {{- if .Values.api.jwt.jwksUrl }}
+  JWT_JWKS_URL: {{ .Values.api.jwt.jwksUrl | quote }}
+  {{- end }}
+  {{- if .Values.api.jwt.audience }}
+  JWT_AUDIENCE: {{ .Values.api.jwt.audience | quote }}
   {{- end }}
   {{- end }}
   {{- if .Values.api.mcp.oauthAudience }}

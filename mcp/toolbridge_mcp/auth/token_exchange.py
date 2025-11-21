@@ -7,8 +7,8 @@ Supports three exchange patterns:
 3. Pass-through with validated claims
 
 This module enables per-user authentication flow:
-- User authenticates via Auth0 OAuth 2.1 + PKCE
-- MCP server validates user token via FastMCP
+- User authenticates via WorkOS AuthKit OAuth 2.1 + PKCE
+- MCP server validates user token via FastMCP AuthKitProvider
 - Token exchange converts MCP token → backend JWT
 - Backend API validates backend JWT and creates per-user session
 """
@@ -50,13 +50,13 @@ async def exchange_for_backend_jwt(
         TokenExchangeError: If exchange fails after all attempts
     """
     # Get authenticated user from MCP OAuth context
-    # FastMCP has already validated this token via Auth0Provider
+    # FastMCP has already validated this token via AuthKitProvider
     token = get_access_token()
     user_id = token.claims.get("sub")
     email = token.claims.get("email")
     tenant_id = token.claims.get("tenant_id")  # Custom claim if configured
-    
-    logger.debug(f"Exchanging token for user: {user_id}, tenant: {tenant_id or 'default'}")
+
+    logger.debug(f"Exchanging WorkOS AuthKit token for user: {user_id}, tenant: {tenant_id or 'default'}")
     
     # OPTION 1: Backend token exchange endpoint (RECOMMENDED)
     # This delegates JWT signing to the backend, keeping secrets centralized
@@ -64,7 +64,7 @@ async def exchange_for_backend_jwt(
         response = await http_client.post(
             f"{settings.go_api_base_url}/auth/token-exchange",
             headers={
-                "Authorization": f"Bearer {token.raw_token}",
+                "Authorization": f"Bearer {token.token}",
                 "Content-Type": "application/json",
             },
             json={
@@ -97,7 +97,7 @@ async def exchange_for_backend_jwt(
             email=email,
             tenant_id=tenant_id,
             scopes=token.scopes or [],
-            raw_token=token.raw_token,
+            raw_token=token.token,
         )
         return backend_jwt
     
@@ -120,20 +120,20 @@ def issue_backend_jwt(
 ) -> str:
     """
     Issue a JWT for the backend API (Option 2).
-    
+
     This allows the MCP server to issue backend JWTs without calling an endpoint.
     Requires JWT_SIGNING_KEY configured with RS256 private key.
-    
+
     Args:
-        user_id: User subject from MCP token (e.g., "auth0|user123")
+        user_id: User subject from MCP token (e.g., "user_abc123")
         email: User email (optional)
         tenant_id: Tenant ID from custom claim (optional)
         scopes: OAuth scopes from MCP token
         raw_token: Original MCP token (for debugging/audit)
-        
+
     Returns:
         Signed JWT for backend API
-        
+
     Raises:
         TokenExchangeError: If signing key not configured or invalid
     """
@@ -143,18 +143,18 @@ def issue_backend_jwt(
     # Build JWT payload for backend API
     payload = {
         # Standard claims
-        "sub": user_id,  # User identity (e.g., "auth0|abc123")
+        "sub": user_id,  # User identity from WorkOS AuthKit
         "iss": "toolbridge-mcp",  # MCP server as issuer
         "aud": settings.backend_api_audience,  # Backend API audience
         "exp": datetime.utcnow() + timedelta(hours=1),  # 1 hour expiry
         "iat": datetime.utcnow(),
         "nbf": datetime.utcnow(),
-        
+
         # Optional claims
         "email": email,
         "tenant_id": tenant_id or settings.tenant_id,  # Use from claim or fallback to config
         "scope": " ".join(scopes),
-        
+
         # Metadata (for debugging)
         "token_type": "backend",
         "exchanged_from": "mcp_oauth",

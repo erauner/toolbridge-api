@@ -65,7 +65,7 @@ help:
 
 # Local development server (HTTP only)
 dev:
-	@echo "Starting dev server (HTTP only on :8081)..."
+	@echo "Starting dev server (HTTP only on :8080)..."
 	DATABASE_URL=postgres://toolbridge:dev-password@localhost:5432/toolbridge?sslmode=disable \
 	JWT_HS256_SECRET=dev-secret \
 	ENV=dev \
@@ -76,7 +76,7 @@ dev-grpc:
 	@echo "Starting dev server with gRPC support..."
 	@echo "Building with gRPC support..."
 	@go build -tags grpc -o ./bin/server ./cmd/server
-	@echo "Starting server (HTTP on :8081, gRPC on :8082)..."
+	@echo "Starting server (HTTP on :8080, gRPC on :8082)..."
 	DATABASE_URL=postgres://toolbridge:dev-password@localhost:5432/toolbridge?sslmode=disable \
 	JWT_HS256_SECRET=dev-secret \
 	ENV=dev \

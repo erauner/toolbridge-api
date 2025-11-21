@@ -42,7 +42,7 @@ RUN addgroup -g 1000 app && \
 USER app
 
 # Health check
-# Note: Server binds to HTTP_ADDR (default :8081), but we set it to :8080 in deployment configs
+# Note: Server binds to HTTP_ADDR (default :8080), but we set it to :8080 in deployment configs
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
 

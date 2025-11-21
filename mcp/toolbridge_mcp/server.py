@@ -17,13 +17,16 @@ logger.add(
     colorize=True,
 )
 
-logger.info("🚀 ToolBridge MCP Server - OAuth 2.1 Mode")
-logger.info(f"✓ OAuth Provider: {settings.oauth_domain}")
-logger.info(f"✓ MCP Audience: {settings.oauth_audience}")
-logger.info(f"✓ Backend API: {settings.backend_api_audience}")
-logger.info(f"✓ Public URL: {settings.oauth_base_url}")
+logger.info("🚀 ToolBridge MCP Server - WorkOS AuthKit Mode")
+logger.info(f"✓ WorkOS AuthKit domain: {settings.authkit_domain}")
+logger.info(f"✓ Backend API audience: {settings.backend_api_audience}")
+logger.info(f"✓ MCP public URL: {settings.public_base_url}")
+logger.info(
+    f"✓ OAuth protected resource metadata: "
+    f"{settings.public_base_url}/.well-known/oauth-protected-resource"
+)
 
-# Import MCP server instance (created in mcp_instance.py with Auth0Provider)
+# Import MCP server instance (created in mcp_instance.py with AuthKitProvider)
 from toolbridge_mcp.mcp_instance import mcp  # noqa: E402
 
 # Import tools to register them with the server
@@ -35,7 +38,6 @@ from toolbridge_mcp.tools import chats  # noqa: F401, E402
 from toolbridge_mcp.tools import chat_messages  # noqa: F401, E402
 
 logger.info("✓ ToolBridge MCP server initialized with 40 tools (8 per entity x 5 entities)")
-logger.info(f"✓ OAuth metadata available at: {settings.oauth_base_url}/.well-known/oauth-protected-resource")
 
 
 # Health check endpoint (FastMCP-authenticated)
@@ -43,15 +45,15 @@ logger.info(f"✓ OAuth metadata available at: {settings.oauth_base_url}/.well-k
 async def health_check() -> dict:
     """
     Check MCP server health status.
-    
-    Note: This endpoint requires OAuth authentication via FastMCP.
+
+    Note: This endpoint requires WorkOS AuthKit authentication via FastMCP.
     """
     return {
         "status": "healthy",
         "tenant_id": settings.tenant_id,
         "go_api_base_url": settings.go_api_base_url,
-        "oauth_domain": settings.oauth_domain,
-        "oauth_audience": settings.oauth_audience,
+        "authkit_domain": settings.authkit_domain,
+        "public_base_url": settings.public_base_url,
         "backend_api_audience": settings.backend_api_audience,
     }
 

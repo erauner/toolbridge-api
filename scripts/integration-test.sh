@@ -9,7 +9,7 @@ echo "║     ToolBridge MCP End-to-End Integration Test              ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-API_URL="http://localhost:8081"
+API_URL="http://localhost:8080"
 USER="e2e-test-$$"
 
 # Color output
@@ -297,5 +297,5 @@ echo "  ✓ All 5 entity types functional (notes, tasks, comments, chats, messag
 echo "  ✓ Full CRUD operations working"
 echo "  ✓ State machine transitions (process endpoints)"
 echo "  ✓ Soft deletion working"
-echo "  ✓ Go REST API responding correctly on port 8081"
+echo "  ✓ Go REST API responding correctly on port 8080"
 echo ""

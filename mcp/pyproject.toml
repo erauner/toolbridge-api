@@ -9,7 +9,7 @@ authors = [
 ]
 
 dependencies = [
-    "fastmcp[auth]>=2.12.0",  # Includes OAuth providers
+    "fastmcp[auth]>=2.12.0",  # Includes OAuth providers (WorkOS AuthKit)
     "httpx>=0.27.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",

@@ -4,7 +4,7 @@ set -e
 # Smoke test script for ToolBridge API
 # Tests the basic push/pull/delete flow against a running server
 
-API_URL="${API_URL:-http://localhost:8081}"
+API_URL="${API_URL:-http://localhost:8080}"
 USER="smoke-test-user-$$"  # Unique user per run
 NOTE_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 TASK_UID="$(uuidgen | tr '[:upper:]' '[:lower:]')"

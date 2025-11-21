@@ -15,16 +15,15 @@ class Settings(BaseSettings):
     tenant_header_secret: str
 
     # Go API connection
-    go_api_base_url: str = "http://localhost:8081"
+    go_api_base_url: str = "http://localhost:8080"
 
-    # OAuth Provider Configuration (Path B)
-    # These configure FastMCP's Auth0Provider for per-user authentication
-    # Users authenticate via browser through Auth0 OAuth 2.1 + PKCE flow
-    oauth_client_id: str  # Auth0 SPA or Web App client ID
-    oauth_client_secret: str | None = None  # Optional for public clients
-    oauth_domain: str = "dev-zysv6k3xo7pkwmcb.us.auth0.com"
-    oauth_audience: str = "https://toolbridge-mcp.fly.dev"  # THIS MCP server audience
-    oauth_base_url: str = "https://toolbridge-mcp-staging.fly.dev"  # Public MCP URL
+    # WorkOS AuthKit Configuration
+    # These configure FastMCP's AuthKitProvider for per-user authentication
+    # Users authenticate via browser through WorkOS AuthKit OAuth 2.1 + PKCE flow
+    authkit_domain: str  # WorkOS AuthKit domain (e.g., "toolbridge.authkit.app")
+
+    # Public MCP URL (used in OAuth metadata and resource identification)
+    public_base_url: str  # e.g., "https://toolbridge-mcp-staging.fly.dev"
 
     # Backend API Configuration
     # The Go API that MCP server calls after token exchange
@@ -43,6 +42,7 @@ class Settings(BaseSettings):
 
     # Security
     # Timestamp validation window in seconds (default 5 minutes)
+    # Reserved for future timestamp validation - currently unused
     max_timestamp_skew_seconds: int = 300
 
     model_config = SettingsConfigDict(
@@ -52,12 +52,17 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    def validate_oauth_config(self) -> None:
-        """Validate OAuth provider configuration at startup."""
-        if not self.oauth_client_id:
+    def validate_authkit_config(self) -> None:
+        """Validate WorkOS AuthKit provider configuration at startup."""
+        if not self.authkit_domain:
             raise ValueError(
-                "TOOLBRIDGE_OAUTH_CLIENT_ID is required for OAuth 2.1 authentication. "
-                "Create an Auth0 application and set this environment variable."
+                "TOOLBRIDGE_AUTHKIT_DOMAIN is required for WorkOS AuthKit authentication. "
+                "Configure your WorkOS AuthKit domain and set this environment variable."
+            )
+        if not self.public_base_url:
+            raise ValueError(
+                "TOOLBRIDGE_PUBLIC_BASE_URL is required for OAuth metadata. "
+                "Set this to the public URL of the MCP server."
             )
 
 

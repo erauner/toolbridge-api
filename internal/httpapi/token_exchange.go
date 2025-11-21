@@ -31,8 +31,8 @@ type TokenExchangeResponse struct {
 // TokenExchange handles token exchange for MCP OAuth tokens → Backend JWTs
 // This enables the MCP server to convert user OAuth tokens into backend API tokens
 //
-// Path B OAuth 2.1 Flow:
-// 1. MCP server receives user OAuth token from FastMCP Auth0Provider
+// WorkOS AuthKit OAuth 2.1 Flow:
+// 1. MCP server receives user OAuth token from FastMCP AuthKitProvider
 // 2. MCP calls this endpoint with the user token
 // 3. Go API validates user token and issues backend JWT
 // 4. Backend JWT used for subsequent API calls

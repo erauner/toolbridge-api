@@ -7,7 +7,7 @@
 ### Production Endpoint
 - **Base URL**: `https://toolbridgeapi.erauner.dev/v1`
 - **Protocol**: REST (HTTP/JSON)
-- **Port**: 8081 (HTTP service)
+- **Port**: 8080 (HTTP service)
 
 ### Build Command (Production)
 ```bash
@@ -73,7 +73,7 @@ spec:
   rules:
     - backendRefs:
         - name: toolbridge-api
-          port: 8081  # REST API port
+          port: 8080  # REST API port
 ```
 
 ### Environment Variables
@@ -81,14 +81,16 @@ spec:
 # Required
 DATABASE_URL=postgres://user:pass@host/db
 ENV=production  # Disables X-Debug-Sub header
-JWT_HS256_SECRET=<strong-secret>  # Required in production (even with Auth0)
+JWT_HS256_SECRET=<strong-secret>  # Required in production (even with upstream OIDC)
 
-# Auth0 RS256 JWT validation (recommended for production)
-AUTH0_DOMAIN=your-tenant.us.auth0.com
-AUTH0_AUDIENCE=https://toolbridgeapi.erauner.dev
+# Upstream OIDC RS256 JWT validation (recommended for production)
+# Supports WorkOS AuthKit, Auth0, Okta, or any OIDC provider
+JWT_ISSUER=https://your-app.authkit.app  # Or: https://your-tenant.auth0.com
+JWT_JWKS_URL=https://your-app.authkit.app/oauth2/jwks  # Or: https://your-tenant.auth0.com/.well-known/jwks.json
+JWT_AUDIENCE=https://toolbridgeapi.erauner.dev  # Optional
 
 # Optional
-HTTP_ADDR=:8081  # Default REST API port
+HTTP_ADDR=:8080  # Default REST API port
 ```
 
 **Security Note**: `JWT_HS256_SECRET` is required in production. The server will refuse to start if:
@@ -159,7 +161,7 @@ kubectl logs -n toolbridge -l app=toolbridge-api --tail=100 -f
 ```
 
 Look for:
-- ✅ `"starting HTTP server" addr=":8081"`
+- ✅ `"starting HTTP server" addr=":8080"`
 - ❌ NO `"starting gRPC server"` messages
 
 ## Troubleshooting
