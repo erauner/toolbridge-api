@@ -39,24 +39,8 @@ from toolbridge_mcp.tools import chat_messages  # noqa: F401, E402
 
 logger.info("✓ ToolBridge MCP server initialized with 40 tools (8 per entity x 5 entities)")
 
-
-# Health check endpoint (FastMCP-authenticated)
-@mcp.tool()
-async def health_check() -> dict:
-    """
-    Check MCP server health status.
-
-    Note: This endpoint requires WorkOS AuthKit authentication via FastMCP.
-    """
-    return {
-        "status": "healthy",
-        "tenant_id": settings.tenant_id,
-        "go_api_base_url": settings.go_api_base_url,
-        "authkit_domain": settings.authkit_domain,
-        "public_base_url": settings.public_base_url,
-        "backend_api_audience": settings.backend_api_audience,
-    }
-
+# Note: health_check tool is provided by FastMCP by default
+# No need to register a custom one to avoid "Tool already exists" warnings
 
 # Create ASGI app for Streamable HTTP transport
 # This exposes /mcp endpoint and OAuth protected resource metadata at /.well-known/*

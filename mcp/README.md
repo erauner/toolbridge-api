@@ -122,7 +122,10 @@ signature = hmac.new(
    ```bash
    # Terminal 3: Start MCP service
    cd mcp
-   uvicorn toolbridge_mcp.server:mcp --reload --host 0.0.0.0 --port 8001
+   python -m toolbridge_mcp.server
+   
+   # OR for development with auto-reload:
+   uvicorn toolbridge_mcp.server:app --reload --host 0.0.0.0 --port 8001
    ```
 
 ### Environment Variables
@@ -165,12 +168,8 @@ Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "toolbridge": {
-      "command": "uvicorn",
-      "args": [
-        "toolbridge_mcp.server:mcp",
-        "--host", "0.0.0.0",
-        "--port", "8001"
-      ],
+      "command": "python",
+      "args": ["-m", "toolbridge_mcp.server"],
       "env": {
         "TOOLBRIDGE_TENANT_ID": "test-tenant-123",
         "TOOLBRIDGE_TENANT_HEADER_SECRET": "dev-secret",
