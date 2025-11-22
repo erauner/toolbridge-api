@@ -26,6 +26,6 @@ data:
   JWT_AUDIENCE: {{ .Values.api.jwt.audience | quote }}
   {{- end }}
   {{- end }}
-  {{- if .Values.api.mcp.oauthAudience }}
-  MCP_OAUTH_AUDIENCE: {{ .Values.api.mcp.oauthAudience | quote }}
+  {{- if .Values.api.mcp.enabled }}
+  MCP_OAUTH_AUDIENCE: {{ .Values.api.mcp.oauthAudience | default "" | quote }}
   {{- end }}

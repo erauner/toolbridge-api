@@ -123,8 +123,10 @@ spec:
               key: JWT_AUDIENCE
         {{- end }}
         {{- end }}
-        {{- if .Values.api.mcp.oauthAudience }}
-        # MCP OAuth audience for Path B per-user authentication
+        {{- if .Values.api.mcp.enabled }}
+        # MCP OAuth audience for token validation
+        # WorkOS AuthKit with DCR: Set to empty string to skip audience validation (issuer + signature only)
+        # Static registration: Must match the `resource` from MCP's /.well-known/oauth-protected-resource
         - name: MCP_OAUTH_AUDIENCE
           valueFrom:
             configMapKeyRef:
