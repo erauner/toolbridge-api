@@ -182,6 +182,8 @@ Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ## Available MCP Tools
 
+**Note:** FastMCP automatically provides a `health_check` tool that requires authentication. If you need a public unauthenticated health endpoint for monitoring, add a separate endpoint outside the MCP protocol (e.g., via a custom route in the ASGI app).
+
 ### Notes
 
 - `list_notes(limit, cursor, include_deleted)` - List notes with pagination
