@@ -201,7 +201,10 @@ api:
 
   mcp:
     enabled: true
-    oauthAudience: "https://toolbridge-mcp-staging.fly.dev/sse"  # MUST match MCP `resource`
+    # For WorkOS AuthKit with Dynamic Client Registration (DCR), leave empty:
+    oauthAudience: ""  # Empty = skip audience validation (DCR mode)
+    # For static client registration, set to MCP resource URL:
+    # oauthAudience: "https://toolbridge-mcp-staging.fly.dev/sse"
 ```
 
 **How It Works**:
@@ -268,14 +271,25 @@ api:
 
   mcp:
     enabled: true
-    oauthAudience: "https://toolbridge-mcp-staging.fly.dev/sse"  # ✅ Accept MCP tokens
+    # WorkOS AuthKit DCR (recommended):
+    oauthAudience: ""  # ✅ Empty = skip audience validation (DCR mode)
+    # Static client registration:
+    # oauthAudience: "https://toolbridge-mcp-staging.fly.dev/sse"
 ```
 
 The Go API will log a warning if OIDC is configured without audience validation.
 
 ### MCP Resource Audience (IMPORTANT)
 
-The Python MCP server (FastMCP + `AuthKitProvider`) exposes `/.well-known/oauth-protected-resource/{path}` and declares a `resource` URL (typically the SSE endpoint). WorkOS AuthKit issues tokens for that resource. The Go API must configure `MCP_OAUTH_AUDIENCE` (and Helm `api.mcp.oauthAudience`) to that same value so that token exchange accepts only tokens minted for the MCP server, not arbitrary AuthKit clients.
+**WorkOS AuthKit with Dynamic Client Registration (DCR)**:
+
+When using WorkOS AuthKit with DCR, tokens have **unpredictable client IDs as the audience** (e.g., `client_01KABXHNQ09QGWEX4APPYG2AH5`), not the resource URL. Set `MCP_OAUTH_AUDIENCE=""` (empty) to skip audience validation. The Go API will validate issuer and signature instead.
+
+See detailed documentation: [docs/workos-dcr-authentication.md](workos-dcr-authentication.md)
+
+**Static Client Registration (non-DCR)**:
+
+For static client registration, the Python MCP server (FastMCP + `AuthKitProvider`) exposes `/.well-known/oauth-protected-resource/{path}` and declares a `resource` URL. The Go API must configure `MCP_OAUTH_AUDIENCE` to match this resource value.
 
 **Discovering the MCP resource:**
 ```bash
@@ -290,7 +304,7 @@ curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-protected-resource
 }
 ```
 
-The `resource` value from this metadata **must** match `MCP_OAUTH_AUDIENCE` in the Go backend configuration. This is typically the MCP server's SSE endpoint URL (base URL + `/sse` path).
+For static registration, the `resource` value **must** match `MCP_OAUTH_AUDIENCE` in the Go backend configuration.
 
 ### Option 2 (MCP-Issued RS256 JWTs) Requirements
 
@@ -317,6 +331,10 @@ curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-protected-resource
   "scopes_supported": [],
   "bearer_methods_supported": ["header"]
 }
+
+# NOTE: With WorkOS AuthKit DCR, the `resource` field is for metadata discovery only.
+# Tokens will have unpredictable client IDs as audience, not this resource URL.
+# Set MCP_OAUTH_AUDIENCE="" (empty) to skip audience validation.
 
 # Test WorkOS AuthKit authorization server metadata (forwarded by FastMCP)
 curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-authorization-server
