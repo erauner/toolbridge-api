@@ -133,6 +133,71 @@ func TestValidateToken_WorkOS_DCR_StillValidatesIssuer(t *testing.T) {
 	}
 }
 
+// TestValidateToken_JWTAudienceSet_StillValidates is a regression test for a security issue.
+// When JWT_AUDIENCE is set (for direct API tokens) but MCP_OAUTH_AUDIENCE is empty,
+// we must still validate audience. Only skip validation when BOTH are empty (pure DCR mode).
+func TestValidateToken_JWTAudienceSet_StillValidates(t *testing.T) {
+	server, err := newMockJWKSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock JWKS server: %v", err)
+	}
+
+	// Configuration with JWT_AUDIENCE set but AcceptedAudiences empty
+	// This is the common case for deployments with direct API access + MCP
+	cfg := JWTCfg{
+		Issuer:            "https://svelte-monolith-27-staging.authkit.app",
+		Audience:          "https://toolbridgeapi.erauner.dev", // Set for direct API
+		AcceptedAudiences: []string{},                          // Empty (no MCP audience)
+	}
+
+	globalJWKSCache = &jwksCache{
+		keys: map[string]*rsa.PublicKey{
+			server.kid: server.publicKey,
+		},
+		lastFetch: time.Now(),
+		cacheTTL:  1 * time.Hour,
+	}
+
+	// Token with WRONG audience (not the configured JWT_AUDIENCE)
+	claims := jwt.MapClaims{
+		"sub": "user_123",
+		"iss": "https://svelte-monolith-27-staging.authkit.app",
+		"aud": "https://attacker.com", // Wrong audience
+		"exp": time.Now().Add(1 * time.Hour).Unix(),
+		"iat": time.Now().Unix(),
+	}
+
+	tokenString, err := server.issueToken(claims)
+	if err != nil {
+		t.Fatalf("Failed to issue token: %v", err)
+	}
+
+	// CRITICAL: Should REJECT even though AcceptedAudiences is empty
+	// because cfg.Audience is set
+	_, err = ValidateToken(tokenString, cfg)
+	if err == nil {
+		t.Fatal("SECURITY ISSUE: Token with wrong audience accepted when JWT_AUDIENCE is set!")
+	}
+	if !contains(err.Error(), "invalid audience") {
+		t.Errorf("Expected 'invalid audience' error, got: %v", err)
+	}
+
+	// Now test with CORRECT audience - should pass
+	claims["aud"] = "https://toolbridgeapi.erauner.dev"
+	tokenString, err = server.issueToken(claims)
+	if err != nil {
+		t.Fatalf("Failed to issue token: %v", err)
+	}
+
+	sub, err := ValidateToken(tokenString, cfg)
+	if err != nil {
+		t.Fatalf("Token with correct audience should be accepted: %v", err)
+	}
+	if sub != "user_123" {
+		t.Errorf("Expected sub=user_123, got %s", sub)
+	}
+}
+
 // TestValidateToken_RegularTokens_StillValidateAudience ensures that when
 // AcceptedAudiences IS configured, audience validation still happens.
 func TestValidateToken_RegularTokens_StillValidateAudience(t *testing.T) {
