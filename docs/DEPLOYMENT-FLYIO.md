@@ -112,6 +112,90 @@ fly deploy --config fly.staging.toml -a toolbridge-mcp-staging
 
 ---
 
+## Scale-to-Zero vs Always-On Configuration
+
+Fly.io supports two operational modes for the MCP service:
+
+### Scale-to-Zero (Default)
+
+**Configuration** (`fly.staging.toml`):
+```toml
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 0
+```
+
+**Behavior:**
+- Machine auto-stops after ~60 seconds of inactivity
+- Auto-starts on first incoming request (~5s cold start)
+- Zero cost when idle
+
+**Best for:**
+- Development/staging environments
+- Cost-sensitive deployments
+- Low-traffic use cases where 5s cold start is acceptable
+
+**Trade-offs:**
+- ✅ Lower cost (only pay when active)
+- ✅ Automatic resource management
+- ❌ 5-second cold start on first request after idle period
+- ❌ Connections must be re-established after auto-stop
+
+### Always-On
+
+**Configuration** (`fly.staging.toml`):
+```toml
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+```
+
+**Behavior:**
+- Machine runs continuously 24/7
+- Zero cold start (instant response)
+- Keeps connections warm
+
+**Best for:**
+- Production deployments
+- Latency-sensitive applications
+- High-traffic use cases
+- When predictable response times are critical
+
+**Trade-offs:**
+- ✅ Zero cold start (instant response)
+- ✅ Keeps connections warm
+- ✅ Predictable performance
+- ❌ Continuous cost (~$3-5/month for shared-cpu-1x @ 512MB)
+
+### Switching Between Modes
+
+To change from scale-to-zero to always-on:
+
+```bash
+# 1. Update fly.staging.toml (set auto_stop_machines=false, min_machines_running=1)
+
+# 2. Deploy the configuration change
+fly deploy --config fly.staging.toml -a toolbridge-mcp-staging
+
+# 3. Verify the machine stays running
+fly status -a toolbridge-mcp-staging
+```
+
+To change from always-on back to scale-to-zero:
+
+```bash
+# 1. Update fly.staging.toml (set auto_stop_machines=true, min_machines_running=0)
+
+# 2. Deploy the configuration change
+fly deploy --config fly.staging.toml -a toolbridge-mcp-staging
+
+# 3. Machine will auto-stop after ~60s of inactivity
+```
+
+**Note:** Both modes use the same graceful shutdown mechanism when machines are stopped or restarted.
+
+---
+
 ## Prerequisites
 
 1. **Fly.io CLI installed:**
