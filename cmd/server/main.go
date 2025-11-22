@@ -75,10 +75,10 @@ func main() {
 	// Additional accepted audiences (for MCP OAuth tokens, token exchange, etc.)
 	// These are in addition to the primary JWT_AUDIENCE
 	//
-	// MCP_OAUTH_AUDIENCE MUST equal the `resource` value from the MCP server's
+	// WorkOS AuthKit with DCR: Leave empty (MCP_OAUTH_AUDIENCE="") to skip audience validation
+	// Static registration: MUST equal the `resource` value from the MCP server's
 	// /.well-known/oauth-protected-resource metadata endpoint (path-based discovery).
-	// Example: https://toolbridge-mcp-staging.fly.dev/sse
-	// This ensures only tokens issued for the MCP server are accepted, not arbitrary client IDs.
+	// Example: https://toolbridge-mcp-staging.fly.dev/mcp
 	acceptedAudiences := []string{}
 	if mcpAudience := strings.TrimSpace(env("MCP_OAUTH_AUDIENCE", "")); mcpAudience != "" {
 		acceptedAudiences = append(acceptedAudiences, mcpAudience)

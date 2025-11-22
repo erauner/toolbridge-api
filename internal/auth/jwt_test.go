@@ -210,7 +210,7 @@ func TestValidateToken_RegularTokens_StillValidateAudience(t *testing.T) {
 	cfg := JWTCfg{
 		Issuer:            "https://svelte-monolith-27-staging.authkit.app",
 		Audience:          "https://toolbridgeapi.erauner.dev",
-		AcceptedAudiences: []string{"https://toolbridge-mcp-staging.fly.dev/sse"},
+		AcceptedAudiences: []string{"https://toolbridge-mcp-staging.fly.dev/mcp"},
 	}
 
 	globalJWKSCache = &jwksCache{
@@ -235,7 +235,7 @@ func TestValidateToken_RegularTokens_StillValidateAudience(t *testing.T) {
 		},
 		{
 			name:        "valid additional audience",
-			audience:    "https://toolbridge-mcp-staging.fly.dev/sse",
+			audience:    "https://toolbridge-mcp-staging.fly.dev/mcp",
 			shouldPass:  true,
 			description: "Token with additional accepted audience should pass",
 		},

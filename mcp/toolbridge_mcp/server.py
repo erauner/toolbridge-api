@@ -59,11 +59,13 @@ async def health_check() -> dict:
 
 
 if __name__ == "__main__":
-    # Run the MCP server with SSE transport for HTTP access
-    logger.info(f"🌐 Starting SSE transport on {settings.host}:{settings.port}")
-    
+    # Run the MCP server with Streamable HTTP transport at /mcp
+    logger.info(f"🌐 Starting HTTP transport on {settings.host}:{settings.port} at /mcp")
+    logger.info(f"✓ MCP endpoint: {settings.public_base_url}/mcp")
+
     mcp.run(
-        transport="sse",  # Use SSE transport for HTTP/web access
+        transport="http",  # Use Streamable HTTP transport
         host=settings.host,
         port=settings.port,
+        path="/mcp",  # MCP endpoint path
     )

@@ -36,11 +36,12 @@ api:
   # Enable tenant header validation for MCP deployments
   mcp:
     enabled: false  # Set to true to enable tenant header validation
-    oauthAudience: ""  # MCP OAuth audience - MUST equal the `resource` value from the MCP
-                       # server's /.well-known/oauth-protected-resource/{path} endpoint.
-                       # This is typically the MCP SSE endpoint URL.
-                       # Example: https://toolbridge-mcp-staging.fly.dev/sse
-                       # Discovery: curl https://your-mcp-server/.well-known/oauth-protected-resource/sse
+    oauthAudience: ""  # MCP OAuth audience
+                       # WorkOS AuthKit with DCR: Leave empty (recommended)
+                       # Static registration: MUST equal the `resource` value from MCP's
+                       # /.well-known/oauth-protected-resource/{path} endpoint
+                       # Example: https://toolbridge-mcp-staging.fly.dev/mcp
+                       # Discovery: curl https://your-mcp-server/.well-known/oauth-protected-resource/mcp
 
   # Resource limits
   resources:

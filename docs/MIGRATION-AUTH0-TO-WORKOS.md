@@ -204,7 +204,7 @@ api:
     # For WorkOS AuthKit with Dynamic Client Registration (DCR), leave empty:
     oauthAudience: ""  # Empty = skip audience validation (DCR mode)
     # For static client registration, set to MCP resource URL:
-    # oauthAudience: "https://toolbridge-mcp-staging.fly.dev/sse"
+    # oauthAudience: "https://toolbridge-mcp-staging.fly.dev/mcp"
 ```
 
 **How It Works**:
@@ -274,7 +274,7 @@ api:
     # WorkOS AuthKit DCR (recommended):
     oauthAudience: ""  # ✅ Empty = skip audience validation (DCR mode)
     # Static client registration:
-    # oauthAudience: "https://toolbridge-mcp-staging.fly.dev/sse"
+    # oauthAudience: "https://toolbridge-mcp-staging.fly.dev/mcp"
 ```
 
 The Go API will log a warning if OIDC is configured without audience validation.
@@ -293,12 +293,12 @@ For static client registration, the Python MCP server (FastMCP + `AuthKitProvide
 
 **Discovering the MCP resource:**
 ```bash
-# Path-based discovery (FastMCP default for SSE transport)
-curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-protected-resource/sse
+# Path-based discovery (FastMCP default for HTTP transport)
+curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-protected-resource/mcp
 
 # Response contains the canonical resource ID:
 {
-  "resource": "https://toolbridge-mcp-staging.fly.dev/sse",
+  "resource": "https://toolbridge-mcp-staging.fly.dev/mcp",
   "authorization_servers": ["https://svelte-monolith-27-staging.authkit.app/"],
   ...
 }
@@ -322,11 +322,11 @@ If using Option 2 (MCP server issues RS256 backend JWTs), note that:
 ### 1. MCP Server (Python)
 ```bash
 # Test MCP protected resource metadata (path-based discovery)
-curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-protected-resource/sse
+curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-protected-resource/mcp
 
 # Expected response (confirms the canonical resource ID):
 {
-  "resource": "https://toolbridge-mcp-staging.fly.dev/sse",
+  "resource": "https://toolbridge-mcp-staging.fly.dev/mcp",
   "authorization_servers": ["https://svelte-monolith-27-staging.authkit.app/"],
   "scopes_supported": [],
   "bearer_methods_supported": ["header"]
@@ -410,7 +410,8 @@ api:
 
   mcp:
     enabled: true
-    oauthAudience: "https://toolbridge-mcp.fly.dev/sse"  # MUST match MCP `resource`
+    oauthAudience: ""  # Empty for WorkOS AuthKit DCR (recommended)
+    # For static registration: "https://toolbridge-mcp.fly.dev/mcp"
 
 # Sync via ArgoCD
 argocd app sync toolbridge-api-production
@@ -448,13 +449,76 @@ api:
     audience: "https://toolbridgeapi.erauner.dev"
 ```
 
+## MCP Transport Migration: SSE → Streamable HTTP
+
+**Migration Date**: 2025-11-22
+**Status**: ✅ Complete
+
+The MCP server transport has been migrated from SSE (Server-Sent Events) to Streamable HTTP with an explicit path.
+
+### What Changed
+
+**MCP Endpoint Path**:
+- **Old**: `https://toolbridge-mcp-staging.fly.dev/sse` (SSE transport)
+- **New**: `https://toolbridge-mcp-staging.fly.dev/mcp` (Streamable HTTP)
+
+**Transport Configuration**:
+```python
+# Before
+mcp.run(transport="sse", host=settings.host, port=settings.port)
+
+# After
+mcp.run(transport="http", host=settings.host, port=settings.port, path="/mcp")
+```
+
+### Why This Change?
+
+1. **Standardization**: Streamable HTTP is the recommended transport for production MCP servers
+2. **Better Integration**: Aligns with MCP best practices and tooling expectations
+3. **Clearer Semantics**: Explicit `/mcp` path makes the endpoint purpose obvious
+4. **Auth Metadata**: OAuth protected resource metadata now correctly reflects `/mcp` endpoint
+
+### Impact on Clients
+
+**⚠️ Breaking Change**: Existing MCP clients configured with the old `/sse` endpoint will need to update their connection URL.
+
+**Claude Desktop / claude.ai Connectors**:
+1. Remove old connector (if configured with `/sse`)
+2. Add new connector with updated URL:
+   - **Old**: `https://toolbridge-mcp-staging.fly.dev` or `.../sse`
+   - **New**: `https://toolbridge-mcp-staging.fly.dev/mcp`
+3. Re-authenticate via browser (WorkOS AuthKit OAuth flow)
+
+**OAuth Metadata Location**:
+- **Old**: `/.well-known/oauth-protected-resource`
+- **New**: `/.well-known/oauth-protected-resource/mcp`
+
+### Files Modified
+
+- `mcp/toolbridge_mcp/server.py` - Transport switch and logging updates
+- `mcp/toolbridge_mcp/mcp_instance.py` - Added clarifying comments about base_url
+- `mcp/.env.example` - Added notes about `/mcp` endpoint
+- `fly.staging.toml` - Updated deployment comments and example URLs
+
+### Testing
+
+Verify the new endpoint:
+```bash
+# Check OAuth metadata
+curl https://toolbridge-mcp-staging.fly.dev/.well-known/oauth-protected-resource/mcp
+
+# Connect with MCP client
+# Update your client URL to: https://toolbridge-mcp-staging.fly.dev/mcp
+```
+
 ## Next Steps
 
 1. ✅ **Code Migration**: Complete (4 commits on `feat/migrate-auth0-to-workos-authkit`)
-2. ⏳ **Deploy to Staging**: Test WorkOS AuthKit flow end-to-end
-3. ⏳ **Production Deployment**: Update production Helm values and secrets
-4. ⏳ **Archive Auth0 Docs**: Move Auth0-specific docs to `_archive/` (optional cleanup)
-5. ⏳ **Update Claude Connectors**: Reconfigure claude.ai connectors for WorkOS
+2. ✅ **Transport Migration**: Complete (SSE → HTTP at `/mcp`)
+3. ⏳ **Deploy to Staging**: Test WorkOS AuthKit flow end-to-end with new `/mcp` endpoint
+4. ⏳ **Production Deployment**: Update production Helm values and secrets
+5. ⏳ **Update Claude Connectors**: Reconfigure claude.ai connectors with new `/mcp` URL
+6. ⏳ **Archive Auth0 Docs**: Move Auth0-specific docs to `_archive/` (optional cleanup)
 
 ## Additional Resources
 

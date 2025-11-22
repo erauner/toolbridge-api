@@ -23,7 +23,7 @@ logger.remove()
 logger.add(sys.stderr, level="INFO", format="<level>{message}</level>", colorize=True)
 
 # Configuration
-MCP_SSE_URL = "http://localhost:8001/sse"
+MCP_URL = "http://localhost:8001/mcp"
 GO_API_URL = "http://localhost:8080"
 JWT_SECRET = "dev-secret"
 USER_ID = f"e2e-test-{int(time.time())}"
@@ -133,11 +133,11 @@ async def test_mcp_sse_connection():
                 "Authorization": f"Bearer {token}",
             }
 
-            # Note: For local testing we POST JSON-RPC to /sse rather than holding a long-lived SSE stream.
+            # Note: For local testing we POST JSON-RPC to /mcp using the HTTP transport.
             # This is sufficient to verify MCP request handling without full streaming semantics.
-            # FastMCP's SSE transport accepts both modes for testing convenience.
+            # FastMCP's HTTP transport accepts JSON-RPC over HTTP for testing convenience.
             response = await client.post(
-                MCP_SSE_URL,
+                MCP_URL,
                 json=init_request,
                 headers=headers,
                 timeout=10.0,
@@ -155,7 +155,7 @@ async def test_mcp_sse_connection():
                 }
 
                 tools_response = await client.post(
-                    MCP_SSE_URL,
+                    MCP_URL,
                     json=tools_request,
                     headers=headers,
                     timeout=10.0,
@@ -212,7 +212,7 @@ async def test_mcp_health_check_tool():
             }
 
             response = await client.post(
-                MCP_SSE_URL,
+                MCP_URL,
                 json=tool_request,
                 headers=headers,
                 timeout=10.0,
@@ -240,7 +240,7 @@ async def main():
     logger.info("╚══════════════════════════════════════════════════════════════╝")
     logger.info("")
     logger.info("Configuration:")
-    logger.info(f"  MCP SSE URL:  {MCP_SSE_URL}")
+    logger.info(f"  MCP URL:      {MCP_URL}")
     logger.info(f"  Go API URL:   {GO_API_URL}")
     logger.info(f"  User ID:      {USER_ID}")
     logger.info("")

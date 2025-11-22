@@ -133,7 +133,7 @@ Tests cover:
    {
      "mcpServers": {
        "toolbridge": {
-         "url": "https://toolbridge-mcp-staging.fly.dev/sse"
+         "url": "https://toolbridge-mcp-staging.fly.dev/mcp"
        }
      }
    }
@@ -202,7 +202,7 @@ api:
 | **Audience Validation** | Required | Skipped (DCR mode) |
 | **Issuer Validation** | Required | Required ✅ |
 | **Signature Validation** | RS256 via JWKS | RS256 via JWKS ✅ |
-| **MCP_OAUTH_AUDIENCE** | `https://toolbridge-mcp-staging.fly.dev/sse` | `""` (empty) |
+| **MCP_OAUTH_AUDIENCE** | `https://toolbridge-mcp-staging.fly.dev/mcp` | `""` (empty) |
 
 ## References
 

@@ -19,7 +19,9 @@ settings.validate_authkit_config()
 # The MCP server acts as a protected resource that validates WorkOS tokens
 auth_provider = AuthKitProvider(
     authkit_domain=settings.authkit_domain,
-    # MCP's public URL (used in OAuth metadata)
+    # MCP's public URL (used in OAuth metadata) - must be root URL without /mcp path
+    # The AuthKitProvider will automatically append the MCP path to generate the
+    # resource metadata URL at /.well-known/oauth-protected-resource/mcp
     base_url=settings.public_base_url,
 )
 
