@@ -71,5 +71,10 @@ ENV PATH="/app/mcp/.venv/bin:$PATH" \
 # Expose MCP service port
 EXPOSE 8001
 
-# Start FastMCP server directly
+# Start FastMCP server via uvicorn
+# The toolbridge_mcp.server module:
+#   1. Constructs FastMCP + WorkOS AuthKit auth provider in mcp_instance.py
+#   2. Exposes ASGI app via app = mcp.http_app()
+#   3. Runs uvicorn programmatically with graceful shutdown on SIGTERM/SIGINT
+# This gives us explicit control over shutdown behavior for Fly.io auto-stop (scale-to-zero)
 CMD ["python", "-m", "toolbridge_mcp.server"]

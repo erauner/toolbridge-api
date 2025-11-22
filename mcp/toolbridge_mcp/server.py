@@ -58,14 +58,52 @@ async def health_check() -> dict:
     }
 
 
-if __name__ == "__main__":
-    # Run the MCP server with Streamable HTTP transport at /mcp
-    logger.info(f"🌐 Starting HTTP transport on {settings.host}:{settings.port} at /mcp")
-    logger.info(f"✓ MCP endpoint: {settings.public_base_url}/mcp")
+# Create ASGI app for Streamable HTTP transport
+# This exposes /mcp endpoint and OAuth protected resource metadata at /.well-known/*
+# We use mcp.http_app() instead of mcp.run() to gain explicit control over uvicorn
+# shutdown behavior (critical for clean Fly.io auto-stop on scale-to-zero)
+app = mcp.http_app()
 
-    mcp.run(
-        transport="http",  # Use Streamable HTTP transport
-        host=settings.host,
-        port=settings.port,
-        path="/mcp",  # MCP endpoint path
+
+if __name__ == "__main__":
+    import asyncio
+    import signal
+    import uvicorn
+
+    logger.info(f"🌐 Starting Uvicorn on {settings.host}:{settings.port} (path=/mcp)")
+    logger.info(f"✓ MCP endpoint: {settings.public_base_url}/mcp")
+    logger.info(
+        f"✓ Graceful shutdown timeout: {settings.shutdown_timeout_seconds}s "
+        f"(Fly kill_timeout should be > {settings.shutdown_timeout_seconds}s)"
     )
+
+    async def serve() -> None:
+        """Run uvicorn with explicit signal handling for graceful shutdown."""
+        config = uvicorn.Config(
+            "toolbridge_mcp.server:app",
+            host=settings.host,
+            port=settings.port,
+            log_level=settings.log_level.lower(),
+            access_log=settings.uvicorn_access_log,
+            timeout_graceful_shutdown=settings.shutdown_timeout_seconds,
+        )
+        server = uvicorn.Server(config)
+
+        loop = asyncio.get_running_loop()
+
+        def handle_exit(sig: int, *_: object) -> None:
+            """Handle SIGTERM/SIGINT gracefully without noisy stack traces."""
+            logger.info(f"Received signal {sig}, initiating graceful shutdown")
+            server.should_exit = True
+
+        # Register signal handlers for graceful shutdown
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, handle_exit, sig)
+            except NotImplementedError:
+                # Non-POSIX platforms (not relevant for Fly.io)
+                pass
+
+        await server.serve()
+
+    asyncio.run(serve())

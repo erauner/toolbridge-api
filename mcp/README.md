@@ -9,14 +9,16 @@ This directory contains the Python FastMCP server that provides MCP (Model Conte
 │  MCP Client (LLM)                       │
 │  (Claude Desktop, VS Code, etc.)        │
 └──────────────┬──────────────────────────┘
-               │ MCP Protocol (HTTP/SSE)
+               │ MCP Protocol (Streamable HTTP)
                │ Authorization: Bearer {jwt}
                ▼
 ┌─────────────────────────────────────────┐
-│  Python FastMCP Service                 │
+│  Python FastMCP Service (Uvicorn)       │
 │  Port 8001                              │
 │  ┌────────────────────────────────────┐ │
-│  │  TenantDirectTransport             │ │
+│  │  ASGI App (mcp.http_app())         │ │
+│  │  - Graceful SIGTERM/SIGINT handler │ │
+│  │  - TenantDirectTransport           │ │
 │  │  - Extracts JWT from request       │ │
 │  │  - Generates signed tenant headers │ │
 │  │  - X-TB-Tenant-ID                  │ │
@@ -46,8 +48,9 @@ This directory contains the Python FastMCP server that provides MCP (Model Conte
 
 ### Python MCP Service (`toolbridge_mcp/`)
 
-- **`server.py`**: FastMCP server definition with tool registration
-- **`config.py`**: Settings management (environment variables)
+- **`server.py`**: ASGI app creation via `mcp.http_app()` + uvicorn runner with graceful shutdown
+- **`mcp_instance.py`**: FastMCP instance creation with WorkOS AuthKit provider
+- **`config.py`**: Settings management (environment variables + shutdown timeouts)
 - **`async_client.py`**: HTTP client factory with tenant transport
 - **`transports/tenant_direct.py`**: Custom httpx transport that adds signed tenant headers
 - **`utils/headers.py`**: HMAC-SHA256 signing utilities
@@ -136,6 +139,10 @@ TOOLBRIDGE_GO_API_BASE_URL=http://localhost:8080
 
 # Logging
 TOOLBRIDGE_LOG_LEVEL=DEBUG
+
+# Graceful shutdown (optional - defaults shown)
+TOOLBRIDGE_SHUTDOWN_TIMEOUT_SECONDS=7  # Must be < Fly kill_timeout
+TOOLBRIDGE_UVICORN_ACCESS_LOG=False
 ```
 
 ### Testing with MCP Inspector
@@ -217,8 +224,14 @@ fly deploy --config ../fly.staging.toml -a toolbridge-mcp-staging
 **Benefits:**
 - ✅ No database setup needed (uses existing K8s DB)
 - ✅ Smaller footprint (Python-only, ~100MB image)
-- ✅ Auto-scale to zero when idle
+- ✅ Auto-scale to zero when idle (clean graceful shutdown via SIGTERM)
 - ✅ Fast deployments (<2 minutes)
+
+**Graceful Shutdown:**
+- Server runs as ASGI app via uvicorn (not `mcp.run()`)
+- Handles SIGTERM/SIGINT with configurable timeout (default 7s)
+- Clean exit on Fly.io auto-stop without `asyncio.CancelledError` tracebacks
+- See `../docs/DEPLOYMENT-FLYIO.md` for shutdown configuration details
 
 ### Option 2: Full-Stack Deployment (Go + Python)
 

@@ -31,6 +31,9 @@ logger.info(
 )
 
 # Create MCP server instance with OAuth authentication
+# Note: server.py will build an ASGI app via mcp.http_app() and run it with uvicorn,
+# not via mcp.run(transport="http"). This gives us explicit control over graceful
+# shutdown behavior when Fly.io auto-stops machines (scale-to-zero).
 mcp = FastMCP(
     name="ToolBridge",
     auth=auth_provider,

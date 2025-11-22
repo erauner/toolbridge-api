@@ -49,6 +49,69 @@ This guide covers deploying the **MCP-only** Python proxy service to Fly.io stag
 - Secret rotation procedures
 - Validation and troubleshooting
 
+## Graceful Shutdown
+
+The MCP service uses uvicorn with explicit graceful shutdown handling to ensure clean exits when Fly.io auto-stops machines (scale-to-zero).
+
+### Configuration
+
+**Fly.io settings** (`fly.staging.toml`):
+- `kill_signal = "SIGTERM"` - Standard graceful shutdown signal (not SIGINT)
+- `kill_timeout = "10s"` - Maximum time before SIGKILL
+
+**MCP settings** (via environment variables):
+- `TOOLBRIDGE_SHUTDOWN_TIMEOUT_SECONDS=7` (default) - Uvicorn graceful shutdown timeout
+
+### Critical Invariant
+
+**The shutdown timeout must be less than kill timeout:**
+
+```
+TOOLBRIDGE_SHUTDOWN_TIMEOUT_SECONDS < kill_timeout
+```
+
+This ensures uvicorn completes graceful shutdown before Fly.io sends SIGKILL.
+
+### Shutdown Flow
+
+1. **Fly.io auto-stop** → sends SIGTERM to container
+2. **Uvicorn** receives SIGTERM:
+   - Stops accepting new connections
+   - Waits up to `shutdown_timeout_seconds` for in-flight requests to complete
+   - Closes connections gracefully
+3. **Process exits** cleanly (exit code 0)
+4. **Fly.io** sees clean exit before `kill_timeout`, no SIGKILL needed
+
+### Observability
+
+When shutdown is triggered, you'll see in logs:
+
+```
+Received signal 15, initiating graceful shutdown
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process
+```
+
+**No `asyncio.CancelledError` tracebacks** should appear during normal shutdown.
+
+### Customizing Shutdown Timeout
+
+If you need longer shutdown windows:
+
+```bash
+# Increase shutdown timeout to 15s
+fly secrets set TOOLBRIDGE_SHUTDOWN_TIMEOUT_SECONDS=15 -a toolbridge-mcp-staging
+
+# Update fly.staging.toml to give more time
+# kill_timeout = "20s"  # Must be > shutdown_timeout_seconds
+
+fly deploy --config fly.staging.toml -a toolbridge-mcp-staging
+```
+
+---
+
 ## Prerequisites
 
 1. **Fly.io CLI installed:**
@@ -160,10 +223,14 @@ fly logs -a toolbridge-mcp-staging
 
 Expected output in logs:
 ```
+🚀 ToolBridge MCP Server - WorkOS AuthKit Mode
+🌐 Starting Uvicorn on 0.0.0.0:8001 (path=/mcp)
+✓ MCP endpoint: https://toolbridge-mcp-staging.fly.dev/mcp
+✓ Graceful shutdown timeout: 7s (Fly kill_timeout should be > 7s)
 INFO:     Started server process [1]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8001
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
 ```
 
 ## Step 5: Verify Deployment

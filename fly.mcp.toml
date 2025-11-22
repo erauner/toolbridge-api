@@ -10,6 +10,12 @@
 app = "toolbridge-tenant-{TENANT_ID}"
 primary_region = "ord"
 
+# Graceful shutdown configuration
+# Use SIGTERM (not SIGINT) for normal graceful shutdown - uvicorn handles this cleanly
+# kill_timeout MUST be > TOOLBRIDGE_SHUTDOWN_TIMEOUT_SECONDS (default 7s) to avoid SIGKILL
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
 [build]
   dockerfile = "Dockerfile.mcp"
 

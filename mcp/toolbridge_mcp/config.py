@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     # Reserved for future timestamp validation - currently unused
     max_timestamp_skew_seconds: int = 300
 
+    # Uvicorn / HTTP server behavior
+    # shutdown_timeout_seconds controls how long uvicorn waits for in-flight requests
+    # before force-closing during graceful shutdown (SIGTERM/SIGINT).
+    # IMPORTANT: Must be less than Fly.io kill_timeout (currently 10s) to avoid SIGKILL
+    shutdown_timeout_seconds: int = 7
+
+    # Turn off uvicorn access logs to reduce noise in Fly.io logs (MCP already logs requests)
+    uvicorn_access_log: bool = False
+
     model_config = SettingsConfigDict(
         env_prefix="TOOLBRIDGE_",
         env_file=".env",
