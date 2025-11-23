@@ -122,6 +122,13 @@ spec:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: JWT_AUDIENCE
         {{- end }}
+        {{- if .Values.api.jwt.tenantClaim }}
+        - name: TENANT_CLAIM
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: TENANT_CLAIM
+        {{- end }}
         {{- end }}
         {{- if .Values.api.mcp.enabled }}
         # MCP OAuth audience for token validation

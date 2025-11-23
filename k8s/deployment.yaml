@@ -97,6 +97,13 @@ spec:
               name: toolbridge-secret
               key: jwt-secret
 
+        # JWT tenant claim configuration
+        - name: TENANT_CLAIM
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: TENANT_CLAIM
+
         # Build complete DATABASE_URL
         - name: DATABASE_URL
           value: "postgres://$(DB_USER):$(POSTGRES_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)"

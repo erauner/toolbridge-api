@@ -92,6 +92,7 @@ func main() {
 		JWKSURL:           jwksURL,
 		Audience:          jwtAudience,
 		AcceptedAudiences: acceptedAudiences,
+		TenantClaim:       env("TENANT_CLAIM", ""),
 	}
 
 	// HTTP server setup

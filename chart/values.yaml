@@ -31,6 +31,10 @@ api:
     issuer: ""     # e.g., "https://your-app.authkit.app" or "https://your-tenant.okta.com"
     jwksUrl: ""    # e.g., "https://your-app.authkit.app/oauth2/jwks" or "https://your-tenant.okta.com/oauth2/v1/keys"
     audience: ""   # Optional: Primary expected audience claim (e.g., "https://api.example.com")
+    tenantClaim: "organization_id"  # JWT claim key for tenant/organization ID
+                                     # WorkOS: "organization_id"
+                                     # Auth0: "org_id" or custom namespace
+                                     # Used for multi-tenant data scoping when HMAC headers not present
 
   # MCP (Model Context Protocol) configuration
   # Enable tenant header validation for MCP deployments

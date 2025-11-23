@@ -30,6 +30,7 @@ type JWTCfg struct {
 	JWKSURL           string   // JWKS endpoint URL (e.g., "https://your-app.authkit.app/oauth2/jwks")
 	Audience          string   // Optional primary expected audience claim
 	AcceptedAudiences []string // Additional accepted audiences (for MCP OAuth tokens, backend tokens, etc.)
+	TenantClaim       string   // JWT claim key for tenant/organization ID (e.g., "organization_id")
 }
 
 // JWKS caching for upstream IdP public keys
@@ -172,17 +173,17 @@ func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
 	return key, nil
 }
 
-// ValidateToken validates a JWT token and returns the subject claim
-// Returns the subject (sub) claim if valid, or an error if validation fails
+// ValidateToken validates a JWT token and returns the subject claim and claims map
+// Returns the subject (sub) claim and full claims map if valid, or an error if validation fails
 // Supports both RS256 (upstream IdP / WorkOS) and HS256 (backend / dev) tokens
-func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
+func ValidateToken(tokenString string, cfg JWTCfg) (string, jwt.MapClaims, error) {
 	if tokenString == "" {
-		return "", errors.New("token is empty")
+		return "", nil, errors.New("token is empty")
 	}
 
 	// Ensure JWKS cache is initialized if upstream IdP is configured
 	if cfg.JWKSURL != "" && globalJWKSCache == nil {
-		return "", errors.New("JWKS cache not initialized")
+		return "", nil, errors.New("JWKS cache not initialized")
 	}
 
 	claims := jwt.MapClaims{}
@@ -222,7 +223,7 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 	})
 
 	if err != nil || !t.Valid {
-		return "", fmt.Errorf("jwt validation failed: %w", err)
+		return "", nil, fmt.Errorf("jwt validation failed: %w", err)
 	}
 
 	// Extract token_type to differentiate backend tokens from external IdP tokens
@@ -240,7 +241,7 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 		// External IdP token (WorkOS AuthKit, etc.) - validate issuer and audience
 		if cfg.Issuer != "" {
 			if iss, ok := claims["iss"].(string); !ok || iss != cfg.Issuer {
-				return "", fmt.Errorf("invalid issuer: expected %s, got %v", cfg.Issuer, claims["iss"])
+				return "", nil, fmt.Errorf("invalid issuer: expected %s, got %v", cfg.Issuer, claims["iss"])
 			}
 		}
 
@@ -291,7 +292,7 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 				}
 			}
 			if !audValid {
-				return "", fmt.Errorf("invalid audience: expected one of %v, got %v", acceptedAuds, claims["aud"])
+				return "", nil, fmt.Errorf("invalid audience: expected one of %v, got %v", acceptedAuds, claims["aud"])
 			}
 		}
 	}
@@ -299,10 +300,10 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 	// Extract subject from claims
 	sub, ok := claims["sub"].(string)
 	if !ok || sub == "" {
-		return "", errors.New("missing or invalid sub claim")
+		return "", nil, errors.New("missing or invalid sub claim")
 	}
 
-	return sub, nil
+	return sub, claims, nil
 }
 
 // InitJWKSCache initializes the global JWKS cache for upstream IdP RS256 validation
@@ -368,9 +369,10 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 			}
 
 			// Validate JWT token if present
+			var claims jwt.MapClaims
 			if tok != "" {
 				var err error
-				sub, err = ValidateToken(tok, cfg)
+				sub, claims, err = ValidateToken(tok, cfg)
 				if err != nil {
 					log.Warn().Err(err).Msg("jwt validation failed")
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -398,6 +400,18 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 
 			// Add user ID to request context
 			ctx := context.WithValue(r.Context(), CtxUserID, userID)
+
+			// Extract tenant from JWT claims if configured and not already set by HMAC middleware
+			// Precedence: HMAC tenant headers (if present) > JWT tenant claim > no tenant
+			if TenantID(ctx) == "" && cfg.TenantClaim != "" && claims != nil {
+				if tenantVal, ok := claims[cfg.TenantClaim]; ok {
+					if tenantID, ok := tenantVal.(string); ok && tenantID != "" {
+						ctx = context.WithValue(ctx, TenantIDKey, tenantID)
+						log.Debug().Str("tenant_id", tenantID).Str("claim", cfg.TenantClaim).Msg("tenant derived from JWT claim")
+					}
+				}
+			}
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

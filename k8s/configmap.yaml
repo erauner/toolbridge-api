@@ -16,3 +16,8 @@ data:
   DB_NAME: "toolbridge"
   DB_USER: "toolbridge"
   DB_SSLMODE: "disable"  # SSL not configured in postgres.yaml; use "require" if you add TLS
+
+  # JWT tenant claim configuration
+  # Claim key to extract tenant/organization ID from JWT tokens
+  # WorkOS: "organization_id", Auth0: "org_id" or custom namespace
+  TENANT_CLAIM: "organization_id"
