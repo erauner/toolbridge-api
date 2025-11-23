@@ -15,6 +15,13 @@ import (
 )
 
 // Tenant context key for storing validated tenant ID
+//
+// TENANT IDENTITY CONTRACT:
+// The value stored at this key is the logical tenant identifier (IdP organization ID),
+// NOT a database-specific artifact. This enables future migration to Neon DB-per-tenant
+// without changing how tenant identity is resolved and propagated through the request context.
+//
+// See: Plans/neon-migration-tenant-contract.md
 type tenantCtxKey string
 
 const TenantIDKey tenantCtxKey = "tenant_id"
@@ -138,7 +145,23 @@ func TenantHeaderMiddleware(secret string, maxSkewSeconds int64) func(http.Handl
 	}
 }
 
-// TenantID extracts tenant ID from request context
+// TenantID extracts the logical tenant identifier from request context.
+//
+// IMPORTANT - Tenant Identity Contract:
+// This returns the IdP-level organization ID (e.g., WorkOS organization_id),
+// NOT a database artifact like a Neon branch ID, schema name, or connection string.
+//
+// The tenant ID should be:
+//   - Stable across database migrations (row-level → Neon DB-per-tenant)
+//   - Derived from OIDC claims (configurable via TENANT_CLAIM env var)
+//   - Used as the key in tenant_registry for future Neon routing
+//
+// DO NOT change this to return database-specific identifiers.
+// Future database routing (e.g., PoolManager.GetTenantPool) should use this
+// value to look up the correct connection pool, treating it as the source of truth.
+//
+// See: Plans/neon-migration-tenant-contract.md
+//
 // Returns empty string if tenant ID not found in context
 func TenantID(ctx context.Context) string {
 	if tenantID, ok := ctx.Value(TenantIDKey).(string); ok {

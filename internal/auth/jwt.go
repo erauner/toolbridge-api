@@ -30,7 +30,23 @@ type JWTCfg struct {
 	JWKSURL           string   // JWKS endpoint URL (e.g., "https://your-app.authkit.app/oauth2/jwks")
 	Audience          string   // Optional primary expected audience claim
 	AcceptedAudiences []string // Additional accepted audiences (for MCP OAuth tokens, backend tokens, etc.)
-	TenantClaim       string   // JWT claim key for tenant/organization ID (e.g., "organization_id")
+
+	// TenantClaim: JWT claim key for tenant/organization ID (e.g., "organization_id")
+	//
+	// TENANT IDENTITY CONTRACT:
+	// This claim should contain the IdP-level organization ID (from WorkOS, Okta, Auth0, etc.),
+	// NOT a database-specific identifier like a Neon branch ID or schema name.
+	//
+	// The value extracted from this claim will be used as:
+	//   1. The tenant_id stored in request context (via TenantID(ctx))
+	//   2. The key for future tenant_registry lookups (Neon DB-per-tenant routing)
+	//   3. The logical tenant identifier across all system components
+	//
+	// DO NOT change this to extract database routing information from JWT claims.
+	// Database topology should be determined server-side via tenant_registry, not client-provided.
+	//
+	// See: Plans/neon-migration-tenant-contract.md
+	TenantClaim string
 }
 
 // JWKS caching for upstream IdP public keys
@@ -403,6 +419,16 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 
 			// Extract tenant from JWT claims if configured and not already set by HMAC middleware
 			// Precedence: HMAC tenant headers (if present) > JWT tenant claim > no tenant
+			//
+			// TENANT IDENTITY CONTRACT:
+			// The claim value (e.g., cfg.TenantClaim = "organization_id") contains the IdP-level
+			// organization ID, which is the logical tenant identifier used throughout the system.
+			// This is NOT a database-specific identifier (e.g., NOT a Neon branch ID).
+			//
+			// Future database routing (Neon DB-per-tenant) will use this organization ID to
+			// look up the correct connection pool via tenant_registry.
+			//
+			// See: Plans/neon-migration-tenant-contract.md
 			if TenantID(ctx) == "" && cfg.TenantClaim != "" && claims != nil {
 				if tenantVal, ok := claims[cfg.TenantClaim]; ok {
 					if tenantID, ok := tenantVal.(string); ok && tenantID != "" {
