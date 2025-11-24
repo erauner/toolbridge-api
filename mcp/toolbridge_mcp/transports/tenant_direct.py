@@ -2,7 +2,7 @@
 Custom httpx transport that adds tenant header to requests.
 
 The TenantDirectTransport wraps httpx.AsyncHTTPTransport and automatically
-injects X-Tenant-ID header on all outbound requests to the Go API.
+injects X-TB-Tenant-ID header on all outbound requests to the Go API.
 
 Supports two modes:
 - Single-tenant: Uses configured TENANT_ID (smoke testing)
@@ -17,10 +17,10 @@ from toolbridge_mcp.config import settings
 
 class TenantDirectTransport(httpx.AsyncBaseTransport):
     """
-    Transport that adds X-Tenant-ID header to all requests.
+    Transport that adds X-TB-Tenant-ID header to all requests.
 
     This transport wraps the standard AsyncHTTPTransport and injects
-    the X-Tenant-ID header before forwarding requests to the Go API.
+    the X-TB-Tenant-ID header before forwarding requests to the Go API.
     Tenant ID is either configured (single-tenant) or dynamically resolved
     (multi-tenant) via the requests module.
     """
@@ -44,7 +44,7 @@ class TenantDirectTransport(httpx.AsyncBaseTransport):
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         """
-        Handle an HTTP request by adding X-Tenant-ID header and forwarding.
+        Handle an HTTP request by adding X-TB-Tenant-ID header and forwarding.
 
         Args:
             request: The HTTP request to process
@@ -59,7 +59,7 @@ class TenantDirectTransport(httpx.AsyncBaseTransport):
         tenant_id = get_cached_tenant_id()
 
         if tenant_id:
-            request.headers["X-Tenant-ID"] = tenant_id
+            request.headers["X-TB-Tenant-ID"] = tenant_id
             logger.debug(f"{request.method} {request.url.path} [tenant_id={tenant_id}]")
         else:
             # This should not happen if ensure_tenant_resolved was called
