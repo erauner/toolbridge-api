@@ -32,3 +32,8 @@ data:
   {{- if .Values.api.mcp.enabled }}
   MCP_OAUTH_AUDIENCE: {{ .Values.api.mcp.oauthAudience | default "" | quote }}
   {{- end }}
+  {{- if .Values.api.tenancy }}
+  {{- if .Values.api.tenancy.defaultTenantId }}
+  DEFAULT_TENANT_ID: {{ .Values.api.tenancy.defaultTenantId | quote }}
+  {{- end }}
+  {{- end }}

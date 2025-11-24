@@ -26,17 +26,22 @@ class MultiOrganizationError(TenantResolutionError):
 
 async def resolve_tenant(id_token: str, api_base_url: str) -> str:
     """
-    Resolve tenant ID for authenticated user.
+    Resolve tenant ID for authenticated user via backend-driven resolution.
 
     Calls the backend /v1/auth/tenant endpoint which validates the ID token
     and queries WorkOS API to determine which organization(s) the user belongs to.
+
+    B2C/B2B Hybrid Pattern (Pattern 3):
+    - B2C users (no organization memberships) → tenant_thinkpen_b2c (backend default)
+    - B2B users (single organization) → organization ID
+    - Multi-org users → raises MultiOrganizationError
 
     Args:
         id_token: ID token from OIDC authentication
         api_base_url: Base URL of the Go API (e.g., http://localhost:8080)
 
     Returns:
-        Tenant ID (organization ID) for the user
+        Tenant ID (organization ID for B2B users, default tenant for B2C users)
 
     Raises:
         TenantResolutionError: If resolution fails

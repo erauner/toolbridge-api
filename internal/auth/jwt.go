@@ -436,12 +436,12 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 						log.Debug().Str("tenant_id", tenantID).Str("claim", cfg.TenantClaim).Msg("tenant derived from JWT claim")
 					}
 				} else {
-					// Tenant claim not found in JWT - this is expected when using header-based tenant resolution
-					// (X-TB-Tenant-ID header will be processed by SimpleTenantHeaderMiddleware)
+					// Tenant claim not found in JWT - this is expected for backend-driven tenant resolution
+					// (via /v1/auth/tenant) or header-based tenancy (X-TB-Tenant-ID)
 					// Only log at trace level to avoid confusion
 					log.Trace().
 						Str("claim", cfg.TenantClaim).
-						Msg("tenant claim not found in JWT (expected when using X-TB-Tenant-ID header)")
+						Msg("tenant claim not found in JWT (expected for backend-driven tenant resolution or header-based tenancy)")
 				}
 			}
 

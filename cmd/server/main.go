@@ -108,12 +108,18 @@ func main() {
 		log.Info().Msg("WorkOS tenant resolution disabled (WORKOS_API_KEY not set)")
 	}
 
+	// Default tenant ID for B2C users (users without organization memberships)
+	// Pattern 3 (Hybrid): B2C users get this default tenant, B2B users get their org ID
+	defaultTenantID := env("DEFAULT_TENANT_ID", "tenant_thinkpen_b2c")
+	log.Info().Str("default_tenant_id", defaultTenantID).Msg("Default B2C tenant configured")
+
 	// HTTP server setup
 	srv := &httpapi.Server{
 		DB:              pool,
 		RateLimitConfig: httpapi.DefaultRateLimitConfig,
 		JWTCfg:          jwtCfg,
 		WorkOSClient:    workosClient,
+		DefaultTenantID: defaultTenantID,
 		// Initialize services
 		NoteSvc:        syncservice.NewNoteService(pool),
 		TaskSvc:        syncservice.NewTaskService(pool),

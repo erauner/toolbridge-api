@@ -102,9 +102,17 @@ const (
     issuerURL      = "https://svelte-monolith-27-staging.authkit.app"
     clientID       = "client_01KAPCBQNQBWMZE9WNSEWY2J3Z"
     redirectURI    = "http://localhost:3000/callback"
-    organizationID = "org_01KABXHNF45RMV9KBWF3SBGPP0"
+    // organizationID = "org_01KABXHNF45RMV9KBWF3SBGPP0" // Optional: Omit for B2C mode
 )
 ```
+
+### B2C vs B2B Modes
+
+**B2C Mode (Default)**: Users authenticate without specifying an organization. The backend assigns the default tenant (`tenant_thinkpen_b2c`) for users who are not members of any organization. This is the primary use case for ThinkPen.
+
+**B2B Mode**: Users who belong to organizations receive their organization ID as the tenant. Organization membership is determined by the backend via WorkOS API, not by client-side token inspection.
+
+To test B2C mode, simply omit the `organization_id` parameter from the authorization request (see `test_full_tenant_flow.go` with the parameter commented out).
 
 ### Environment Variables
 
@@ -117,7 +125,20 @@ const (
 
 ## Expected Behavior
 
-### Single Organization User
+### B2C User (No Organization Membership)
+
+When a user is not a member of any organization (default B2C flow):
+```json
+{
+  "tenant_id": "tenant_thinkpen_b2c",
+  "organization_name": "ThinkPen",
+  "requires_selection": false
+}
+```
+
+This is the **primary use case** for ThinkPen's individual consumer audience.
+
+### B2B User (Single Organization)
 
 When a user belongs to one organization:
 ```json
@@ -128,7 +149,7 @@ When a user belongs to one organization:
 }
 ```
 
-### Multi-Organization User
+### B2B User (Multiple Organizations)
 
 When a user belongs to multiple organizations:
 ```json
@@ -158,10 +179,6 @@ Backend missing `WORKOS_API_KEY` environment variable. Check:
 ```bash
 kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.workos-api-key}' | base64 -d
 ```
-
-### "User not in any organization"
-
-The test user (`raunerevan@gmail.com`) is not a member of the test organization. Check WorkOS dashboard.
 
 ### "Invalid token"
 

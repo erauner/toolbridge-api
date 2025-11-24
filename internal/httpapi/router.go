@@ -20,6 +20,7 @@ type Server struct {
 	RateLimitConfig RateLimitInfo // Centralized rate limit configuration
 	JWTCfg          auth.JWTCfg   // JWT authentication configuration
 	WorkOSClient    *usermanagement.Client // WorkOS client for tenant resolution
+	DefaultTenantID string        // Default tenant ID for B2C users (no organization memberships)
 	// Services
 	NoteSvc        *syncservice.NoteService
 	TaskSvc        *syncservice.TaskService

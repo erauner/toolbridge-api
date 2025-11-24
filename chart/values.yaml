@@ -36,6 +36,14 @@ api:
                                      # Auth0: "org_id" or custom namespace
                                      # Used for multi-tenant data scoping when HMAC headers not present
 
+  # B2C/B2B Tenant Configuration
+  # Pattern 3 (Hybrid): B2C users without organizations get defaultTenantId,
+  # B2B users with organizations get their organization ID as tenant
+  tenancy:
+    defaultTenantId: "tenant_thinkpen_b2c"  # Default tenant for B2C users (no organization memberships)
+                                              # Change this to your application's default tenant ID
+                                              # Example: "tenant_myapp_b2c" or "default"
+
   # MCP (Model Context Protocol) configuration
   # Enable tenant header validation for MCP deployments
   mcp:

@@ -19,8 +19,26 @@ We implement a **backend tenant resolution** pattern where:
 1. **Public clients** (Flutter, Python MCP) use standard OIDC/PKCE for authentication
 2. After authentication, clients call a **backend API endpoint** with their ID token
 3. The backend validates the token and uses a **server-side API key** to query WorkOS
-4. The backend returns the `organization_id` to the client
+4. The backend returns the `tenant_id` to the client
 5. Clients cache the tenant ID and use it in subsequent requests
+
+### B2C/B2B Hybrid Pattern (Pattern 3)
+
+**Product Context**: ThinkPen is a **B2C note-taking application** for individual consumers. Users don't need to belong to an organization to use the app. A future B2B product (ThinkPort) will add organization/workspace features.
+
+**Implementation**: We use **Pattern 3 (Hybrid)** to support both B2C and B2B users:
+
+- **B2C Users** (no organization memberships) → Receive default tenant `tenant_thinkpen_b2c`
+- **B2B Users** (single organization) → Receive their organization ID as tenant
+- **Multi-org Users** (multiple organizations) → Must select which organization to access
+
+This pattern allows:
+- ✅ Individual consumers to sign up and use ThinkPen immediately (no org required)
+- ✅ Future B2B customers to use organization-based tenancy
+- ✅ Database isolation via (`tenant_id`, `user_id`) compound keys
+- ✅ Seamless user experience for the primary B2C use case
+
+**Configuration**: The default B2C tenant ID is configurable via the `DEFAULT_TENANT_ID` environment variable (defaults to `tenant_thinkpen_b2c`).
 
 ```
 ┌─────────────┐         ┌─────────────┐         ┌─────────────┐
@@ -58,7 +76,16 @@ We implement a **backend tenant resolution** pattern where:
 
 **Authentication**: Bearer token (ID token from OIDC)
 
-**Response**:
+**B2C Response** (user has no organization memberships):
+```json
+{
+  "tenant_id": "tenant_thinkpen_b2c",
+  "organization_name": "ThinkPen",
+  "requires_selection": false
+}
+```
+
+**B2B Response** (user belongs to single organization):
 ```json
 {
   "tenant_id": "org_01KABXHNF45RMV9KBWF3SBGPP0",
@@ -67,7 +94,7 @@ We implement a **backend tenant resolution** pattern where:
 }
 ```
 
-**Multi-Organization Response**:
+**Multi-Organization Response** (user belongs to multiple organizations):
 ```json
 {
   "organizations": [
@@ -106,6 +133,7 @@ r.Group(func(r chi.Router) {
 
 **Backend Configuration**:
 - `WORKOS_API_KEY`: Server-side API key for calling WorkOS API
+- `DEFAULT_TENANT_ID`: Default tenant ID for B2C users without organization memberships (default: `tenant_thinkpen_b2c`)
 - `JWT_ISSUER`: WorkOS AuthKit issuer URL (for token validation)
 - `JWT_JWKS_URL`: JWKS endpoint for signature verification
 - `JWT_AUDIENCE`: Expected audience (optional, DCR mode skips this)
@@ -148,7 +176,7 @@ BACKEND_URL=https://toolbridgeapi.erauner.dev go run test/manual/test_full_tenan
 
 **Implementation Steps**:
 
-1. **OIDC Authentication**:
+1. **OIDC Authentication** (B2C mode - no organization required):
 ```dart
 final AuthorizationTokenResponse result = await appAuth.authorizeAndExchangeCode(
   AuthorizationTokenRequest(
@@ -157,9 +185,8 @@ final AuthorizationTokenResponse result = await appAuth.authorizeAndExchangeCode
     issuer: issuerUrl,
     scopes: ['openid', 'profile', 'email'],
     promptValues: ['login'],
-    additionalParameters: {
-      'organization_id': organizationId, // WorkOS-specific
-    },
+    // Note: No organization_id parameter needed for B2C mode
+    // Backend will assign default tenant for users without org memberships
   ),
 );
 String idToken = result.idToken;

@@ -140,6 +140,16 @@ spec:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: MCP_OAUTH_AUDIENCE
         {{- end }}
+        {{- if .Values.api.tenancy }}
+        {{- if .Values.api.tenancy.defaultTenantId }}
+        # Default tenant ID for B2C users (Pattern 3: Hybrid B2C/B2B)
+        - name: DEFAULT_TENANT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DEFAULT_TENANT_ID
+        {{- end }}
+        {{- end }}
 
         # Sensitive values from Secret
         - name: POSTGRES_PASSWORD

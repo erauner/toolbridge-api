@@ -55,8 +55,11 @@ if settings.tenant_id:
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 else:
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    logger.info("🔐 MULTI-TENANT MODE: Tenants will be resolved dynamically via /v1/auth/tenant")
-    logger.info("✓ Each authenticated user's organization will be determined from their ID token")
+    logger.info("🔐 MULTI-TENANT MODE (B2C/B2B Hybrid): Backend-driven tenant resolution")
+    logger.info("✓ Tenants resolved dynamically via /v1/auth/tenant endpoint")
+    logger.info("✓ B2C users (no org memberships) → tenant_thinkpen_b2c (backend default)")
+    logger.info("✓ B2B users (single org) → organization ID")
+    logger.info("✓ Multi-org users → require organization selection")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 # Import MCP server instance (created in mcp_instance.py with AuthKitProvider)

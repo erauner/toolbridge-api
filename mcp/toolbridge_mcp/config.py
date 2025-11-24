@@ -11,7 +11,12 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Tenant configuration (optional for single-tenant smoke testing)
-    # If not set, tenant will be resolved dynamically via /v1/auth/tenant
+    # B2C/B2B Hybrid Pattern (Pattern 3):
+    # - If tenant_id is None (default): Multi-tenant mode with backend-driven resolution
+    #   - B2C users (no organization memberships) → tenant_thinkpen_b2c (backend default)
+    #   - B2B users (single organization) → organization ID
+    #   - Multi-org users → must select organization
+    # - If tenant_id is set: Single-tenant smoke testing mode (not for production)
     tenant_id: str | None = None
 
     # Go API connection
