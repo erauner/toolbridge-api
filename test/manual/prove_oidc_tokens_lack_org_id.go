@@ -1,5 +1,41 @@
 package main
 
+// This test proves that standard OIDC tokens from WorkOS AuthKit do NOT contain
+// an organization_id claim, validating the architectural decision to use backend
+// tenant resolution.
+//
+// PURPOSE:
+//   - Demonstrate that standard OIDC/PKCE authentication flow does not include org_id
+//   - Validate that client-side JWT inspection cannot determine tenant ID
+//   - Prove the necessity of backend-driven tenant resolution via WorkOS API
+//
+// WHAT IT DOES:
+//   1. Performs standard OIDC authentication with PKCE (same flow as Flutter client)
+//   2. Obtains ID token and access token from token exchange
+//   3. Decodes both tokens and inspects all claims
+//   4. Explicitly checks for presence of organization_id claim
+//   5. Reports FAIL when organization_id is missing (which is expected and correct)
+//
+// EXPECTED RESULT:
+//   The test will show "FAIL: No organization_id claim found" for both tokens.
+//   This is the CORRECT and EXPECTED behavior that validates why we need
+//   backend tenant resolution.
+//
+// WHY THIS MATTERS:
+//   WorkOS AuthKit uses standard OIDC flows that return JWT tokens conforming to
+//   the OIDC spec. The organization_id is WorkOS-specific metadata that isn't
+//   part of standard claims (sub, iss, aud, exp, etc.). This test proves that
+//   public clients (Flutter, Python MCP) cannot determine tenant ID from tokens
+//   alone and must call the backend /v1/auth/tenant endpoint.
+//
+// USAGE:
+//   go run test/manual/prove_oidc_tokens_lack_org_id.go
+//
+// SEE ALSO:
+//   - test_full_tenant_flow.go - Complete reference implementation showing the
+//     correct way to resolve tenant ID via backend API
+//   - docs/tenant-resolution.md - Full architectural documentation
+
 import (
 	"context"
 	"crypto/rand"

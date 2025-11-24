@@ -55,21 +55,25 @@ Requires Selection: false
 
 ---
 
-### `standard_oidc_tenant.go`
+### `prove_oidc_tokens_lack_org_id.go`
 
 **Purpose**: Prove that standard OIDC tokens do NOT contain `organization_id` claim
 
 **What it demonstrates**:
-- Standard OIDC authentication flow
-- Token inspection showing missing `organization_id`
-- Why backend resolution is necessary
+- Standard OIDC/PKCE authentication flow (identical to what Flutter clients use)
+- Explicit token inspection showing JWT claims
+- Proof that `organization_id` is missing from both ID token and access token
+- Validates the architectural necessity of backend-driven tenant resolution
+
+**Why this test exists**:
+This test provides concrete proof that client-side JWT inspection cannot determine tenant ID. The "FAIL" result is the **expected and correct** behavior that validates our backend tenant resolution architecture.
 
 **Usage**:
 ```bash
-go run test/manual/standard_oidc_tenant.go
+go run test/manual/prove_oidc_tokens_lack_org_id.go
 ```
 
-**Key Finding**:
+**Expected Output**:
 ```
 --- ID Token ---
    Claims: {
@@ -85,39 +89,7 @@ go run test/manual/standard_oidc_tenant.go
 ✗ FAIL: No organization_id claim found in ID token
 ```
 
-This proves that client-side token inspection cannot determine tenant ID.
-
----
-
-### `test_tenant_resolution.go`
-
-**Purpose**: Simple endpoint testing utility
-
-**What it does**:
-- Accepts an ID token via environment variable
-- Calls `/v1/auth/tenant` endpoint
-- Displays the response
-
-**Usage**:
-```bash
-# 1. Get ID token from standard_oidc_tenant.go
-go run test/manual/standard_oidc_tenant.go
-# Copy the export ID_TOKEN=... line
-
-# 2. Test endpoint
-export ID_TOKEN='eyJhbGc...'
-export BACKEND_URL='https://toolbridgeapi.erauner.dev'  # optional
-go run test/manual/test_tenant_resolution.go
-```
-
-**Output**:
-```json
-{
-  "tenant_id": "org_01KABXHNF45RMV9KBWF3SBGPP0",
-  "organization_name": "Test Organization",
-  "requires_selection": false
-}
-```
+The "FAIL" message indicates the absence of `organization_id`, which proves that client-side token inspection cannot determine tenant ID and backend resolution is required.
 
 ---
 
@@ -141,7 +113,7 @@ const (
   - Local: `http://localhost:8080`
 
 - `ID_TOKEN`: ID token for testing tenant resolution endpoint
-  - Get from `standard_oidc_tenant.go` output
+  - Get from `prove_oidc_tokens_lack_org_id.go` output
 
 ## Expected Behavior
 
@@ -177,7 +149,7 @@ Client must present selection UI (not yet implemented in Flutter).
 
 ID tokens expire after 1 hour. Get a fresh token:
 ```bash
-go run test/manual/standard_oidc_tenant.go
+go run test/manual/prove_oidc_tokens_lack_org_id.go
 ```
 
 ### "WorkOS tenant resolution not configured"
