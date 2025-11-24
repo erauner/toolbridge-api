@@ -4,25 +4,104 @@ HTTP request helpers for calling the Go API with per-user authentication.
 WorkOS AuthKit OAuth 2.1 Flow:
 1. FastMCP validates user OAuth token via AuthKitProvider
 2. Token exchange converts MCP token → backend JWT
-3. Backend JWT sent to Go API with tenant headers
-4. Go API validates backend JWT and creates per-user session
+3. Tenant resolution (if needed) calls /v1/auth/tenant to determine organization
+4. Backend JWT sent to Go API with tenant header
+5. Go API validates backend JWT and creates per-user session
 
 Session management: Each request creates a fresh sync session before calling
 the API. Sessions are NOT cached or reused to avoid stale session issues.
+
+Tenant resolution: Supports two modes:
+- Single-tenant mode: TENANT_ID env var set → uses hardcoded tenant (smoke testing)
+- Multi-tenant mode: TENANT_ID not set → dynamically resolves via /v1/auth/tenant (primary mode)
 """
 
 from typing import Any, Dict, Optional
 
 import httpx
+from fastmcp.server.dependencies import get_access_token
 from loguru import logger
 
-from toolbridge_mcp.auth import exchange_for_backend_jwt, extract_user_id_from_backend_jwt
+from toolbridge_mcp.auth import (
+    exchange_for_backend_jwt,
+    extract_user_id_from_backend_jwt,
+    resolve_tenant,
+    TenantResolutionError,
+)
+from toolbridge_mcp.config import settings
 from toolbridge_mcp.utils.session import create_session
 
 
 class AuthorizationError(Exception):
     """Raised when token exchange fails."""
     pass
+
+
+# Module-level cache for tenant ID (resolved once per MCP server lifetime)
+_cached_tenant_id: Optional[str] = None
+
+
+def get_cached_tenant_id() -> Optional[str]:
+    """Get cached tenant ID for X-Tenant-ID header."""
+    return _cached_tenant_id
+
+
+async def ensure_tenant_resolved(client: httpx.AsyncClient) -> str:
+    """
+    Ensure tenant ID is resolved and cached.
+
+    Two modes:
+    - Single-tenant: If TENANT_ID configured, use it directly (smoke testing)
+    - Multi-tenant: Call /v1/auth/tenant to resolve dynamically (primary mode)
+
+    Args:
+        client: httpx client for tenant resolution API call
+
+    Returns:
+        Tenant ID string
+
+    Raises:
+        AuthorizationError: If tenant resolution fails
+    """
+    global _cached_tenant_id
+
+    # Return cached value if already resolved
+    if _cached_tenant_id:
+        return _cached_tenant_id
+
+    # Single-tenant mode: Use configured TENANT_ID (smoke testing)
+    if settings.tenant_id:
+        _cached_tenant_id = settings.tenant_id
+        logger.info(f"Using configured tenant ID: {_cached_tenant_id} (single-tenant mode)")
+        return _cached_tenant_id
+
+    # Multi-tenant mode: Resolve tenant dynamically via /v1/auth/tenant
+    logger.debug("Resolving tenant dynamically via /v1/auth/tenant (multi-tenant mode)")
+
+    try:
+        # Get ID token from MCP OAuth context
+        mcp_token = get_access_token()
+        id_token = mcp_token.token
+
+        # Call backend tenant resolution endpoint
+        tenant_id = await resolve_tenant(
+            id_token=id_token,
+            api_base_url=settings.go_api_base_url,
+        )
+
+        # Cache for subsequent requests
+        _cached_tenant_id = tenant_id
+        logger.info(f"✓ Tenant resolved and cached: {tenant_id} (multi-tenant mode)")
+        return tenant_id
+
+    except TenantResolutionError as e:
+        logger.error(f"Tenant resolution failed: {e}")
+        raise AuthorizationError(
+            f"Failed to resolve tenant ID: {e}"
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error during tenant resolution: {e}")
+        raise AuthorizationError(f"Tenant resolution error: {e}") from e
 
 
 async def get_backend_auth_header(client: httpx.AsyncClient) -> str:
@@ -90,7 +169,7 @@ async def call_get(
     """
     Make GET request to Go API.
 
-    Creates a fresh sync session for this request and includes session headers.
+    Ensures tenant is resolved, creates a fresh sync session, and includes all required headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -102,8 +181,11 @@ async def call_get(
 
     Raises:
         httpx.HTTPStatusError: If request fails
-        AuthorizationError: If Authorization header missing
+        AuthorizationError: If Authorization header missing or tenant resolution fails
     """
+    # Ensure tenant is resolved (single-tenant mode or dynamic resolution)
+    await ensure_tenant_resolved(client)
+
     auth_header = await get_backend_auth_header(client)
     session_headers = await ensure_session(client, auth_header)
 
@@ -126,7 +208,7 @@ async def call_post(
     """
     Make POST request to Go API.
 
-    Creates a fresh sync session for this request and includes session headers.
+    Ensures tenant is resolved, creates a fresh sync session, and includes all required headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -138,8 +220,11 @@ async def call_post(
 
     Raises:
         httpx.HTTPStatusError: If request fails
-        AuthorizationError: If Authorization header missing
+        AuthorizationError: If Authorization header missing or tenant resolution fails
     """
+    # Ensure tenant is resolved (single-tenant mode or dynamic resolution)
+    await ensure_tenant_resolved(client)
+
     auth_header = await get_backend_auth_header(client)
     session_headers = await ensure_session(client, auth_header)
 
@@ -163,7 +248,7 @@ async def call_put(
     """
     Make PUT request to Go API.
 
-    Creates a fresh sync session for this request and includes session headers.
+    Ensures tenant is resolved, creates a fresh sync session, and includes all required headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -176,8 +261,11 @@ async def call_put(
 
     Raises:
         httpx.HTTPStatusError: If request fails
-        AuthorizationError: If Authorization header missing
+        AuthorizationError: If Authorization header missing or tenant resolution fails
     """
+    # Ensure tenant is resolved (single-tenant mode or dynamic resolution)
+    await ensure_tenant_resolved(client)
+
     auth_header = await get_backend_auth_header(client)
     session_headers = await ensure_session(client, auth_header)
 
@@ -203,7 +291,7 @@ async def call_patch(
     """
     Make PATCH request to Go API.
 
-    Creates a fresh sync session for this request and includes session headers.
+    Ensures tenant is resolved, creates a fresh sync session, and includes all required headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -215,8 +303,11 @@ async def call_patch(
 
     Raises:
         httpx.HTTPStatusError: If request fails
-        AuthorizationError: If Authorization header missing
+        AuthorizationError: If Authorization header missing or tenant resolution fails
     """
+    # Ensure tenant is resolved (single-tenant mode or dynamic resolution)
+    await ensure_tenant_resolved(client)
+
     auth_header = await get_backend_auth_header(client)
     session_headers = await ensure_session(client, auth_header)
 
@@ -238,7 +329,7 @@ async def call_delete(
     """
     Make DELETE request to Go API.
 
-    Creates a fresh sync session for this request and includes session headers.
+    Ensures tenant is resolved, creates a fresh sync session, and includes all required headers.
 
     Args:
         client: httpx client (with TenantDirectTransport)
@@ -249,8 +340,11 @@ async def call_delete(
 
     Raises:
         httpx.HTTPStatusError: If request fails
-        AuthorizationError: If Authorization header missing
+        AuthorizationError: If Authorization header missing or tenant resolution fails
     """
+    # Ensure tenant is resolved (single-tenant mode or dynamic resolution)
+    await ensure_tenant_resolved(client)
+
     auth_header = await get_backend_auth_header(client)
     session_headers = await ensure_session(client, auth_header)
 

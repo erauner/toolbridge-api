@@ -10,9 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    # Tenant configuration
-    tenant_id: str
-    tenant_header_secret: str
+    # Tenant configuration (optional for single-tenant smoke testing)
+    # If not set, tenant will be resolved dynamically via /v1/auth/tenant
+    tenant_id: str | None = None
 
     # Go API connection
     go_api_base_url: str = "http://localhost:8080"

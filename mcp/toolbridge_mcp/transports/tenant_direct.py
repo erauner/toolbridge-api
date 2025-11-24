@@ -1,49 +1,50 @@
 """
-Custom httpx transport that adds tenant headers to requests.
+Custom httpx transport that adds tenant header to requests.
 
 The TenantDirectTransport wraps httpx.AsyncHTTPTransport and automatically
-injects signed tenant headers on all outbound requests to the Go API.
+injects X-Tenant-ID header on all outbound requests to the Go API.
+
+Supports two modes:
+- Single-tenant: Uses configured TENANT_ID (smoke testing)
+- Multi-tenant: Uses dynamically resolved tenant ID (primary mode)
 """
 
 import httpx
 from loguru import logger
 
 from toolbridge_mcp.config import settings
-from toolbridge_mcp.utils.headers import TenantHeaderSigner
 
 
 class TenantDirectTransport(httpx.AsyncBaseTransport):
     """
-    Transport that adds HMAC-signed tenant headers to all requests.
+    Transport that adds X-Tenant-ID header to all requests.
 
     This transport wraps the standard AsyncHTTPTransport and injects
-    tenant authentication headers before forwarding requests to the Go API.
-    The headers include tenant ID, timestamp, and HMAC signature.
+    the X-Tenant-ID header before forwarding requests to the Go API.
+    Tenant ID is either configured (single-tenant) or dynamically resolved
+    (multi-tenant) via the requests module.
     """
 
     def __init__(self):
         """
-        Initialize transport with tenant header signer.
+        Initialize transport.
 
-        Reads tenant configuration from global settings.
+        The actual tenant_id is resolved at request time by the requests module.
+        This allows us to support both single-tenant (configured) and multi-tenant
+        (dynamic resolution) modes.
         """
-        self.signer = TenantHeaderSigner(
-            secret=settings.tenant_header_secret,
-            tenant_id=settings.tenant_id,
-            skew_seconds=settings.max_timestamp_skew_seconds,
-        )
-
         # Create underlying HTTP transport for actual network requests
         self._transport = httpx.AsyncHTTPTransport()
 
+        mode = "single-tenant" if settings.tenant_id else "multi-tenant"
         logger.debug(
-            f"TenantDirectTransport initialized: tenant_id={settings.tenant_id}, "
+            f"TenantDirectTransport initialized: mode={mode}, "
             f"go_api={settings.go_api_base_url}"
         )
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         """
-        Handle an HTTP request by adding tenant headers and forwarding.
+        Handle an HTTP request by adding X-Tenant-ID header and forwarding.
 
         Args:
             request: The HTTP request to process
@@ -51,12 +52,21 @@ class TenantDirectTransport(httpx.AsyncBaseTransport):
         Returns:
             HTTP response from the Go API
         """
-        # Generate and add signed tenant headers
-        tenant_headers = self.signer.sign()
-        for key, value in tenant_headers.items():
-            request.headers[key] = value
+        # Import here to avoid circular dependency
+        from toolbridge_mcp.utils.requests import get_cached_tenant_id
 
-        logger.debug(f"{request.method} {request.url.path} [tenant_id={settings.tenant_id}]")
+        # Get tenant_id (should already be resolved by ensure_tenant_resolved)
+        tenant_id = get_cached_tenant_id()
+
+        if tenant_id:
+            request.headers["X-Tenant-ID"] = tenant_id
+            logger.debug(f"{request.method} {request.url.path} [tenant_id={tenant_id}]")
+        else:
+            # This should not happen if ensure_tenant_resolved was called
+            logger.warning(
+                f"{request.method} {request.url.path} - No tenant_id available. "
+                "This may indicate ensure_tenant_resolved() was not called."
+            )
 
         # Forward request to Go API
         try:
@@ -64,7 +74,7 @@ class TenantDirectTransport(httpx.AsyncBaseTransport):
 
             logger.debug(
                 f"{request.method} {request.url.path} -> {response.status_code} "
-                f"[tenant_id={settings.tenant_id}]"
+                f"[tenant_id={tenant_id or 'none'}]"
             )
 
             return response
