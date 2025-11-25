@@ -183,6 +183,7 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(SessionRequired)
 			r.Use(RateLimitMiddleware(s.RateLimitConfig))
+			r.Use(auth.SimpleTenantHeaderMiddleware(s.WorkOSClient, s.TenantAuthCache, s.DefaultTenantID))
 			r.Use(EpochRequired(s.DB))
 
 			// Notes REST endpoints
