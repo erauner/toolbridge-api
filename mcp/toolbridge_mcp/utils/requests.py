@@ -80,19 +80,28 @@ async def ensure_tenant_resolved(client: httpx.AsyncClient) -> str:
         AuthorizationError: If tenant resolution fails
     """
     try:
-        # Always exchange for backend JWT first to get user_id
-        # This is needed for:
-        # 1. Cache key (per-user tenant isolation)
-        # 2. TenantDirectTransport header injection (needs user_id -> tenant_id lookup)
-        backend_jwt = await exchange_for_backend_jwt(client)
-        user_id = extract_user_id_from_backend_jwt(backend_jwt)
+        # Get user_id from MCP OAuth token first (no network call needed)
+        # This allows us to check caches before doing expensive token exchange
+        mcp_token = get_access_token()
+        user_id = mcp_token.claims.get("sub")
 
-        # Cache backend JWT to avoid double exchange in get_backend_auth_header
+        if not user_id:
+            raise AuthorizationError("MCP token missing 'sub' claim")
+
+        # Check per-user caches first to avoid unnecessary network calls
+        cached_tenant = _tenant_cache.get(user_id)
+        cached_jwt = _jwt_cache.get(user_id)
+
+        if cached_tenant and cached_jwt:
+            logger.debug(f"Using cached tenant and JWT for user {user_id}: {cached_tenant}")
+            return cached_tenant
+
+        # Need to exchange for backend JWT (cache miss or first request)
+        backend_jwt = await exchange_for_backend_jwt(client)
         _jwt_cache[user_id] = backend_jwt
 
-        # Check per-user tenant cache first (both modes)
-        if user_id in _tenant_cache:
-            cached_tenant = _tenant_cache[user_id]
+        # Check if tenant was cached (JWT cache miss but tenant cache hit)
+        if cached_tenant:
             logger.debug(f"Using cached tenant for user {user_id}: {cached_tenant}")
             return cached_tenant
 
