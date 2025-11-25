@@ -394,11 +394,11 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 
 		// Normalize flat sync fields to match nested sync and server state
 		mutatedPayload["version"] = ack.Version
-		mutatedPayload["isDirty"] = 0 // REST mutations are already synced
+		mutatedPayload["isDirty"] = false // REST mutations are already synced
 		if opts.SetDeleted {
-			mutatedPayload["isDeleted"] = 1
+			mutatedPayload["isDeleted"] = true
 		} else {
-			mutatedPayload["isDeleted"] = 0
+			mutatedPayload["isDeleted"] = false
 		}
 		mutatedPayload["remoteUpdatedAt"] = ack.UpdatedAt
 		mutatedPayload["updateTime"] = ack.UpdatedAt
