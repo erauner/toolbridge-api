@@ -270,9 +270,12 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, jwt.MapClaims, error
 		// Special case: Skip audience validation for WorkOS AuthKit when using DCR
 		// (Dynamic Client Registration). With DCR, each client gets a unique client ID
 		// as the audience, which is unpredictable. We only validate issuer + signature.
-		// DCR mode is enabled when MCP_OAUTH_AUDIENCE is empty (AcceptedAudiences is empty).
-		// The presence of JWT_AUDIENCE (for direct API tokens) does not affect DCR mode.
-		skipAudienceValidation := cfg.Issuer != "" && issuer == cfg.Issuer && len(cfg.AcceptedAudiences) == 0
+		// DCR mode is enabled when BOTH:
+		// - MCP_OAUTH_AUDIENCE is empty (AcceptedAudiences is empty)
+		// - JWT_AUDIENCE is also empty (Audience is empty)
+		// This ensures audience-based isolation is enforced when JWT_AUDIENCE is configured.
+		skipAudienceValidation := cfg.Issuer != "" && issuer == cfg.Issuer &&
+			len(cfg.AcceptedAudiences) == 0 && cfg.Audience == ""
 
 		if !skipAudienceValidation && (cfg.Audience != "" || len(cfg.AcceptedAudiences) > 0) {
 			// Build list of all accepted audiences

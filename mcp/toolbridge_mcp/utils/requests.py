@@ -41,10 +41,19 @@ class AuthorizationError(Exception):
 # This prevents cross-tenant data leakage in multi-user MCP deployments
 _tenant_cache: Dict[str, str] = {}
 
+# Per-user backend JWT cache: key is user_id, value is backend JWT
+# Prevents double token exchange per request (ensure_tenant_resolved + get_backend_auth_header)
+_jwt_cache: Dict[str, str] = {}
+
 
 def get_cached_tenant_id(user_id: str) -> Optional[str]:
     """Get cached tenant ID for specific user."""
     return _tenant_cache.get(user_id)
+
+
+def get_cached_backend_jwt(user_id: str) -> Optional[str]:
+    """Get cached backend JWT for specific user."""
+    return _jwt_cache.get(user_id)
 
 
 async def ensure_tenant_resolved(client: httpx.AsyncClient) -> str:
@@ -55,7 +64,11 @@ async def ensure_tenant_resolved(client: httpx.AsyncClient) -> str:
     - Single-tenant: If TENANT_ID configured, use it directly (smoke testing)
     - Multi-tenant: Call /v1/auth/tenant to resolve dynamically (primary mode)
 
-    In multi-tenant mode, tenant is cached per-user to avoid cross-tenant leakage.
+    Both modes cache tenant per-user to:
+    - Avoid cross-tenant leakage in multi-user MCP deployments
+    - Enable TenantDirectTransport to inject X-TB-Tenant-ID header
+
+    Also caches backend JWT to avoid double token exchange per request.
 
     Args:
         client: httpx client for tenant resolution API call
@@ -66,28 +79,36 @@ async def ensure_tenant_resolved(client: httpx.AsyncClient) -> str:
     Raises:
         AuthorizationError: If tenant resolution fails
     """
-    # Single-tenant mode: Use configured TENANT_ID (smoke testing)
-    if settings.tenant_id:
-        logger.warning(f"⚠️  Using configured tenant: {settings.tenant_id} (single-tenant mode)")
-        return settings.tenant_id
-
-    # Multi-tenant mode: Resolve tenant dynamically via /v1/auth/tenant
-    logger.debug("Resolving tenant dynamically via /v1/auth/tenant (multi-tenant mode)")
-
     try:
-        # Get ID token from MCP OAuth context
-        mcp_token = get_access_token()
-        id_token = mcp_token.token
-
-        # Exchange for backend JWT to get user ID
+        # Always exchange for backend JWT first to get user_id
+        # This is needed for:
+        # 1. Cache key (per-user tenant isolation)
+        # 2. TenantDirectTransport header injection (needs user_id -> tenant_id lookup)
         backend_jwt = await exchange_for_backend_jwt(client)
         user_id = extract_user_id_from_backend_jwt(backend_jwt)
 
-        # Check per-user cache first
+        # Cache backend JWT to avoid double exchange in get_backend_auth_header
+        _jwt_cache[user_id] = backend_jwt
+
+        # Check per-user tenant cache first (both modes)
         if user_id in _tenant_cache:
             cached_tenant = _tenant_cache[user_id]
             logger.debug(f"Using cached tenant for user {user_id}: {cached_tenant}")
             return cached_tenant
+
+        # Single-tenant mode: Use configured TENANT_ID (smoke testing)
+        if settings.tenant_id:
+            logger.warning(f"⚠️  Using configured tenant: {settings.tenant_id} (single-tenant mode)")
+            # Cache so TenantDirectTransport can inject header
+            _tenant_cache[user_id] = settings.tenant_id
+            return settings.tenant_id
+
+        # Multi-tenant mode: Resolve tenant dynamically via /v1/auth/tenant
+        logger.debug("Resolving tenant dynamically via /v1/auth/tenant (multi-tenant mode)")
+
+        # Get ID token from MCP OAuth context
+        mcp_token = get_access_token()
+        id_token = mcp_token.token
 
         # Call backend tenant resolution endpoint
         tenant_id = await resolve_tenant(
@@ -114,8 +135,8 @@ async def get_backend_auth_header(client: httpx.AsyncClient) -> str:
     """
     Get Authorization header for backend API calls.
 
-    Exchanges MCP OAuth token for backend JWT via token_exchange module.
-    FastMCP has already validated the user's OAuth token via AuthKitProvider.
+    First checks the JWT cache (populated by ensure_tenant_resolved).
+    Falls back to exchanging MCP OAuth token if not cached.
 
     Args:
         client: httpx client for token exchange requests
@@ -127,9 +148,18 @@ async def get_backend_auth_header(client: httpx.AsyncClient) -> str:
         AuthorizationError: If token exchange fails
     """
     from toolbridge_mcp.auth import TokenExchangeError
-    
+
     try:
-        logger.debug("Exchanging MCP OAuth token for backend JWT")
+        # Try to get cached JWT first (avoids double token exchange)
+        # ensure_tenant_resolved caches the JWT when it exchanges for user_id
+        for user_id, cached_jwt in _jwt_cache.items():
+            # Return the first cached JWT (single-user per request context)
+            logger.debug(f"Using cached backend JWT for user {user_id}")
+            return f"Bearer {cached_jwt}"
+
+        # Fall back to token exchange if not cached
+        # (shouldn't happen if ensure_tenant_resolved was called first)
+        logger.debug("Exchanging MCP OAuth token for backend JWT (cache miss)")
         backend_jwt = await exchange_for_backend_jwt(client)
         return f"Bearer {backend_jwt}"
     except TokenExchangeError as e:
