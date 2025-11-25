@@ -162,14 +162,6 @@ spec:
             secretKeyRef:
               name: {{ include "toolbridge-api.secretName" . }}
               key: jwt-secret
-        {{- if .Values.api.mcp.enabled }}
-        # MCP tenant header validation secret
-        - name: TENANT_HEADER_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "toolbridge-api.secretName" . }}
-              key: tenant-header-secret
-        {{- end }}
         # WorkOS API key for tenant resolution
         - name: WORKOS_API_KEY
           valueFrom:
