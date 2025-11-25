@@ -11,10 +11,74 @@ import (
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
 	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
+	"github.com/erauner12/toolbridge-api/internal/syncx"
 	"github.com/google/uuid"
 )
 
 const testUserSubject = "test-user"
+
+// Regression: two REST mutations in the same millisecond should not clobber the winner payload.
+func TestApplyNoteMutation_SameTimestamp_NoClobber(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pool := getTestDB(t)
+	defer pool.Close()
+
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+	}
+
+	ctx := context.Background()
+	userID := createTestUser(t, pool, testUserSubject)
+
+	ts := syncx.NowMs()
+	noteUID := uuid.New()
+
+	firstPayload := map[string]any{
+		"uid":     noteUID.String(),
+		"title":   "First Title",
+		"content": "winner payload",
+	}
+	secondPayload := map[string]any{
+		"uid":     noteUID.String(),
+		"title":   "Second Title",
+		"content": "stale payload",
+	}
+
+	firstItem, err := srv.NoteSvc.ApplyNoteMutation(ctx, userID, firstPayload, syncservice.MutationOpts{
+		ForceTimestampMs: &ts,
+	})
+	if err != nil {
+		t.Fatalf("first mutation failed: %v", err)
+	}
+
+	secondItem, err := srv.NoteSvc.ApplyNoteMutation(ctx, userID, secondPayload, syncservice.MutationOpts{
+		ForceTimestampMs: &ts,
+	})
+	if err != nil {
+		t.Fatalf("second mutation failed: %v", err)
+	}
+
+	if got := secondItem.Payload["content"]; got != "winner payload" {
+		t.Fatalf("expected second response payload to reflect winner, got %v", got)
+	}
+
+	current, err := srv.NoteSvc.GetNote(ctx, userID, noteUID)
+	if err != nil {
+		t.Fatalf("failed to reload note: %v", err)
+	}
+	if got := current.Payload["content"]; got != "winner payload" {
+		t.Fatalf("expected DB payload to keep winner, got %v", got)
+	}
+
+	if current.Version != firstItem.Version {
+		t.Fatalf("expected version unchanged; first=%d current=%d", firstItem.Version, current.Version)
+	}
+}
 
 // TestGetNote_IncludeDeleted tests the includeDeleted query parameter behavior
 func TestGetNote_IncludeDeleted(t *testing.T) {
