@@ -17,6 +17,7 @@ type PushAck struct {
 	Version   int    `json:"version"`
 	UpdatedAt string `json:"updatedAt"`
 	Error     string `json:"error,omitempty"`
+	Applied   bool   `json:"applied,omitempty"`
 }
 
 // PullResponse represents the response from a pull operation
@@ -63,7 +64,7 @@ func (s *NoteService) PushNoteItem(ctx context.Context, tx pgx.Tx, userID string
 	// Insert or update with LWW conflict resolution
 	// Key invariant: WHERE clause uses strict > (not >=) to make duplicate pushes idempotent
 	// If same timestamp arrives twice, version doesn't increment
-	_, err = tx.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO note (uid, owner_id, updated_at_ms, deleted_at_ms, version, payload_json)
 		VALUES ($1, $2, $3, $4, GREATEST($5, 1), $6)
 		ON CONFLICT (owner_id, uid) DO UPDATE SET
@@ -78,6 +79,11 @@ func (s *NoteService) PushNoteItem(ctx context.Context, tx pgx.Tx, userID string
 			END
 		WHERE EXCLUDED.updated_at_ms > note.updated_at_ms
 	`, ext.UID, userID, ext.UpdatedAtMs, ext.DeletedAtMs, ext.Version, payloadJSON)
+
+	applied := false
+	if err == nil {
+		applied = tag.RowsAffected() > 0
+	}
 
 	if err != nil {
 		logger.Error().Err(err).Str("uid", ext.UID.String()).Msg("failed to upsert note")
@@ -109,6 +115,7 @@ func (s *NoteService) PushNoteItem(ctx context.Context, tx pgx.Tx, userID string
 		UID:       ext.UID.String(),
 		Version:   serverVersion,
 		UpdatedAt: syncx.RFC3339(serverMs),
+		Applied:   applied,
 	}
 }
 
@@ -367,12 +374,10 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 		return nil, &MutationError{Message: ack.Error}
 	}
 
-	expectedUpdatedAt := syncx.RFC3339(timestampMs)
-
 	// Detect whether our mutation actually advanced the row.
-	// Use the authoritative updatedAt to ensure the LWW guard accepted this write.
-	// This avoids clobbering when another writer advanced the version after our pre-read.
-	upsertApplied := ack.UpdatedAt == expectedUpdatedAt
+	// Use the Applied flag from PushNoteItem (rows affected) to avoid clobbering when
+	// the LWW guard rejected an equal-timestamp or concurrent update.
+	upsertApplied := ack.Applied
 	var deletedAtFromDB *string
 
 	// Normalize sync metadata in payload for client compatibility
@@ -419,8 +424,6 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 			Str("uid", noteUID.String()).
 			Int("existingVersion", existingVersion).
 			Int("ackVersion", ack.Version).
-			Str("expectedUpdatedAt", expectedUpdatedAt).
-			Str("serverUpdatedAt", ack.UpdatedAt).
 			Msg("skipping payload normalization because a newer write already exists")
 		// Refresh payload for response to reflect the current authoritative state
 		var currentPayload map[string]any
