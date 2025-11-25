@@ -78,7 +78,7 @@ func TestValidateToken_WorkOS_DCR_SkipsAudienceValidation(t *testing.T) {
 
 	// CRITICAL: This should PASS even though audience is client ID
 	// because AcceptedAudiences is empty (DCR mode)
-	sub, err := ValidateToken(tokenString, cfg)
+	sub, _, err := ValidateToken(tokenString, cfg)
 	if err != nil {
 		t.Fatalf("Expected token to be accepted in DCR mode, got error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestValidateToken_WorkOS_DCR_StillValidatesIssuer(t *testing.T) {
 	}
 
 	// Should FAIL due to issuer mismatch
-	_, err = ValidateToken(tokenString, cfg)
+	_, _, err = ValidateToken(tokenString, cfg)
 	if err == nil {
 		t.Fatal("Expected token to be rejected due to invalid issuer")
 	}
@@ -174,7 +174,7 @@ func TestValidateToken_JWTAudienceSet_StillValidates(t *testing.T) {
 
 	// CRITICAL: Should REJECT even though AcceptedAudiences is empty
 	// because cfg.Audience is set
-	_, err = ValidateToken(tokenString, cfg)
+	_, _, err = ValidateToken(tokenString, cfg)
 	if err == nil {
 		t.Fatal("SECURITY ISSUE: Token with wrong audience accepted when JWT_AUDIENCE is set!")
 	}
@@ -189,7 +189,7 @@ func TestValidateToken_JWTAudienceSet_StillValidates(t *testing.T) {
 		t.Fatalf("Failed to issue token: %v", err)
 	}
 
-	sub, err := ValidateToken(tokenString, cfg)
+	sub, _, err := ValidateToken(tokenString, cfg)
 	if err != nil {
 		t.Fatalf("Token with correct audience should be accepted: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestValidateToken_RegularTokens_StillValidateAudience(t *testing.T) {
 				t.Fatalf("Failed to issue token: %v", err)
 			}
 
-			sub, err := ValidateToken(tokenString, cfg)
+			sub, _, err := ValidateToken(tokenString, cfg)
 
 			if tt.shouldPass {
 				if err != nil {
@@ -325,7 +325,7 @@ func TestValidateToken_BackendToken_SkipsIssuerAndAudience(t *testing.T) {
 	}
 
 	// Should PASS even though issuer and audience don't match IdP config
-	sub, err := ValidateToken(tokenString, cfg)
+	sub, _, err := ValidateToken(tokenString, cfg)
 	if err != nil {
 		t.Fatalf("Expected backend token to pass, got error: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestValidateToken_LegacyBackendToken(t *testing.T) {
 	}
 
 	// Should PASS for backward compatibility
-	sub, err := ValidateToken(tokenString, cfg)
+	sub, _, err := ValidateToken(tokenString, cfg)
 	if err != nil {
 		t.Fatalf("Expected legacy backend token to pass, got error: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestValidateToken_ExpiredToken(t *testing.T) {
 	}
 
 	// Should FAIL due to expiration
-	_, err = ValidateToken(tokenString, cfg)
+	_, _, err = ValidateToken(tokenString, cfg)
 	if err == nil {
 		t.Fatal("Expected expired token to be rejected")
 	}
@@ -450,7 +450,7 @@ func TestValidateToken_MissingSubClaim(t *testing.T) {
 	}
 
 	// Should FAIL due to missing sub claim
-	_, err = ValidateToken(tokenString, cfg)
+	_, _, err = ValidateToken(tokenString, cfg)
 	if err == nil {
 		t.Fatal("Expected token without sub claim to be rejected")
 	}

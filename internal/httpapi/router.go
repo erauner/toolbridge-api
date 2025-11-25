@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
+	"github.com/workos/workos-go/v6/pkg/usermanagement"
 )
 
 // Server holds dependencies for HTTP handlers
@@ -19,6 +19,9 @@ type Server struct {
 	DB              *pgxpool.Pool
 	RateLimitConfig RateLimitInfo // Centralized rate limit configuration
 	JWTCfg          auth.JWTCfg   // JWT authentication configuration
+	WorkOSClient    *usermanagement.Client // WorkOS client for tenant resolution
+	DefaultTenantID string        // Default tenant ID for B2C users (no organization memberships)
+	TenantAuthCache *auth.TenantAuthCache // In-memory cache for tenant authorization validation
 	// Services
 	NoteSvc        *syncservice.NoteService
 	TaskSvc        *syncservice.TaskService
@@ -123,25 +126,31 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(s.DB, jwt))
 
-		// Optional tenant header validation for MCP deployments
-		// When TENANT_HEADER_SECRET is set, validates HMAC-signed tenant headers from Python MCP service
-		tenantHeaderSecret := os.Getenv("TENANT_HEADER_SECRET")
-		if tenantHeaderSecret != "" {
-			log.Info().Msg("Tenant header validation enabled for MCP deployment")
-			r.Use(auth.TenantHeaderMiddleware(tenantHeaderSecret, 300)) // 5 minute window
-		} else {
-			log.Debug().Msg("Tenant header validation disabled (non-MCP deployment)")
-		}
+		// Bootstrap endpoints that don't require tenant headers
+		// These are used to discover tenant ID or exchange tokens before tenant is known
 
 		// Token exchange (Path B OAuth 2.1)
 		// Converts MCP OAuth tokens to backend JWTs
 		// No session or tenant headers required (this is used to bootstrap authentication)
 		r.Post("/auth/token-exchange", s.TokenExchange)
 
+		// Tenant resolution via WorkOS API
+		// Returns organization ID for authenticated user
+		// No session or tenant headers required (this is used to resolve tenant before making API calls)
+		r.Get("/v1/auth/tenant", s.ResolveTenant)
+
 		// Session management (no session or rate limit required for these)
 		r.Post("/v1/sync/sessions", s.BeginSession)
 		r.Get("/v1/sync/sessions/{id}", s.GetSession)
 		r.Delete("/v1/sync/sessions/{id}", s.EndSession)
+
+		// Routes that require tenant header validation (MCP deployments)
+		r.Group(func(r chi.Router) {
+			// Tenant header validation for multi-tenant MCP deployments
+			// The MCP server authenticates via OAuth and sends X-TB-Tenant-ID header (no HMAC signing)
+			// SECURITY: Validates user authorization via WorkOS API with in-memory caching
+			log.Info().Msg("Tenant header validation enabled with WorkOS authorization check")
+			r.Use(auth.SimpleTenantHeaderMiddleware(s.WorkOSClient, s.TenantAuthCache, s.DefaultTenantID))
 
 		// Entity sync endpoints require active session, rate limiting, and epoch validation
 		r.Group(func(r chi.Router) {
@@ -174,6 +183,7 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(SessionRequired)
 			r.Use(RateLimitMiddleware(s.RateLimitConfig))
+			r.Use(auth.SimpleTenantHeaderMiddleware(s.WorkOSClient, s.TenantAuthCache, s.DefaultTenantID))
 			r.Use(EpochRequired(s.DB))
 
 			// Notes REST endpoints
@@ -227,14 +237,15 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 			r.Post("/v1/chat_messages/{uid}/process", s.ProcessChatMessage)
 		})
 
-		// Wipe & state routes require auth + session, but NO epoch check
-		// (otherwise you can't wipe when epoch is mismatched!)
-		r.Group(func(r chi.Router) {
-			r.Use(SessionRequired)
+			// Wipe & state routes require auth + session, but NO epoch check
+			// (otherwise you can't wipe when epoch is mismatched!)
+			r.Group(func(r chi.Router) {
+				r.Use(SessionRequired)
 
-			r.Post("/v1/sync/wipe", s.WipeAccount)
-			r.Get("/v1/sync/state", s.GetSyncState)
-		})
+				r.Post("/v1/sync/wipe", s.WipeAccount)
+				r.Get("/v1/sync/state", s.GetSyncState)
+			})
+		}) // End tenant header middleware group
 	})
 
 	log.Info().Msg("HTTP routes registered")

@@ -20,7 +20,10 @@ import (
 
 type ctxKey string
 
-const CtxUserID ctxKey = "uid"
+const (
+	CtxUserID  ctxKey = "uid" // Database user ID (app_user.id)
+	CtxSubject ctxKey = "sub" // OIDC subject claim (JWT sub, WorkOS user ID)
+)
 
 // JWTCfg holds JWT authentication configuration
 type JWTCfg struct {
@@ -30,6 +33,23 @@ type JWTCfg struct {
 	JWKSURL           string   // JWKS endpoint URL (e.g., "https://your-app.authkit.app/oauth2/jwks")
 	Audience          string   // Optional primary expected audience claim
 	AcceptedAudiences []string // Additional accepted audiences (for MCP OAuth tokens, backend tokens, etc.)
+
+	// TenantClaim: JWT claim key for tenant/organization ID (e.g., "organization_id")
+	//
+	// TENANT IDENTITY CONTRACT:
+	// This claim should contain the IdP-level organization ID (from WorkOS, Okta, Auth0, etc.),
+	// NOT a database-specific identifier like a Neon branch ID or schema name.
+	//
+	// The value extracted from this claim will be used as:
+	//   1. The tenant_id stored in request context (via TenantID(ctx))
+	//   2. The key for future tenant_registry lookups (Neon DB-per-tenant routing)
+	//   3. The logical tenant identifier across all system components
+	//
+	// DO NOT change this to extract database routing information from JWT claims.
+	// Database topology should be determined server-side via tenant_registry, not client-provided.
+	//
+	// See: Plans/neon-migration-tenant-contract.md
+	TenantClaim string
 }
 
 // JWKS caching for upstream IdP public keys
@@ -172,17 +192,17 @@ func (c *jwksCache) getPublicKey(kid string) (*rsa.PublicKey, error) {
 	return key, nil
 }
 
-// ValidateToken validates a JWT token and returns the subject claim
-// Returns the subject (sub) claim if valid, or an error if validation fails
+// ValidateToken validates a JWT token and returns the subject claim and claims map
+// Returns the subject (sub) claim and full claims map if valid, or an error if validation fails
 // Supports both RS256 (upstream IdP / WorkOS) and HS256 (backend / dev) tokens
-func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
+func ValidateToken(tokenString string, cfg JWTCfg) (string, jwt.MapClaims, error) {
 	if tokenString == "" {
-		return "", errors.New("token is empty")
+		return "", nil, errors.New("token is empty")
 	}
 
 	// Ensure JWKS cache is initialized if upstream IdP is configured
 	if cfg.JWKSURL != "" && globalJWKSCache == nil {
-		return "", errors.New("JWKS cache not initialized")
+		return "", nil, errors.New("JWKS cache not initialized")
 	}
 
 	claims := jwt.MapClaims{}
@@ -222,7 +242,7 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 	})
 
 	if err != nil || !t.Valid {
-		return "", fmt.Errorf("jwt validation failed: %w", err)
+		return "", nil, fmt.Errorf("jwt validation failed: %w", err)
 	}
 
 	// Extract token_type to differentiate backend tokens from external IdP tokens
@@ -240,7 +260,7 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 		// External IdP token (WorkOS AuthKit, etc.) - validate issuer and audience
 		if cfg.Issuer != "" {
 			if iss, ok := claims["iss"].(string); !ok || iss != cfg.Issuer {
-				return "", fmt.Errorf("invalid issuer: expected %s, got %v", cfg.Issuer, claims["iss"])
+				return "", nil, fmt.Errorf("invalid issuer: expected %s, got %v", cfg.Issuer, claims["iss"])
 			}
 		}
 
@@ -250,9 +270,12 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 		// Special case: Skip audience validation for WorkOS AuthKit when using DCR
 		// (Dynamic Client Registration). With DCR, each client gets a unique client ID
 		// as the audience, which is unpredictable. We only validate issuer + signature.
-		// DCR mode is enabled when MCP_OAUTH_AUDIENCE is empty (AcceptedAudiences is empty).
-		// The presence of JWT_AUDIENCE (for direct API tokens) does not affect DCR mode.
-		skipAudienceValidation := cfg.Issuer != "" && issuer == cfg.Issuer && len(cfg.AcceptedAudiences) == 0
+		// DCR mode is enabled when BOTH:
+		// - MCP_OAUTH_AUDIENCE is empty (AcceptedAudiences is empty)
+		// - JWT_AUDIENCE is also empty (Audience is empty)
+		// This ensures audience-based isolation is enforced when JWT_AUDIENCE is configured.
+		skipAudienceValidation := cfg.Issuer != "" && issuer == cfg.Issuer &&
+			len(cfg.AcceptedAudiences) == 0 && cfg.Audience == ""
 
 		if !skipAudienceValidation && (cfg.Audience != "" || len(cfg.AcceptedAudiences) > 0) {
 			// Build list of all accepted audiences
@@ -291,7 +314,7 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 				}
 			}
 			if !audValid {
-				return "", fmt.Errorf("invalid audience: expected one of %v, got %v", acceptedAuds, claims["aud"])
+				return "", nil, fmt.Errorf("invalid audience: expected one of %v, got %v", acceptedAuds, claims["aud"])
 			}
 		}
 	}
@@ -299,10 +322,10 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, error) {
 	// Extract subject from claims
 	sub, ok := claims["sub"].(string)
 	if !ok || sub == "" {
-		return "", errors.New("missing or invalid sub claim")
+		return "", nil, errors.New("missing or invalid sub claim")
 	}
 
-	return sub, nil
+	return sub, claims, nil
 }
 
 // InitJWKSCache initializes the global JWKS cache for upstream IdP RS256 validation
@@ -368,9 +391,10 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 			}
 
 			// Validate JWT token if present
+			var claims jwt.MapClaims
 			if tok != "" {
 				var err error
-				sub, err = ValidateToken(tok, cfg)
+				sub, claims, err = ValidateToken(tok, cfg)
 				if err != nil {
 					log.Warn().Err(err).Msg("jwt validation failed")
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -396,17 +420,59 @@ func Middleware(db *pgxpool.Pool, cfg JWTCfg) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Add user ID to request context
+			// Add user ID and subject to request context
 			ctx := context.WithValue(r.Context(), CtxUserID, userID)
+			ctx = context.WithValue(ctx, CtxSubject, sub)
+
+			// Extract tenant from JWT claims if configured and not already set by header middleware
+			// Precedence: X-TB-Tenant-ID header (if present) > JWT tenant claim > no tenant
+			//
+			// TENANT IDENTITY CONTRACT:
+			// The claim value (e.g., cfg.TenantClaim = "organization_id") contains the IdP-level
+			// organization ID, which is the logical tenant identifier used throughout the system.
+			// This is NOT a database-specific identifier (e.g., NOT a Neon branch ID).
+			//
+			// Future database routing (Neon DB-per-tenant) will use this organization ID to
+			// look up the correct connection pool via tenant_registry.
+			//
+			// See: Plans/neon-migration-tenant-contract.md
+			if TenantID(ctx) == "" && cfg.TenantClaim != "" && claims != nil {
+				if tenantVal, ok := claims[cfg.TenantClaim]; ok {
+					if tenantID, ok := tenantVal.(string); ok && tenantID != "" {
+						ctx = context.WithValue(ctx, TenantIDKey, tenantID)
+						log.Debug().Str("tenant_id", tenantID).Str("claim", cfg.TenantClaim).Msg("tenant derived from JWT claim")
+					}
+				} else {
+					// Tenant claim not found in JWT - this is expected for backend-driven tenant resolution
+					// (via /v1/auth/tenant) or header-based tenancy (X-TB-Tenant-ID)
+					// Only log at trace level to avoid confusion
+					log.Trace().
+						Str("claim", cfg.TenantClaim).
+						Msg("tenant claim not found in JWT (expected for backend-driven tenant resolution or header-based tenancy)")
+				}
+			}
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// UserID extracts the authenticated user ID from request context
+// UserID extracts the authenticated user ID (database ID) from request context
 // Returns empty string if not authenticated (should never happen after middleware)
 func UserID(ctx context.Context) string {
 	if v := ctx.Value(CtxUserID); v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// Subject extracts the OIDC subject claim (JWT sub, WorkOS user ID) from request context
+// Returns empty string if not authenticated (should never happen after middleware)
+// Use this for WorkOS API calls, not UserID() which returns the database primary key
+func Subject(ctx context.Context) string {
+	if v := ctx.Value(CtxSubject); v != nil {
 		if s, ok := v.(string); ok {
 			return s
 		}

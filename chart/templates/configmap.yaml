@@ -25,7 +25,15 @@ data:
   {{- if .Values.api.jwt.audience }}
   JWT_AUDIENCE: {{ .Values.api.jwt.audience | quote }}
   {{- end }}
+  {{- if .Values.api.jwt.tenantClaim }}
+  TENANT_CLAIM: {{ .Values.api.jwt.tenantClaim | quote }}
+  {{- end }}
   {{- end }}
   {{- if .Values.api.mcp.enabled }}
   MCP_OAUTH_AUDIENCE: {{ .Values.api.mcp.oauthAudience | default "" | quote }}
+  {{- end }}
+  {{- if .Values.api.tenancy }}
+  {{- if .Values.api.tenancy.defaultTenantId }}
+  DEFAULT_TENANT_ID: {{ .Values.api.tenancy.defaultTenantId | quote }}
+  {{- end }}
   {{- end }}

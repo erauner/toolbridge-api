@@ -31,6 +31,18 @@ api:
     issuer: ""     # e.g., "https://your-app.authkit.app" or "https://your-tenant.okta.com"
     jwksUrl: ""    # e.g., "https://your-app.authkit.app/oauth2/jwks" or "https://your-tenant.okta.com/oauth2/v1/keys"
     audience: ""   # Optional: Primary expected audience claim (e.g., "https://api.example.com")
+    tenantClaim: "organization_id"  # JWT claim key for tenant/organization ID
+                                     # WorkOS: "organization_id"
+                                     # Auth0: "org_id" or custom namespace
+                                     # Used for multi-tenant data scoping when HMAC headers not present
+
+  # B2C/B2B Tenant Configuration
+  # Pattern 3 (Hybrid): B2C users without organizations get defaultTenantId,
+  # B2B users with organizations get their organization ID as tenant
+  tenancy:
+    defaultTenantId: "tenant_thinkpen_b2c"  # Default tenant for B2C users (no organization memberships)
+                                              # Change this to your application's default tenant ID
+                                              # Example: "tenant_myapp_b2c" or "default"
 
   # MCP (Model Context Protocol) configuration
   # Enable tenant header validation for MCP deployments
@@ -166,7 +178,6 @@ secrets:
   dbUsername: ""         # Database username
   dbPassword: ""         # Database password (base64)
   databaseUrl: ""        # Complete DATABASE_URL (base64)
-  tenantHeaderSecret: "" # Tenant header HMAC secret (required when api.mcp.enabled=true)
 
   # Use existing secret instead of creating one
   existingSecret: ""

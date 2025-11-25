@@ -4,11 +4,9 @@ This document details all secrets and environment variables required for ToolBri
 
 ## Overview
 
-ToolBridge uses dual authentication:
-1. **JWT tokens** for user identity validation
-2. **Signed tenant headers** for tenant isolation and cross-service authentication
-
-**Critical:** The `TENANT_HEADER_SECRET` must match across all components (Go API in K8s and MCP proxy in Fly.io).
+ToolBridge uses authentication via:
+1. **JWT tokens** for user identity validation (RS256 via OIDC JWKS or HS256 for testing)
+2. **WorkOS API** for tenant authorization validation (organization membership checks)
 
 ## Kubernetes Deployment (Go API + PostgreSQL)
 
@@ -32,8 +30,8 @@ stringData:
   # JWT configuration (HS256 for backend tokens, OIDC RS256 for production)
   jwt-secret: <generated-hs256-secret>  # Required for backend token signing
 
-  # Tenant header authentication (CRITICAL - must match Fly.io)
-  tenant-header-secret: <generated-tenant-secret>
+  # WorkOS API key for tenant authorization (multi-tenant mode)
+  workos-api-key: <your-workos-api-key>  # Optional - required for B2B tenant validation
 ```
 
 ### Generating Secrets
@@ -43,9 +41,6 @@ stringData:
 openssl rand -base64 32
 
 # JWT HS256 secret (required for backend token signing)
-openssl rand -base64 32
-
-# Tenant header secret (SAVE THIS - needed for Fly.io)
 openssl rand -base64 32
 ```
 
@@ -61,9 +56,9 @@ git add toolbridge-secret.sops.yaml
 git commit -m "chore: update secrets"
 git push
 
-# Retrieve secret value (for Fly.io setup)
+# Retrieve secret value
 kubectl get secret toolbridge-secret -n toolbridge \
-  -o jsonpath='{.data.tenant-header-secret}' | base64 -d
+  -o jsonpath='{.data.workos-api-key}' | base64 -d
 ```
 
 ### Helm Values
@@ -75,10 +70,13 @@ Non-secret configuration:
 ```yaml
 api:
   env: production
-  oidc:
+  jwt:
+    # OIDC RS256 JWT validation - compatible with any OIDC provider
+    # Examples: WorkOS AuthKit, Okta, Keycloak, Auth0
     issuer: "https://svelte-monolith-27-staging.authkit.app"
     jwksUrl: "https://svelte-monolith-27-staging.authkit.app/oauth2/jwks"
     audience: "https://toolbridgeapi.erauner.dev"
+    tenantClaim: "organization_id"  # Claim key for tenant extraction
 
 secrets:
   existingSecret: "toolbridge-secret"  # References SOPS secret above
@@ -94,21 +92,8 @@ Set via `fly secrets set -a <app-name>`:
 # External Go API endpoint (K8s ingress)
 TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev"
 
-# Tenant identification
-TOOLBRIDGE_TENANT_ID="staging-tenant-001"  # or per-tenant ID
-
-# Tenant header authentication (MUST match K8s secret)
-TOOLBRIDGE_TENANT_HEADER_SECRET="<same-as-k8s-tenant-header-secret>"
-```
-
-### Optional Secrets
-
-```bash
-# Logging level
+# Optional: Logging level
 TOOLBRIDGE_LOG_LEVEL="INFO"  # DEBUG, INFO, WARNING, ERROR
-
-# Custom timeouts (rarely needed)
-TOOLBRIDGE_MAX_TIMESTAMP_SKEW_SECONDS="300"  # default: 5 minutes
 ```
 
 ### Setting Secrets
@@ -116,9 +101,7 @@ TOOLBRIDGE_MAX_TIMESTAMP_SKEW_SECONDS="300"  # default: 5 minutes
 ```bash
 # Initial setup
 fly secrets set -a toolbridge-mcp-staging \
-  TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
-  TOOLBRIDGE_TENANT_ID="staging-tenant-001" \
-  TOOLBRIDGE_TENANT_HEADER_SECRET="<from-k8s-secret>"
+  TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev"
 
 # Update a single secret
 fly secrets set TOOLBRIDGE_LOG_LEVEL="DEBUG" -a toolbridge-mcp-staging
@@ -144,11 +127,14 @@ DATABASE_URL=postgres://toolbridge:dev-password@localhost:5432/toolbridge?sslmod
 JWT_HS256_SECRET=dev-secret-change-in-production
 ENV=dev  # Enables X-Debug-Sub header bypass
 
-# Tenant header authentication
-TENANT_HEADER_SECRET=dev-tenant-secret
-
 # HTTP server
 HTTP_ADDR=:8080
+
+# Optional: WorkOS API key for tenant validation (multi-tenant mode)
+# WORKOS_API_KEY=sk_test_...
+
+# Default tenant ID for B2C users
+DEFAULT_TENANT_ID=tenant_thinkpen_b2c
 ```
 
 ### Python MCP Service (mcp/.env)
@@ -156,10 +142,6 @@ HTTP_ADDR=:8080
 Location: `toolbridge-api/mcp/.env`
 
 ```bash
-# Tenant configuration
-TOOLBRIDGE_TENANT_ID=test-tenant-123
-TOOLBRIDGE_TENANT_HEADER_SECRET=dev-tenant-secret  # Must match Go API
-
 # Go API connection
 TOOLBRIDGE_GO_API_BASE_URL=http://localhost:8080
 
@@ -169,45 +151,19 @@ TOOLBRIDGE_LOG_LEVEL=DEBUG
 # Server config (default values)
 TOOLBRIDGE_HOST=0.0.0.0
 TOOLBRIDGE_PORT=8001
-TOOLBRIDGE_MAX_TIMESTAMP_SKEW_SECONDS=300
 ```
 
 ## Secret Rotation
 
 ### When to Rotate
 
-- **Tenant header secret:** Every 90 days or on suspected compromise
 - **JWT HS256 secret:** Every 90 days (if using HS256)
 - **PostgreSQL password:** Every 180 days or on suspected compromise
+- **WorkOS API key:** On suspected compromise (rotate via WorkOS dashboard)
 
 ### Rotation Process
 
-#### 1. Rotate Tenant Header Secret
-
-**Critical:** Must be coordinated across K8s and Fly.io to avoid downtime.
-
-```bash
-# Step 1: Generate new secret
-NEW_SECRET=$(openssl rand -base64 32)
-echo "New secret: $NEW_SECRET"  # Save securely
-
-# Step 2: Update K8s secret
-cd homelab-k8s/apps/toolbridge-api/production-overlays
-sops toolbridge-secret.sops.yaml
-# Edit tenant-header-secret value, save, commit, push
-
-# Step 3: Wait for ArgoCD to sync and redeploy Go API
-kubectl rollout status deployment/toolbridge-api -n toolbridge
-
-# Step 4: Update Fly.io immediately after K8s deployment completes
-fly secrets set TOOLBRIDGE_TENANT_HEADER_SECRET="$NEW_SECRET" -a toolbridge-mcp-staging
-
-# Step 5: Verify both services work
-curl https://toolbridgeapi.erauner.dev/healthz
-curl https://toolbridge-mcp-staging.fly.dev/
-```
-
-#### 2. Rotate PostgreSQL Password
+#### 1. Rotate PostgreSQL Password
 
 **Note:** Requires brief downtime or connection pool drain.
 
@@ -229,7 +185,7 @@ sops toolbridge-secret.sops.yaml
 kubectl rollout restart deployment/toolbridge-api -n toolbridge
 ```
 
-#### 3. Rotate JWT HS256 Secret (if using)
+#### 2. Rotate JWT HS256 Secret (if using)
 
 **Note:** Invalidates all existing tokens. Users must re-authenticate.
 
@@ -247,6 +203,20 @@ kubectl rollout status deployment/toolbridge-api -n toolbridge
 # Step 4: Notify users to re-authenticate (all tokens now invalid)
 ```
 
+#### 3. Rotate WorkOS API Key
+
+```bash
+# Step 1: Generate new API key in WorkOS dashboard
+# https://dashboard.workos.com/api-keys
+
+# Step 2: Update K8s secret
+sops toolbridge-secret.sops.yaml
+# Update workos-api-key, commit, push
+
+# Step 3: Wait for deployment
+kubectl rollout status deployment/toolbridge-api -n toolbridge
+```
+
 ## Secret Validation
 
 ### Test K8s → Go API
@@ -260,44 +230,18 @@ TOKEN=$(python -c "import jwt; print(jwt.encode({'sub': 'test-user'}, 'your-jwt-
 curl -H "Authorization: Bearer $TOKEN" https://toolbridgeapi.erauner.dev/v1/notes
 ```
 
-### Test Fly.io → K8s (Tenant Headers)
+### Test Tenant Resolution
 
 ```bash
-# Get current tenant header secret from K8s
-TENANT_SECRET=$(kubectl get secret toolbridge-secret -n toolbridge \
-  -o jsonpath='{.data.tenant-header-secret}' | base64 -d)
+# After OIDC authentication, call tenant resolution endpoint
+curl -H "Authorization: Bearer $ID_TOKEN" \
+     https://toolbridgeapi.erauner.dev/v1/auth/tenant
 
-# Generate signed headers (Python)
-python3 << EOF
-import hmac, hashlib, time
-tenant_id = "staging-tenant-001"
-secret = "$TENANT_SECRET"
-timestamp_ms = int(time.time() * 1000)
-message = f"{tenant_id}:{timestamp_ms}"
-signature = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
-print(f"X-TB-Tenant-ID: {tenant_id}")
-print(f"X-TB-Timestamp: {timestamp_ms}")
-print(f"X-TB-Signature: {signature}")
-EOF
+# Expected response (B2C user):
+# {"tenant_id": "tenant_thinkpen_b2c", "organization_name": "ThinkPen", "requires_selection": false}
 
-# Test request with headers
-curl -H "X-TB-Tenant-ID: staging-tenant-001" \
-     -H "X-TB-Timestamp: <timestamp>" \
-     -H "X-TB-Signature: <signature>" \
-     -H "Authorization: Bearer test-token" \
-     https://toolbridgeapi.erauner.dev/v1/notes
-```
-
-### Test End-to-End (MCP → K8s)
-
-```bash
-# Test via Fly.io MCP proxy
-# The MCP proxy should automatically add tenant headers
-curl -H "Authorization: Bearer test-token" \
-  https://toolbridge-mcp-staging.fly.dev/
-
-# Check logs for successful Go API calls
-fly logs -a toolbridge-mcp-staging | grep "200 OK"
+# Expected response (B2B user):
+# {"tenant_id": "org_01ABC...", "organization_name": "Acme Corp", "requires_selection": false}
 ```
 
 ## Security Best Practices
@@ -325,23 +269,10 @@ fly logs -a toolbridge-mcp-staging | grep "200 OK"
 
 Set up alerts for:
 - Failed JWT validation attempts (potential token theft)
-- Failed tenant header validation (potential MITM)
-- Unusual secret access patterns
+- Unusual tenant access patterns
 - Expired/expiring secrets
 
 ## Troubleshooting
-
-### "Invalid tenant headers" Error
-
-```bash
-# Verify secrets match
-# K8s side:
-kubectl get secret toolbridge-secret -n toolbridge \
-  -o jsonpath='{.data.tenant-header-secret}' | base64 -d
-
-# Fly.io side (can't view, but can update):
-fly secrets set TOOLBRIDGE_TENANT_HEADER_SECRET="<k8s-value>" -a toolbridge-mcp-staging
-```
 
 ### "JWT validation failed" Error
 
@@ -350,7 +281,16 @@ fly secrets set TOOLBRIDGE_TENANT_HEADER_SECRET="<k8s-value>" -a toolbridge-mcp-
 kubectl get secret toolbridge-secret -n toolbridge \
   -o jsonpath='{.data.jwt-secret}' | base64 -d
 
-# For Auth0 tokens, verify domain and audience in helm values
+# For OIDC tokens, verify issuer and JWKS URL in helm values
+```
+
+### "Not authorized for requested tenant" Error
+
+```bash
+# Verify user's organization membership via WorkOS dashboard
+# Check that WORKOS_API_KEY is configured correctly
+kubectl get secret toolbridge-secret -n toolbridge \
+  -o jsonpath='{.data.workos-api-key}' | base64 -d
 ```
 
 ### "Connection refused" to Go API
@@ -369,3 +309,4 @@ curl https://toolbridgeapi.erauner.dev/healthz
 - **Fly.io Secrets:** https://fly.io/docs/reference/secrets/
 - **JWT Best Practices:** https://tools.ietf.org/html/rfc8725
 - **OWASP Secret Management:** https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- **WorkOS API Keys:** https://workos.com/docs/api-keys

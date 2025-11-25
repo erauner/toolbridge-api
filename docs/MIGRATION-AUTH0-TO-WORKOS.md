@@ -177,9 +177,7 @@ fly secrets set -a toolbridge-mcp-staging \
   TOOLBRIDGE_AUTHKIT_DOMAIN="svelte-monolith-27-staging.authkit.app" \
   TOOLBRIDGE_PUBLIC_BASE_URL="https://toolbridge-mcp-staging.fly.dev" \
   TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
-  TOOLBRIDGE_BACKEND_API_AUDIENCE="https://toolbridgeapi.erauner.dev" \
-  TOOLBRIDGE_TENANT_ID="staging-tenant-001" \
-  TOOLBRIDGE_TENANT_HEADER_SECRET="$(openssl rand -base64 32)"
+  TOOLBRIDGE_BACKEND_API_AUDIENCE="https://toolbridgeapi.erauner.dev"
 ```
 
 **How It Works**:

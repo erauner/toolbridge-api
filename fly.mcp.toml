@@ -100,17 +100,18 @@ kill_timeout = "10s"
 # Required:
 #   DATABASE_URL              - PostgreSQL connection string
 #   JWT_HS256_SECRET          - JWT signing secret (same across all tenants)
-#   TENANT_HEADER_SECRET      - HMAC signing secret for tenant headers (same across all tenants)
-#   TOOLBRIDGE_TENANT_ID      - Unique tenant identifier for this app
 #
-# Optional (Auth0):
-#   AUTH0_DOMAIN              - Auth0 domain (e.g., "dev-xxx.us.auth0.com")
-#   AUTH0_AUDIENCE            - Expected audience claim for Auth0 tokens
+# Optional (OIDC - for RS256 token validation):
+#   JWT_ISSUER                - OIDC issuer URL (e.g., "https://example.authkit.app")
+#   JWT_JWKS_URL              - JWKS endpoint for signature verification
+#   JWT_AUDIENCE              - Expected audience claim
+#
+# Optional (Multi-tenant):
+#   WORKOS_API_KEY            - WorkOS API key for tenant authorization
+#   DEFAULT_TENANT_ID         - Default tenant ID for B2C users
 #
 # Example:
 #   fly secrets set -a toolbridge-tenant-abc123 \
 #     DATABASE_URL="postgres://user:pass@host:5432/db" \
-#     JWT_HS256_SECRET="$(openssl rand -base64 32)" \
-#     TENANT_HEADER_SECRET="$(openssl rand -base64 32)" \
-#     TOOLBRIDGE_TENANT_ID="abc123"
+#     JWT_HS256_SECRET="$(openssl rand -base64 32)"
 # ============================================================================

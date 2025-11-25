@@ -98,7 +98,7 @@ func AuthInterceptor(db *pgxpool.Pool, cfg auth.JWTCfg) grpc.UnaryServerIntercep
 
 			// Validate token using shared validation logic (supports RS256 and HS256)
 			var err error
-			subject, err = auth.ValidateToken(tokenString, cfg)
+			subject, _, err = auth.ValidateToken(tokenString, cfg)
 			if err != nil {
 				logger.Warn().Err(err).Msg("jwt validation failed")
 				return nil, status.Error(codes.Unauthenticated, "invalid token")

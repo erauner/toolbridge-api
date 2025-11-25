@@ -1,5 +1,9 @@
 # Phase 2: Deploy FastMCP to Fly.io - Implementation Prompt
 
+> **DEPRECATED:** This planning prompt references the old HMAC-signed tenant header architecture.
+> The system now uses WorkOS API-based tenant authorization instead.
+> See `docs/DEPLOYMENT-FLYIO.md` for current deployment instructions.
+
 **Use this prompt to kick off Fly.io deployment implementation:**
 
 ---

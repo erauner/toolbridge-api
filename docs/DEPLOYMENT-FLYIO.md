@@ -37,13 +37,11 @@ This guide covers deploying the **MCP-only** Python proxy service to Fly.io stag
 
 **Before deploying**, ensure you've completed these security steps:
 
-- [ ] **Secrets exist in K8s** - Verify `kubectl get secret toolbridge-secret -n toolbridge` returns jwt-secret + tenant-header-secret
-- [ ] **Secrets match Fly.io** - Both services must use the same TENANT_HEADER_SECRET
-- [ ] **Secrets are rotated** - If this is a re-deployment after exposure, generate new secrets first
-- [ ] **Local .env configured** - Copy `.env.example` to `.env` and fill in secrets for testing
+- [ ] **Secrets exist in K8s** - Verify `kubectl get secret toolbridge-secret -n toolbridge` returns jwt-secret
+- [ ] **OIDC configured** - JWT issuer, JWKS URL, and audience configured for token validation
+- [ ] **Local .env configured** - Copy `.env.example` to `.env` and fill in settings for testing
 
 **📘 Detailed Reference:** See [SECRETS-REFERENCE.md](./SECRETS-REFERENCE.md) for:
-- How to generate secrets securely
 - K8s secret structure and encryption (SOPS)
 - Fly.io secrets management
 - Secret rotation procedures
@@ -132,9 +130,8 @@ fly deploy --config fly.staging.toml -a toolbridge-mcp-staging
    - Ensure `https://toolbridgeapi.erauner.dev` is accessible
    - Verify health check: `curl https://toolbridgeapi.erauner.dev/healthz`
 
-4. **Secrets prepared:**
-   - `TOOLBRIDGE_TENANT_HEADER_SECRET` from K8s deployment
-   - Generate if new: `openssl rand -base64 32`
+4. **Configuration prepared:**
+   - Go API URL confirmed accessible
 
 ## Step 1: Pre-Deployment Testing
 
@@ -147,8 +144,6 @@ docker build -f Dockerfile.mcp-only -t toolbridge-mcp:local .
 # Run locally with test configuration
 docker run --rm -p 8001:8001 \
   -e TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
-  -e TOOLBRIDGE_TENANT_ID="local-test-tenant" \
-  -e TOOLBRIDGE_TENANT_HEADER_SECRET="test-secret-123" \
   -e TOOLBRIDGE_LOG_LEVEL="DEBUG" \
   toolbridge-mcp:local
 
@@ -180,36 +175,11 @@ fly secrets set \
   TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
   -a toolbridge-mcp-staging
 
-# Required: Tenant identification
-fly secrets set \
-  TOOLBRIDGE_TENANT_ID="staging-tenant-001" \
-  -a toolbridge-mcp-staging
-
-# Required: Tenant header secret (MUST match K8s TENANT_HEADER_SECRET)
-# Get this from your K8s secret or generate a new one
-fly secrets set \
-  TOOLBRIDGE_TENANT_HEADER_SECRET="<same-as-k8s-tenant-header-secret>" \
-  -a toolbridge-mcp-staging
-
 # Optional: Logging level (default: INFO)
 fly secrets set \
   TOOLBRIDGE_LOG_LEVEL="DEBUG" \
   -a toolbridge-mcp-staging
 ```
-
-**Important:** The `TOOLBRIDGE_TENANT_HEADER_SECRET` **must** match the `TENANT_HEADER_SECRET` configured in your K8s deployment. Check the K8s secret:
-
-```bash
-# Get the secret from K8s (adjust namespace/secret name)
-kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.tenant-header-secret}' | base64 -d
-```
-
-If the secret doesn't exist in K8s yet, you need to:
-
-1. Generate one: `openssl rand -base64 32`
-2. Add it to K8s secret
-3. Redeploy the K8s Go API
-4. Then set the same value in Fly.io
 
 ## Step 4: Deploy to Fly.io
 
@@ -513,25 +483,22 @@ fly releases rollback -a toolbridge-mcp-staging
 2. Check `TOOLBRIDGE_GO_API_BASE_URL` secret is correct
 3. Verify firewall/network policies allow Fly.io → K8s
 
-### Tenant Header Validation Fails
+### Tenant Authorization Fails
 
-**Symptom:** Go API returns 401/403 errors
+**Symptom:** Go API returns 403 "not authorized for requested tenant"
 
 **Solutions:**
-1. Verify `TOOLBRIDGE_TENANT_HEADER_SECRET` matches K8s:
+1. Verify the user is a member of the organization matching the tenant ID
+2. For B2C users, ensure they use the default tenant (`tenant_thinkpen_b2c`)
+3. Check that `WORKOS_API_KEY` is configured in K8s for B2B validation:
    ```bash
-   # Get from K8s
-   kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.tenant-header-secret}' | base64 -d
-
-   # Compare with Fly.io (can't see actual value, but can update)
-   fly secrets set TOOLBRIDGE_TENANT_HEADER_SECRET="<k8s-value>" -a toolbridge-mcp-staging
+   kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.workos-api-key}' | base64 -d
    ```
 
-2. Check timestamp skew (max 5 minutes allowed)
-3. Enable DEBUG logging to see signature computation:
+4. Enable DEBUG logging to see authorization details:
    ```bash
    fly secrets set TOOLBRIDGE_LOG_LEVEL="DEBUG" -a toolbridge-mcp-staging
-   fly logs -a toolbridge-mcp-staging | grep signature
+   fly logs -a toolbridge-mcp-staging | grep tenant
    ```
 
 ### High Latency
@@ -567,7 +534,6 @@ fly releases rollback -a toolbridge-mcp-staging
 
 ## Security Checklist
 
-- [ ] `TOOLBRIDGE_TENANT_HEADER_SECRET` matches K8s secret
 - [ ] JWT validation working (test with invalid token)
 - [ ] No sensitive data in logs (check `fly logs`)
 - [ ] HTTPS enforced (check `fly.staging.toml` force_https)
@@ -605,8 +571,6 @@ cp fly.staging.toml fly.tenant-abc123.toml
 
 # Set secrets
 fly secrets set \
-  TOOLBRIDGE_TENANT_ID="abc123" \
-  TOOLBRIDGE_TENANT_HEADER_SECRET="<tenant-specific-secret>" \
   TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
   -a toolbridge-tenant-abc123
 

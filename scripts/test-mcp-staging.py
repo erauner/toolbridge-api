@@ -20,13 +20,10 @@ Usage:
 
 import sys
 import os
-import json
 import time
-import hmac
-import hashlib
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Dict
+from typing import Dict
 
 import httpx
 import jwt
@@ -36,8 +33,7 @@ from loguru import logger
 MCP_BASE_URL = os.getenv("MCP_BASE_URL", "http://localhost:8001")
 GO_API_BASE_URL = os.getenv("GO_API_BASE_URL", "https://toolbridgeapi.erauner.dev")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
-TENANT_ID = os.getenv("TENANT_ID", "staging-tenant-001")
-TENANT_HEADER_SECRET = os.getenv("TENANT_HEADER_SECRET", "")  # Optional: for MCP deployments
+TENANT_ID = os.getenv("TENANT_ID", "tenant_thinkpen_b2c")  # Default B2C tenant
 
 # Test user
 USER_ID = f"staging-e2e-test-{int(time.time())}"
@@ -50,34 +46,18 @@ logger.add(
 )
 
 
-def sign_tenant_headers(tenant_id: str = TENANT_ID, secret: str = TENANT_HEADER_SECRET) -> Dict[str, str]:
+def get_tenant_headers(tenant_id: str = TENANT_ID) -> Dict[str, str]:
     """
-    Generate HMAC-signed tenant headers for Go API authentication.
+    Get tenant headers for Go API requests.
 
     Args:
         tenant_id: Tenant identifier
-        secret: Shared HMAC secret (must match Go API TENANT_HEADER_SECRET)
 
     Returns:
-        Dictionary of headers to add to requests (X-TB-Tenant-ID, X-TB-Timestamp, X-TB-Signature)
+        Dictionary of headers to add to requests
     """
-    if not secret:
-        return {}  # No tenant headers if secret not configured
-
-    timestamp_ms = int(time.time() * 1000)
-    message = f"{tenant_id}:{timestamp_ms}"
-
-    # Compute HMAC-SHA256 signature (same algorithm as Go API)
-    signature = hmac.new(
-        key=secret.encode('utf-8'),
-        msg=message.encode('utf-8'),
-        digestmod=hashlib.sha256
-    ).hexdigest()
-
     return {
         "X-TB-Tenant-ID": tenant_id,
-        "X-TB-Timestamp": str(timestamp_ms),
-        "X-TB-Signature": signature,
     }
 
 
@@ -153,12 +133,11 @@ async def test_mcp_to_go_api_flow():
             # Create a session first
             logger.info("Creating sync session...")
 
-            # Build headers with JWT auth + tenant headers (if configured)
+            # Build headers with JWT auth + tenant headers
             headers = {"Authorization": f"Bearer {token}"}
-            tenant_headers = sign_tenant_headers()
-            if tenant_headers:
-                headers.update(tenant_headers)
-                logger.debug(f"Added tenant headers to request")
+            tenant_headers = get_tenant_headers()
+            headers.update(tenant_headers)
+            logger.debug(f"Added tenant headers to request")
 
             session_response = await client.post(
                 f"{GO_API_BASE_URL}/v1/sync/sessions",
@@ -189,8 +168,7 @@ async def test_mcp_to_go_api_flow():
                 "X-Sync-Session": session_id,
                 "X-Sync-Epoch": str(epoch),
             }
-            if tenant_headers:
-                note_headers.update(tenant_headers)
+            note_headers.update(tenant_headers)
 
             note_response = await client.post(
                 f"{GO_API_BASE_URL}/v1/notes",
@@ -214,8 +192,7 @@ async def test_mcp_to_go_api_flow():
                 "X-Sync-Session": session_id,
                 "X-Sync-Epoch": str(epoch),
             }
-            if tenant_headers:
-                get_headers.update(tenant_headers)
+            get_headers.update(tenant_headers)
 
             get_response = await client.get(
                 f"{GO_API_BASE_URL}/v1/notes/{note_uid}",
@@ -236,8 +213,7 @@ async def test_mcp_to_go_api_flow():
                 "X-Sync-Session": session_id,
                 "X-Sync-Epoch": str(epoch),
             }
-            if tenant_headers:
-                delete_headers.update(tenant_headers)
+            delete_headers.update(tenant_headers)
 
             delete_response = await client.delete(
                 f"{GO_API_BASE_URL}/v1/notes/{note_uid}",

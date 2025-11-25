@@ -1,5 +1,9 @@
 # MCP-Only Deployment to Fly.io Plan
 
+> **DEPRECATED:** This planning document references the old HMAC-signed tenant header architecture.
+> The system now uses WorkOS API-based tenant authorization instead.
+> See `docs/DEPLOYMENT-FLYIO.md` and `docs/tenant-resolution.md` for current documentation.
+
 ## Architecture Overview
 
 ```

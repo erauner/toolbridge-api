@@ -35,9 +35,14 @@ class TenantHeaderSigner:
         self.tenant_id = tenant_id
         self.skew_seconds = skew_seconds
 
-    def sign(self) -> Dict[str, str]:
+    def sign(self, tenant_id_override: str | None = None) -> Dict[str, str]:
         """
         Generate signed tenant headers for the current timestamp.
+
+        Args:
+            tenant_id_override: Optional tenant ID to use instead of the configured one.
+                              Supports OIDC-derived tenants where tenant is determined
+                              from user claims at runtime.
 
         Returns:
             Dictionary of headers to add to HTTP requests:
@@ -45,8 +50,9 @@ class TenantHeaderSigner:
             - X-TB-Timestamp: Unix timestamp in milliseconds
             - X-TB-Signature: HMAC-SHA256 hex signature
         """
+        effective_tenant_id = tenant_id_override or self.tenant_id
         timestamp_ms = int(time.time() * 1000)
-        message = f"{self.tenant_id}:{timestamp_ms}"
+        message = f"{effective_tenant_id}:{timestamp_ms}"
 
         # Compute HMAC-SHA256 signature
         signature = hmac.new(
@@ -54,13 +60,13 @@ class TenantHeaderSigner:
         ).hexdigest()
 
         headers = {
-            "X-TB-Tenant-ID": self.tenant_id,
+            "X-TB-Tenant-ID": effective_tenant_id,
             "X-TB-Timestamp": str(timestamp_ms),
             "X-TB-Signature": signature,
         }
 
         logger.debug(
-            f"Signed tenant headers: tenant_id={self.tenant_id}, "
+            f"Signed tenant headers: tenant_id={effective_tenant_id}, "
             f"timestamp_ms={timestamp_ms}, signature={signature[:16]}..."
         )
 

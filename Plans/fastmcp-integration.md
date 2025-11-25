@@ -1,5 +1,9 @@
 # FastMCP Integration Plan
 
+> **DEPRECATED:** This planning document references the old HMAC-signed tenant header architecture.
+> The system now uses WorkOS API-based tenant authorization instead.
+> See `docs/tenant-resolution.md` for current architecture.
+
 ## Status: Phase 1 Complete ✅ | Code Review Passed ✅
 
 This document tracks the FastMCP integration journey for ToolBridge, showing what we've accomplished, why we made key decisions, and what phases remain.

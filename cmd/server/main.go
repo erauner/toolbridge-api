@@ -15,6 +15,7 @@ import (
 	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/workos/workos-go/v6/pkg/usermanagement"
 )
 
 func env(k, def string) string {
@@ -92,13 +93,38 @@ func main() {
 		JWKSURL:           jwksURL,
 		Audience:          jwtAudience,
 		AcceptedAudiences: acceptedAudiences,
+		TenantClaim:       env("TENANT_CLAIM", ""),
 	}
+
+	// WorkOS client setup (optional - for tenant resolution endpoint)
+	// Initialize WorkOS client with API key from environment
+	// This enables the /v1/auth/tenant endpoint for automatic tenant resolution
+	var workosClient *usermanagement.Client
+	workosAPIKey := env("WORKOS_API_KEY", "")
+	if workosAPIKey != "" {
+		workosClient = usermanagement.NewClient(workosAPIKey)
+		log.Info().Msg("WorkOS client initialized for tenant resolution")
+	} else {
+		log.Info().Msg("WorkOS tenant resolution disabled (WORKOS_API_KEY not set)")
+	}
+
+	// Default tenant ID for B2C users (users without organization memberships)
+	// Pattern 3 (Hybrid): B2C users get this default tenant, B2B users get their org ID
+	defaultTenantID := env("DEFAULT_TENANT_ID", "tenant_thinkpen_b2c")
+	log.Info().Str("default_tenant_id", defaultTenantID).Msg("Default B2C tenant configured")
+
+	// Initialize tenant authorization cache (5-minute TTL with background cleanup)
+	tenantAuthCache := auth.NewTenantAuthCache()
+	log.Info().Msg("Tenant authorization cache initialized (5-minute TTL)")
 
 	// HTTP server setup
 	srv := &httpapi.Server{
 		DB:              pool,
 		RateLimitConfig: httpapi.DefaultRateLimitConfig,
 		JWTCfg:          jwtCfg,
+		WorkOSClient:    workosClient,
+		DefaultTenantID: defaultTenantID,
+		TenantAuthCache: tenantAuthCache,
 		// Initialize services
 		NoteSvc:        syncservice.NewNoteService(pool),
 		TaskSvc:        syncservice.NewTaskService(pool),

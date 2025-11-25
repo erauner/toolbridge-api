@@ -58,7 +58,7 @@ func (s *Server) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	// Validate incoming MCP OAuth token
 	// This extracts the user identity (sub claim) from the MCP token
 	jwtCfg := s.getJWTConfig(r)
-	userID, err := auth.ValidateToken(incomingToken, jwtCfg)
+	userID, _, err := auth.ValidateToken(incomingToken, jwtCfg)
 	if err != nil {
 		log.Ctx(ctx).Warn().
 			Err(err).

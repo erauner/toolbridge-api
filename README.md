@@ -105,8 +105,8 @@ curl 'http://localhost:8080/v1/sync/notes/pull?limit=100' \
    # JWT Secret
    kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.jwt-secret}' | base64 -d
 
-   # Tenant Header Secret (for MCP deployments)
-   kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.tenant-header-secret}' | base64 -d
+   # WorkOS API Key (for tenant resolution)
+   kubectl get secret toolbridge-secret -n toolbridge -o jsonpath='{.data.workos-api-key}' | base64 -d
    ```
 
 3. Fill in your `.env` file with the retrieved secrets
@@ -121,7 +121,8 @@ curl 'http://localhost:8080/v1/sync/notes/pull?limit=100' \
 | `JWT_HS256_SECRET` | `dev-secret-change-in-production` | JWT signing secret |
 | `HTTP_ADDR` | `:8080` | HTTP server address |
 | `ENV` | `dev` | Environment (`dev` enables pretty logs) |
-| `TENANT_HEADER_SECRET` | (optional) | HMAC secret for tenant header validation (MCP mode) |
+| `WORKOS_API_KEY` | (optional) | WorkOS API key for tenant authorization validation |
+| `DEFAULT_TENANT_ID` | `tenant_thinkpen_b2c` | Default tenant ID for B2C users without organization memberships |
 
 ## Authentication
 

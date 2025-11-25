@@ -50,47 +50,12 @@ else
     exit 1
 fi
 
-# Step 2: Check/Add tenant-header-secret to K8s
+# Step 2: Check K8s secrets
 echo ""
 echo -e "${YELLOW}Step 2: Checking K8s secret...${NC}"
 
 if kubectl get secret ${K8S_SECRET_NAME} -n ${K8S_NAMESPACE} &> /dev/null; then
     echo -e "${GREEN}✓ K8s secret exists${NC}"
-    
-    # Check if tenant-header-secret key exists
-    if kubectl get secret ${K8S_SECRET_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.data.tenant-header-secret}' &> /dev/null; then
-        TENANT_SECRET=$(kubectl get secret ${K8S_SECRET_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.data.tenant-header-secret}' | base64 -d)
-        echo -e "${GREEN}✓ tenant-header-secret exists in K8s${NC}"
-    else
-        echo -e "${YELLOW}⚠ tenant-header-secret NOT found in K8s secret${NC}"
-        echo ""
-        echo -e "${BLUE}You need to add tenant-header-secret to your K8s secret:${NC}"
-        echo ""
-        echo "1. Generate a secret:"
-        GENERATED_SECRET=$(openssl rand -base64 32)
-        echo -e "   ${GREEN}${GENERATED_SECRET}${NC}"
-        echo ""
-        echo "2. Edit your SOPS-encrypted secret:"
-        echo -e "   ${BLUE}cd /Users/erauner/git/side/homelab-k8s/apps/toolbridge-api/production-overlays${NC}"
-        echo -e "   ${BLUE}sops toolbridge-secret.sops.yaml${NC}"
-        echo ""
-        echo "3. Add this key to stringData:"
-        echo -e "   ${BLUE}tenant-header-secret: ${GENERATED_SECRET}${NC}"
-        echo ""
-        echo "4. Save and commit:"
-        echo -e "   ${BLUE}git add toolbridge-secret.sops.yaml${NC}"
-        echo -e "   ${BLUE}git commit -m 'chore: add tenant-header-secret'${NC}"
-        echo -e "   ${BLUE}git push${NC}"
-        echo ""
-        echo "5. Wait for ArgoCD to sync (or force sync):"
-        echo -e "   ${BLUE}argocd app sync toolbridge-api${NC}"
-        echo ""
-        echo -e "${YELLOW}After completing these steps, run this script again.${NC}"
-        echo ""
-        echo -e "${BLUE}Save this secret for Fly.io deployment:${NC}"
-        echo -e "${GREEN}TOOLBRIDGE_TENANT_HEADER_SECRET=${GENERATED_SECRET}${NC}"
-        exit 0
-    fi
 else
     echo -e "${RED}❌ K8s secret not found. Please ensure K8s deployment is complete.${NC}"
     exit 1
@@ -111,8 +76,6 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     docker run --rm -d --name toolbridge-mcp-test \
         -p 8001:8001 \
         -e TOOLBRIDGE_GO_API_BASE_URL="${GO_API_URL}" \
-        -e TOOLBRIDGE_TENANT_ID="${TENANT_ID}" \
-        -e TOOLBRIDGE_TENANT_HEADER_SECRET="${TENANT_SECRET}" \
         -e TOOLBRIDGE_LOG_LEVEL="DEBUG" \
         toolbridge-mcp:local
     
@@ -158,8 +121,6 @@ echo -e "${YELLOW}Step 5: Configuring Fly.io secrets...${NC}"
 echo "Setting secrets..."
 fly secrets set \
     TOOLBRIDGE_GO_API_BASE_URL="${GO_API_URL}" \
-    TOOLBRIDGE_TENANT_ID="${TENANT_ID}" \
-    TOOLBRIDGE_TENANT_HEADER_SECRET="${TENANT_SECRET}" \
     TOOLBRIDGE_LOG_LEVEL="INFO" \
     -a ${FLY_APP_NAME}
 

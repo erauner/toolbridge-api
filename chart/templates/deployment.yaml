@@ -122,6 +122,13 @@ spec:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: JWT_AUDIENCE
         {{- end }}
+        {{- if .Values.api.jwt.tenantClaim }}
+        - name: TENANT_CLAIM
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: TENANT_CLAIM
+        {{- end }}
         {{- end }}
         {{- if .Values.api.mcp.enabled }}
         # MCP OAuth audience for token validation
@@ -132,6 +139,16 @@ spec:
             configMapKeyRef:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: MCP_OAUTH_AUDIENCE
+        {{- end }}
+        {{- if .Values.api.tenancy }}
+        {{- if .Values.api.tenancy.defaultTenantId }}
+        # Default tenant ID for B2C users (Pattern 3: Hybrid B2C/B2B)
+        - name: DEFAULT_TENANT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "toolbridge-api.fullname" . }}-config
+              key: DEFAULT_TENANT_ID
+        {{- end }}
         {{- end }}
 
         # Sensitive values from Secret
@@ -145,14 +162,13 @@ spec:
             secretKeyRef:
               name: {{ include "toolbridge-api.secretName" . }}
               key: jwt-secret
-        {{- if .Values.api.mcp.enabled }}
-        # MCP tenant header validation secret
-        - name: TENANT_HEADER_SECRET
+        # WorkOS API key for tenant resolution
+        - name: WORKOS_API_KEY
           valueFrom:
             secretKeyRef:
               name: {{ include "toolbridge-api.secretName" . }}
-              key: tenant-header-secret
-        {{- end }}
+              key: workos-api-key
+              optional: true
 
         # Complete DATABASE_URL from secret
         - name: DATABASE_URL

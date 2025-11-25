@@ -1,5 +1,10 @@
 # SPEC: FastMCP Integration for ToolBridge
 
+> **Note:** This is a historical planning document. Some implementation details have changed since initial design.
+> - The HMAC-signed tenant header system described below has been replaced with WorkOS API-based tenant authorization
+> - See `docs/tenant-resolution.md` for the current tenant resolution architecture
+> - See `docs/DEPLOYMENT-FLYIO.md` for current deployment instructions
+
 ## Overview
 
 Add a Python FastMCP layer inside each tenant-specific Fly.io app that proxies MCP tool calls to the existing Go REST API. This enables AI assistants to interact with ToolBridge using the Model Context Protocol while maintaining the Go API as the authoritative data layer.

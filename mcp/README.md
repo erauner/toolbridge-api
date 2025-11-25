@@ -59,27 +59,17 @@ This directory contains the Python FastMCP server that provides MCP (Model Conte
 
 ### Security
 
-**Dual Authentication:**
+**Authentication:**
 
-1. **JWT (User Identity)**: Bearer token from MCP client validates user
-2. **Signed Headers (Tenant Isolation)**: HMAC-signed headers prevent cross-tenant access
+1. **JWT (User Identity)**: Bearer token from MCP client validates user via OIDC (RS256) or HS256
+2. **Tenant Authorization**: WorkOS API validates organization membership for multi-tenant access
 
-**Header Format:**
+**Tenant Header:**
 ```
 X-TB-Tenant-ID: {tenant_id}
-X-TB-Timestamp: {unix_timestamp_ms}
-X-TB-Signature: {hmac_sha256_hex}
 ```
 
-**Signature Computation:**
-```python
-message = f"{tenant_id}:{timestamp_ms}"
-signature = hmac.new(
-    key=secret.encode('utf-8'),
-    msg=message.encode('utf-8'),
-    digestmod=hashlib.sha256
-).hexdigest()
-```
+The `X-TB-Tenant-ID` header specifies which tenant the request is for. The Go API validates that the authenticated user is authorized to access this tenant via WorkOS organization membership checks.
 
 ## Local Development
 
@@ -133,10 +123,6 @@ signature = hmac.new(
 Create `mcp/.env`:
 
 ```bash
-# Tenant configuration
-TOOLBRIDGE_TENANT_ID=test-tenant-123
-TOOLBRIDGE_TENANT_HEADER_SECRET=dev-secret-change-in-production
-
 # Go API connection
 TOOLBRIDGE_GO_API_BASE_URL=http://localhost:8080
 
@@ -187,8 +173,6 @@ Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "command": "python",
       "args": ["-m", "toolbridge_mcp.server"],
       "env": {
-        "TOOLBRIDGE_TENANT_ID": "test-tenant-123",
-        "TOOLBRIDGE_TENANT_HEADER_SECRET": "dev-secret",
         "TOOLBRIDGE_GO_API_BASE_URL": "http://localhost:8080"
       }
     }
@@ -230,9 +214,7 @@ fly apps create toolbridge-mcp-staging
 
 # Set secrets
 fly secrets set -a toolbridge-mcp-staging \
-  TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev" \
-  TOOLBRIDGE_TENANT_ID="staging-tenant-001" \
-  TOOLBRIDGE_TENANT_HEADER_SECRET="<secret-from-k8s>"
+  TOOLBRIDGE_GO_API_BASE_URL="https://toolbridgeapi.erauner.dev"
 
 # Deploy MCP-only image
 fly deploy --config ../fly.staging.toml -a toolbridge-mcp-staging
@@ -263,9 +245,7 @@ docker build -f ../Dockerfile.mcp -t toolbridge-mcp:latest ..
 # Set secrets (includes database)
 fly secrets set -a toolbridge-tenant-abc123 \
   DATABASE_URL="postgres://..." \
-  JWT_HS256_SECRET="$(openssl rand -base64 32)" \
-  TENANT_HEADER_SECRET="$(openssl rand -base64 32)" \
-  TOOLBRIDGE_TENANT_ID="abc123"
+  JWT_HS256_SECRET="$(openssl rand -base64 32)"
 
 # Deploy
 fly deploy -c ../fly.mcp.toml -a toolbridge-tenant-abc123
@@ -297,36 +277,21 @@ async def list_tasks(limit: int = 100) -> dict:
         return response.json()
 ```
 
-### Testing Tenant Header Validation
+### Testing Tenant Authorization
 
 ```bash
 # Run integration tests
 cd ..
-go test ./internal/auth -v -run TestTenantHeaderValidation
+go test ./internal/auth -v
 
 # Manual test with curl
 export JWT_TOKEN="your-jwt-token"
-export TENANT_ID="test-tenant-123"
-export SECRET="dev-secret"
+export TENANT_ID="tenant_thinkpen_b2c"  # Default B2C tenant
 
-# Generate signature
-python -c "
-import hmac, hashlib, time
-tenant_id = '$TENANT_ID'
-timestamp = str(int(time.time() * 1000))
-message = f'{tenant_id}:{timestamp}'
-sig = hmac.new(b'$SECRET', message.encode(), hashlib.sha256).hexdigest()
-print(f'X-TB-Tenant-ID: {tenant_id}')
-print(f'X-TB-Timestamp: {timestamp}')
-print(f'X-TB-Signature: {sig}')
-"
-
-# Test request
+# Test request with tenant header
 curl http://localhost:8080/v1/notes \
   -H "Authorization: Bearer $JWT_TOKEN" \
-  -H "X-TB-Tenant-ID: test-tenant-123" \
-  -H "X-TB-Timestamp: 1234567890000" \
-  -H "X-TB-Signature: ..."
+  -H "X-TB-Tenant-ID: $TENANT_ID"
 ```
 
 ## Troubleshooting
@@ -336,11 +301,11 @@ curl http://localhost:8080/v1/notes \
 - MCP client must provide JWT token in Authorization header
 - Check Claude Desktop config includes proper authentication
 
-### "Invalid tenant headers"
+### "Not authorized for requested tenant"
 
-- Verify TENANT_HEADER_SECRET matches between Python and Go
-- Check timestamp is within 5-minute window
-- Ensure signature computation matches exactly
+- Verify the user is a member of the organization matching the tenant ID
+- For B2C users, use the default tenant: `tenant_thinkpen_b2c`
+- Check that `WORKOS_API_KEY` is configured in Go API (for B2B validation)
 
 ### "Connection refused"
 
