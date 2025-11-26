@@ -17,11 +17,15 @@ data:
   DB_USER: "toolbridge"
   DB_SSLMODE: "disable"  # SSL not configured in postgres.yaml; use "require" if you add TLS
 
+  # JWT/OIDC authentication configuration
+  # OIDC issuer URL - required for RS256 token validation
+  JWT_ISSUER: "https://svelte-monolith-27-staging.authkit.app"
+
+  # JWKS endpoint URL for public key retrieval
+  # Required for RS256 token validation (used with JWT_ISSUER)
+  JWT_JWKS_URL: "https://svelte-monolith-27-staging.authkit.app/oauth2/jwks"
+
   # JWT tenant claim configuration
   # Claim key to extract tenant/organization ID from JWT tokens
   # WorkOS: "organization_id", Auth0: "org_id" or custom namespace
   TENANT_CLAIM: "organization_id"
-
-  # JWT JWKS URL for RS256 token validation
-  # WorkOS AuthKit JWKS endpoint for validating user OAuth tokens
-  JWKS_URL: "https://svelte-monolith-27-staging.authkit.app/oauth2/jwks"

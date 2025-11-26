@@ -97,19 +97,27 @@ spec:
               name: toolbridge-secret
               key: jwt-secret
 
+        # JWT/OIDC authentication configuration
+        # OIDC issuer URL - required for RS256 token validation
+        - name: JWT_ISSUER
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: JWT_ISSUER
+
+        # JWKS endpoint URL for public key retrieval
+        - name: JWT_JWKS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: JWT_JWKS_URL
+
         # JWT tenant claim configuration
         - name: TENANT_CLAIM
           valueFrom:
             configMapKeyRef:
               name: toolbridge-config
               key: TENANT_CLAIM
-
-        # JWT JWKS URL for RS256 token validation
-        - name: JWKS_URL
-          valueFrom:
-            configMapKeyRef:
-              name: toolbridge-config
-              key: JWKS_URL
 
         # Build complete DATABASE_URL
         - name: DATABASE_URL
