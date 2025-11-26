@@ -14,6 +14,35 @@ image:
 # TODO: Increase to 2+ after implementing Redis-backed session storage (see Plans/redis-distributed-state.md)
 replicaCount: 1
 
+# OAuth Client Registry
+# =====================
+# This section defines all OAuth clients that can authenticate with the API.
+# Each client represents a different application or service.
+#
+# WorkOS AuthKit uses the client ID as the default token audience.
+# The backend validates tokens by checking the 'aud' claim matches one of these client IDs.
+#
+# To add a new client:
+# 1. Register the client in your OIDC provider (WorkOS, Auth0, Okta, etc.)
+# 2. Add an entry here with clientId and description
+# 3. The backend will automatically accept tokens from all registered clients
+#
+oauthClients:
+  # User-facing client (Flutter app, web app, mobile apps)
+  # This is the PRIMARY client for end-user interactions
+  userClient:
+    clientId: ""  # e.g., "client_01KAPCBQNQBWMZE9WNSEWY2J3Z"
+    name: "User Applications"
+    description: "Flutter, web, and mobile apps used by end users"
+
+  # Machine-to-machine client (MCP server)
+  # This client is used for server-side automation and AI agents
+  mcpClient:
+    clientId: ""  # e.g., "client_01KABXHNQ09QGWEX4APPYG2AH5"
+    name: "MCP Server"
+    description: "FastMCP server for AI agent integrations (Claude Code, etc.)"
+    enabled: false  # Set to true when MCP integration is active
+
 # Service account
 serviceAccount:
   create: true
@@ -30,7 +59,17 @@ api:
   jwt:
     issuer: ""     # e.g., "https://your-app.authkit.app" or "https://your-tenant.okta.com"
     jwksUrl: ""    # e.g., "https://your-app.authkit.app/oauth2/jwks" or "https://your-tenant.okta.com/oauth2/v1/keys"
-    audience: ""   # Optional: Primary expected audience claim (e.g., "https://api.example.com")
+
+    # Audience validation
+    # -------------------
+    # RECOMMENDED: Use oauthClients registry (defined above) to manage client IDs
+    # The backend will automatically accept tokens from all registered clients.
+    #
+    # LEGACY: You can still set audience directly for backward compatibility
+    audience: ""   # Optional: Primary expected audience claim
+                   # Leave empty to use oauthClients.userClient.clientId
+                   # Only set this if you're not using the oauthClients registry
+
     tenantClaim: "organization_id"  # JWT claim key for tenant/organization ID
                                      # WorkOS: "organization_id"
                                      # Auth0: "org_id" or custom namespace
@@ -48,7 +87,13 @@ api:
   # Enable tenant header validation for MCP deployments
   mcp:
     enabled: false  # Set to true to enable tenant header validation
-    oauthAudience: ""  # MCP OAuth audience
+
+    # OAuth audience for MCP client
+    # RECOMMENDED: Leave empty to use oauthClients.mcpClient.clientId (defined above)
+    # LEGACY: You can still set oauthAudience directly for backward compatibility
+    oauthAudience: ""  # Leave empty to use oauthClients.mcpClient.clientId
+                       # Only set this if you're not using the oauthClients registry
+                       #
                        # WorkOS AuthKit with DCR: Leave empty (recommended)
                        # Static registration: MUST equal the `resource` value from MCP's
                        # /.well-known/oauth-protected-resource/{path} endpoint

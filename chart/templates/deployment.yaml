@@ -115,7 +115,8 @@ spec:
               name: {{ include "toolbridge-api.fullname" . }}-config
               key: JWT_JWKS_URL
         {{- end }}
-        {{- if .Values.api.jwt.audience }}
+        {{- $jwtAudience := include "toolbridge-api.jwt.audience" . }}
+        {{- if $jwtAudience }}
         - name: JWT_AUDIENCE
           valueFrom:
             configMapKeyRef:

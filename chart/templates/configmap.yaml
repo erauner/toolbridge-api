@@ -1,9 +1,22 @@
+{{- include "toolbridge-api.validateOAuthClients" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "toolbridge-api.fullname" . }}-config
   labels:
     {{- include "toolbridge-api.labels" . | nindent 4 }}
+  {{- if or .Values.oauthClients.userClient.clientId .Values.oauthClients.mcpClient.clientId }}
+  annotations:
+    # OAuth client registry for reference (not used by the application)
+    {{- if .Values.oauthClients.userClient.clientId }}
+    toolbridge.dev/oauth-user-client: {{ .Values.oauthClients.userClient.clientId | quote }}
+    toolbridge.dev/oauth-user-client-name: {{ .Values.oauthClients.userClient.name | quote }}
+    {{- end }}
+    {{- if and .Values.oauthClients.mcpClient.enabled .Values.oauthClients.mcpClient.clientId }}
+    toolbridge.dev/oauth-mcp-client: {{ .Values.oauthClients.mcpClient.clientId | quote }}
+    toolbridge.dev/oauth-mcp-client-name: {{ .Values.oauthClients.mcpClient.name | quote }}
+    {{- end }}
+  {{- end }}
 data:
   ENV: {{ .Values.api.env | quote }}
   HTTP_ADDR: {{ .Values.api.httpAddr | quote }}
@@ -22,15 +35,17 @@ data:
   {{- if .Values.api.jwt.jwksUrl }}
   JWT_JWKS_URL: {{ .Values.api.jwt.jwksUrl | quote }}
   {{- end }}
-  {{- if .Values.api.jwt.audience }}
-  JWT_AUDIENCE: {{ .Values.api.jwt.audience | quote }}
+  {{- $jwtAudience := include "toolbridge-api.jwt.audience" . }}
+  {{- if $jwtAudience }}
+  JWT_AUDIENCE: {{ $jwtAudience | quote }}
   {{- end }}
   {{- if .Values.api.jwt.tenantClaim }}
   TENANT_CLAIM: {{ .Values.api.jwt.tenantClaim | quote }}
   {{- end }}
   {{- end }}
   {{- if .Values.api.mcp.enabled }}
-  MCP_OAUTH_AUDIENCE: {{ .Values.api.mcp.oauthAudience | default "" | quote }}
+  {{- $mcpAudience := include "toolbridge-api.mcp.audience" . }}
+  MCP_OAUTH_AUDIENCE: {{ $mcpAudience | default "" | quote }}
   {{- end }}
   {{- if .Values.api.tenancy }}
   {{- if .Values.api.tenancy.defaultTenantId }}

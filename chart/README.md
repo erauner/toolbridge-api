@@ -109,6 +109,178 @@ api:
       memory: 1Gi
 ```
 
+## OAuth Client Configuration
+
+### Overview
+
+ToolBridge API supports multiple OAuth clients for different use cases:
+- **User Client**: Flutter/web apps for end-user interactions
+- **MCP Client**: Machine-to-machine integrations (AI agents, automation)
+
+The chart provides an `oauthClients` registry to clearly define all clients that can authenticate with your API.
+
+### Why Use the OAuth Client Registry?
+
+The registry approach provides several benefits:
+1. **Clarity**: Explicitly documents which clients exist and their purposes
+2. **Validation**: Helm validates configuration at deployment time
+3. **Visibility**: Client IDs appear in ConfigMap annotations for easy reference
+4. **Flexibility**: Supports any OIDC provider (WorkOS AuthKit, Okta, Keycloak, etc.)
+
+### Basic Configuration
+
+```yaml
+oauthClients:
+  # User-facing client (Flutter app, web app, mobile apps)
+  userClient:
+    clientId: "client_01KAPCBQNQBWMZE9WNSEWY2J3Z"
+    name: "User Applications"
+    description: "Flutter, web, and mobile apps used by end users"
+
+  # Machine-to-machine client (MCP server)
+  mcpClient:
+    clientId: "client_01KABXHNQ09QGWEX4APPYG2AH5"
+    name: "MCP Server"
+    description: "FastMCP server for AI agent integrations (Claude Code, etc.)"
+    enabled: true  # Set to true when MCP integration is active
+
+api:
+  jwt:
+    issuer: "https://your-app.authkit.app"
+    jwksUrl: "https://your-app.authkit.app/oauth2/jwks"
+    # audience: ""  # Leave empty to use userClient.clientId
+    tenantClaim: "organization_id"
+
+  mcp:
+    enabled: true
+    # oauthAudience: ""  # Leave empty to use mcpClient.clientId
+```
+
+### How Token Validation Works
+
+1. **User Client** (Flutter/Web):
+   - Token audience (`aud` claim) must match `oauthClients.userClient.clientId`
+   - Used for end-user authentication flows
+   - Validated via `JWT_AUDIENCE` environment variable
+
+2. **MCP Client** (Machine-to-machine):
+   - Token audience must match `oauthClients.mcpClient.clientId`
+   - Used for server-side automation and AI agents
+   - Validated via `MCP_OAUTH_AUDIENCE` environment variable
+
+3. **Backend Validation**:
+   - The Go API accepts tokens from ANY registered client
+   - Each client's `clientId` becomes an accepted audience
+   - Tokens are validated using JWKS from your OIDC provider
+
+### OIDC Provider Compatibility
+
+The chart works with any OIDC-compliant provider:
+
+**WorkOS AuthKit**:
+```yaml
+api:
+  jwt:
+    issuer: "https://your-app.authkit.app"
+    jwksUrl: "https://your-app.authkit.app/oauth2/jwks"
+    tenantClaim: "organization_id"
+```
+
+**Okta**:
+```yaml
+api:
+  jwt:
+    issuer: "https://your-tenant.okta.com"
+    jwksUrl: "https://your-tenant.okta.com/oauth2/v1/keys"
+    tenantClaim: "org_id"
+```
+
+**Keycloak**:
+```yaml
+api:
+  jwt:
+    issuer: "https://keycloak.example.com/realms/your-realm"
+    jwksUrl: "https://keycloak.example.com/realms/your-realm/protocol/openid-connect/certs"
+    tenantClaim: "organization_id"
+```
+
+### Legacy Configuration (Backward Compatible)
+
+For backward compatibility, you can still set audiences directly:
+
+```yaml
+api:
+  jwt:
+    audience: "client_01KAPCBQNQBWMZE9WNSEWY2J3Z"  # Override userClient
+
+  mcp:
+    oauthAudience: "https://toolbridge-mcp.fly.dev/mcp"  # Override mcpClient
+```
+
+However, the **recommended approach** is to use the `oauthClients` registry and leave the direct audience fields empty.
+
+### Migration from Legacy Configuration
+
+If you currently have:
+
+```yaml
+# OLD (legacy approach)
+api:
+  jwt:
+    audience: "client_01KAPCBQNQBWMZE9WNSEWY2J3Z"
+  mcp:
+    oauthAudience: "client_01KABXHNQ09QGWEX4APPYG2AH5"
+```
+
+Migrate to:
+
+```yaml
+# NEW (recommended approach)
+oauthClients:
+  userClient:
+    clientId: "client_01KAPCBQNQBWMZE9WNSEWY2J3Z"
+    name: "User Applications"
+  mcpClient:
+    clientId: "client_01KABXHNQ09QGWEX4APPYG2AH5"
+    name: "MCP Server"
+    enabled: true
+
+api:
+  jwt:
+    # audience: ""  # Remove or leave empty
+  mcp:
+    # oauthAudience: ""  # Remove or leave empty
+```
+
+### Configuration Validation
+
+The chart validates your OAuth configuration at deployment time:
+
+- **When `jwt.issuer` is set**: You MUST provide either `api.jwt.audience` OR `oauthClients.userClient.clientId`
+- **When MCP is enabled with `mcpClient.enabled=true`**: You MUST provide `oauthClients.mcpClient.clientId`
+
+Invalid configurations will fail during `helm install` or `helm upgrade` with a helpful error message.
+
+### Checking Deployed Configuration
+
+After deployment, you can verify which clients are registered:
+
+```bash
+# View ConfigMap annotations showing registered clients
+kubectl get configmap -n toolbridge toolbridge-api-config -o jsonpath='{.metadata.annotations}'
+
+# Example output:
+{
+  "toolbridge.dev/oauth-user-client": "client_01KAPCBQNQBWMZE9WNSEWY2J3Z",
+  "toolbridge.dev/oauth-user-client-name": "User Applications",
+  "toolbridge.dev/oauth-mcp-client": "client_01KABXHNQ09QGWEX4APPYG2AH5",
+  "toolbridge.dev/oauth-mcp-client-name": "MCP Server"
+}
+
+# View environment variables
+kubectl get configmap -n toolbridge toolbridge-api-config -o yaml | grep -E "(JWT_AUDIENCE|MCP_OAUTH_AUDIENCE)"
+```
+
 ## Values
 
 | Key | Type | Default | Description |
