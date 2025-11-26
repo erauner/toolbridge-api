@@ -83,6 +83,13 @@
             "type": "object"
           }
         },
+        "labels": {
+          "type": "object",
+          "description": "Additional labels to apply to all resources",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "affinity": {
           "type": "object",
           "description": "Affinity rules for pod assignment",
@@ -192,8 +199,8 @@
       "properties": {
         "env": {
           "type": "string",
-          "enum": ["development", "staging", "production"],
-          "description": "Deployment environment (affects debug features and logging)"
+          "enum": ["dev", "development", "staging", "production"],
+          "description": "Deployment environment (affects debug features and logging). Use 'dev' to enable development mode."
         },
         "httpAddr": {
           "type": "string",
