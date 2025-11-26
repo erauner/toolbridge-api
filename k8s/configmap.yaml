@@ -21,3 +21,7 @@ data:
   # Claim key to extract tenant/organization ID from JWT tokens
   # WorkOS: "organization_id", Auth0: "org_id" or custom namespace
   TENANT_CLAIM: "organization_id"
+
+  # JWT JWKS URL for RS256 token validation
+  # WorkOS AuthKit JWKS endpoint for validating user OAuth tokens
+  JWKS_URL: "https://svelte-monolith-27-staging.authkit.app/oauth2/jwks"

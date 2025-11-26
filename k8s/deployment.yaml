@@ -104,6 +104,13 @@ spec:
               name: toolbridge-config
               key: TENANT_CLAIM
 
+        # JWT JWKS URL for RS256 token validation
+        - name: JWKS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: JWKS_URL
+
         # Build complete DATABASE_URL
         - name: DATABASE_URL
           value: "postgres://$(DB_USER):$(POSTGRES_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)"
