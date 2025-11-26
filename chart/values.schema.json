@@ -1,0 +1,686 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/Values",
+  "definitions": {
+    "Values": {
+      "title": "ToolBridge API Chart Values Schema",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "$ref": "#/definitions/ImageConfig"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of API replicas. NOTE: Currently limited to 1 due to in-memory session/rate-limit storage."
+        },
+        "oauthClients": {
+          "$ref": "#/definitions/OAuthClients"
+        },
+        "serviceAccount": {
+          "$ref": "#/definitions/ServiceAccount"
+        },
+        "api": {
+          "$ref": "#/definitions/ApiConfig"
+        },
+        "grpc": {
+          "$ref": "#/definitions/GrpcConfig"
+        },
+        "postgresql": {
+          "$ref": "#/definitions/PostgresqlConfig"
+        },
+        "migration": {
+          "$ref": "#/definitions/MigrationConfig"
+        },
+        "service": {
+          "$ref": "#/definitions/ServiceConfig"
+        },
+        "ingress": {
+          "$ref": "#/definitions/IngressConfig"
+        },
+        "certificate": {
+          "$ref": "#/definitions/CertificateConfig"
+        },
+        "secrets": {
+          "$ref": "#/definitions/SecretsConfig"
+        },
+        "config": {
+          "$ref": "#/definitions/ConfigConfig"
+        },
+        "rbac": {
+          "$ref": "#/definitions/RbacConfig"
+        },
+        "podSecurityContext": {
+          "type": "object",
+          "description": "Pod-level security context settings",
+          "additionalProperties": true
+        },
+        "securityContext": {
+          "type": "object",
+          "description": "Container-level security context settings",
+          "additionalProperties": true
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Node labels for pod assignment",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "type": "array",
+          "description": "Tolerations for pod assignment",
+          "items": {
+            "type": "object"
+          }
+        },
+        "affinity": {
+          "type": "object",
+          "description": "Affinity rules for pod assignment",
+          "additionalProperties": true
+        }
+      }
+    },
+    "ImageConfig": {
+      "type": "object",
+      "description": "Container image configuration",
+      "additionalProperties": false,
+      "required": ["repository", "pullPolicy", "tag"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Container image repository"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"],
+          "description": "Image pull policy"
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Image tag (immutable tags are recommended)"
+        }
+      }
+    },
+    "OAuthClients": {
+      "type": "object",
+      "description": "OAuth Client Registry - Defines all OAuth clients that can authenticate with the API. Each client represents a different application or service (e.g., Flutter app, MCP server).",
+      "additionalProperties": false,
+      "properties": {
+        "userClient": {
+          "$ref": "#/definitions/OAuthClient",
+          "description": "User-facing client configuration for Flutter, web, and mobile apps"
+        },
+        "mcpClient": {
+          "$ref": "#/definitions/McpOAuthClient",
+          "description": "Machine-to-machine client configuration for MCP server integrations"
+        }
+      }
+    },
+    "OAuthClient": {
+      "type": "object",
+      "description": "OAuth client configuration",
+      "additionalProperties": false,
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "OAuth 2.0 client ID from your OIDC provider (WorkOS AuthKit, Okta, Keycloak, etc.). Used as the token audience for validation."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this client (for documentation purposes)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of this client's purpose and usage"
+        }
+      }
+    },
+    "McpOAuthClient": {
+      "type": "object",
+      "description": "MCP OAuth client configuration with enabled flag",
+      "additionalProperties": false,
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "OAuth 2.0 client ID for MCP server. Used as the token audience for MCP requests."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this client (for documentation purposes)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of this client's purpose and usage"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Set to true when MCP integration is active. When true and api.mcp.enabled is true, clientId becomes required."
+        }
+      }
+    },
+    "ServiceAccount": {
+      "type": "object",
+      "description": "Kubernetes ServiceAccount configuration",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create a ServiceAccount"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the ServiceAccount to use or create"
+        }
+      }
+    },
+    "ApiConfig": {
+      "type": "object",
+      "description": "API deployment configuration",
+      "additionalProperties": false,
+      "properties": {
+        "env": {
+          "type": "string",
+          "enum": ["development", "staging", "production"],
+          "description": "Deployment environment (affects debug features and logging)"
+        },
+        "httpAddr": {
+          "type": "string",
+          "pattern": "^:[0-9]+$",
+          "description": "HTTP server listen address (format: :port)"
+        },
+        "jwt": {
+          "$ref": "#/definitions/JwtConfig"
+        },
+        "tenancy": {
+          "$ref": "#/definitions/TenancyConfig"
+        },
+        "mcp": {
+          "$ref": "#/definitions/McpConfig"
+        },
+        "resources": {
+          "$ref": "#/definitions/ResourceRequirements"
+        },
+        "livenessProbe": {
+          "$ref": "#/definitions/ProbeConfig"
+        },
+        "readinessProbe": {
+          "$ref": "#/definitions/ProbeConfig"
+        }
+      }
+    },
+    "JwtConfig": {
+      "type": "object",
+      "description": "JWT/OIDC authentication configuration. Supports any OIDC-compliant provider (WorkOS AuthKit, Okta, Keycloak, Auth0, etc.)",
+      "additionalProperties": false,
+      "properties": {
+        "issuer": {
+          "oneOf": [
+            { "type": "string", "maxLength": 0 },
+            { "type": "string", "format": "uri", "minLength": 1 }
+          ],
+          "description": "OIDC issuer URL (e.g., https://your-app.authkit.app or https://your-tenant.okta.com). Leave empty to disable OIDC."
+        },
+        "jwksUrl": {
+          "oneOf": [
+            { "type": "string", "maxLength": 0 },
+            { "type": "string", "format": "uri", "minLength": 1 }
+          ],
+          "description": "JWKS endpoint URL for public key retrieval (e.g., https://your-app.authkit.app/oauth2/jwks). Required when issuer is set."
+        },
+        "audience": {
+          "type": "string",
+          "description": "LEGACY: Primary expected audience claim. RECOMMENDED: Leave empty to use oauthClients.userClient.clientId instead."
+        },
+        "tenantClaim": {
+          "type": "string",
+          "description": "JWT claim key for extracting tenant/organization ID (e.g., 'organization_id' for WorkOS, 'org_id' for Auth0)"
+        }
+      }
+    },
+    "TenancyConfig": {
+      "type": "object",
+      "description": "B2C/B2B tenant configuration. Pattern 3 (Hybrid): B2C users without org memberships get defaultTenantId, B2B users with orgs get their organization ID.",
+      "additionalProperties": false,
+      "properties": {
+        "defaultTenantId": {
+          "type": "string",
+          "description": "Default tenant ID for B2C users without organization memberships (e.g., 'tenant_myapp_b2c')"
+        }
+      }
+    },
+    "McpConfig": {
+      "type": "object",
+      "description": "MCP (Model Context Protocol) configuration for AI agent integrations",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable tenant header validation for MCP deployments"
+        },
+        "oauthAudience": {
+          "type": "string",
+          "description": "LEGACY: OAuth audience for MCP client. RECOMMENDED: Leave empty to use oauthClients.mcpClient.clientId. WorkOS AuthKit with DCR: Leave empty. Static registration: Must equal the 'resource' from MCP's /.well-known/oauth-protected-resource/{path} endpoint."
+        }
+      }
+    },
+    "ResourceRequirements": {
+      "type": "object",
+      "description": "Container resource requests and limits",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "type": "object",
+          "description": "Minimum resources required",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "pattern": "^[0-9]+(m|\\.[0-9]+)?$",
+              "description": "CPU request (e.g., '100m' or '0.1')"
+            },
+            "memory": {
+              "type": "string",
+              "pattern": "^[0-9]+(Mi|Gi)$",
+              "description": "Memory request (e.g., '128Mi' or '1Gi')"
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "description": "Maximum resources allowed",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "pattern": "^[0-9]+(m|\\.[0-9]+)?$",
+              "description": "CPU limit (e.g., '500m' or '0.5')"
+            },
+            "memory": {
+              "type": "string",
+              "pattern": "^[0-9]+(Mi|Gi)$",
+              "description": "Memory limit (e.g., '512Mi' or '2Gi')"
+            }
+          }
+        }
+      }
+    },
+    "ProbeConfig": {
+      "type": "object",
+      "description": "Health check probe configuration",
+      "additionalProperties": false,
+      "properties": {
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "HTTP path for health check"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Port for health check"
+            }
+          }
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Delay before first probe"
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How often to perform the probe"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Probe timeout"
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of failures before marking unhealthy"
+        }
+      }
+    },
+    "GrpcConfig": {
+      "type": "object",
+      "description": "gRPC server configuration",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable gRPC server (disabled by default for backward compatibility)"
+        },
+        "addr": {
+          "type": "string",
+          "pattern": "^:[0-9]+$",
+          "description": "gRPC server listen address (format: :port)"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "gRPC service port"
+        }
+      }
+    },
+    "PostgresqlConfig": {
+      "type": "object",
+      "description": "PostgreSQL database configuration (managed by CloudNativePG)",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Deploy PostgreSQL cluster"
+        },
+        "instances": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of PostgreSQL instances for high availability"
+        },
+        "size": {
+          "type": "string",
+          "pattern": "^[0-9]+(Mi|Gi|Ti)$",
+          "description": "Storage size per instance (e.g., '10Gi')"
+        },
+        "storageClass": {
+          "type": "string",
+          "description": "Storage class for PostgreSQL PVCs"
+        },
+        "imageName": {
+          "type": "string",
+          "description": "PostgreSQL container image"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "PostgreSQL configuration parameters",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "monitoring": {
+          "type": "object",
+          "properties": {
+            "enablePodMonitor": {
+              "type": "boolean",
+              "description": "Enable Prometheus PodMonitor"
+            }
+          }
+        },
+        "primaryUpdateStrategy": {
+          "type": "string",
+          "enum": ["supervised", "unsupervised"],
+          "description": "Primary instance update strategy"
+        }
+      }
+    },
+    "MigrationConfig": {
+      "type": "object",
+      "description": "Database migration job configuration",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Run database migrations via Kubernetes Job"
+        },
+        "backoffLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of retries before marking job as failed"
+        },
+        "ttlSecondsAfterFinished": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seconds to keep completed job before cleanup"
+        },
+        "waitForPostgres": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "type": "string",
+              "description": "Init container image to wait for PostgreSQL readiness"
+            }
+          }
+        }
+      }
+    },
+    "ServiceConfig": {
+      "type": "object",
+      "description": "Kubernetes Service configuration",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+          "description": "Kubernetes service type"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Service port"
+        },
+        "targetPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Container target port"
+        }
+      }
+    },
+    "IngressConfig": {
+      "type": "object",
+      "description": "HTTPRoute (Gateway API) ingress configuration",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create HTTPRoute resource"
+        },
+        "gateway": {
+          "type": "object",
+          "description": "Gateway reference",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Gateway name"
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Gateway namespace"
+            }
+          }
+        },
+        "hostname": {
+          "oneOf": [
+            { "type": "string", "maxLength": 0 },
+            { "type": "string", "format": "hostname", "minLength": 1 }
+          ],
+          "description": "Hostname for ingress (e.g., toolbridge-api.example.com). Required when ingress.enabled is true."
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Annotations for HTTPRoute (e.g., external-dns configuration)",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "retry": {
+          "type": "object",
+          "description": "Retry configuration for BackendTrafficPolicy",
+          "properties": {
+            "numRetries": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of retry attempts on connection failures"
+            },
+            "perRetryTimeout": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h)$",
+              "description": "Timeout for each retry attempt (e.g., '2s')"
+            }
+          }
+        },
+        "timeout": {
+          "type": "object",
+          "description": "Timeout configuration",
+          "properties": {
+            "request": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h)$",
+              "description": "Overall request timeout (e.g., '30s')"
+            }
+          }
+        },
+        "loadBalancer": {
+          "type": "object",
+          "description": "Load balancer configuration",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["RoundRobin", "LeastRequest", "Random"],
+              "description": "Load balancing algorithm"
+            }
+          }
+        }
+      }
+    },
+    "CertificateConfig": {
+      "type": "object",
+      "description": "cert-manager Certificate configuration",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create Certificate resource"
+        },
+        "issuerRef": {
+          "type": "object",
+          "description": "Reference to cert-manager Issuer or ClusterIssuer",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Issuer name"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["Issuer", "ClusterIssuer"],
+              "description": "Issuer kind"
+            }
+          }
+        },
+        "dnsNames": {
+          "type": "array",
+          "description": "DNS names for certificate (defaults to ingress.hostname if empty)",
+          "items": {
+            "type": "string",
+            "format": "hostname"
+          }
+        }
+      }
+    },
+    "SecretsConfig": {
+      "type": "object",
+      "description": "Secrets configuration. Use existingSecret for GitOps (SOPS, Sealed Secrets, External Secrets Operator).",
+      "additionalProperties": false,
+      "properties": {
+        "jwtSecret": {
+          "type": "string",
+          "description": "JWT signing secret (base64) for HS256 tokens. Not needed if using OIDC with JWKS."
+        },
+        "dbUsername": {
+          "type": "string",
+          "description": "Database username (required if not using existingSecret)"
+        },
+        "dbPassword": {
+          "type": "string",
+          "description": "Database password (base64) (required if not using existingSecret)"
+        },
+        "databaseUrl": {
+          "type": "string",
+          "description": "Complete DATABASE_URL connection string (base64) (required if not using existingSecret)"
+        },
+        "existingSecret": {
+          "type": "string",
+          "description": "Name of existing Kubernetes Secret to use instead of creating one. Secret must contain keys: jwt-secret, username, password, database-url"
+        }
+      }
+    },
+    "ConfigConfig": {
+      "type": "object",
+      "description": "ConfigMap configuration for database connection",
+      "additionalProperties": false,
+      "properties": {
+        "dbHost": {
+          "type": "string",
+          "description": "Database host (auto-computed as {{ releaseName }}-postgres-rw if empty)"
+        },
+        "dbPort": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "Database port"
+        },
+        "dbName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Database name"
+        },
+        "dbUser": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Database user"
+        },
+        "dbSslMode": {
+          "type": "string",
+          "enum": ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"],
+          "description": "PostgreSQL SSL mode"
+        }
+      }
+    },
+    "RbacConfig": {
+      "type": "object",
+      "description": "RBAC (Role-Based Access Control) configuration",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create RBAC resources (Role, RoleBinding)"
+        },
+        "rules": {
+          "type": "array",
+          "description": "RBAC policy rules",
+          "items": {
+            "type": "object",
+            "properties": {
+              "apiGroups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "resources": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "verbs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
