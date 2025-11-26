@@ -7,6 +7,14 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "nameOverride": {
+          "type": "string",
+          "description": "Override the chart name used in resource names"
+        },
+        "fullnameOverride": {
+          "type": "string",
+          "description": "Override the full resource name (takes precedence over nameOverride)"
+        },
         "image": {
           "$ref": "#/definitions/ImageConfig"
         },
@@ -500,9 +508,9 @@
         "hostname": {
           "oneOf": [
             { "type": "string", "maxLength": 0 },
-            { "type": "string", "format": "hostname", "minLength": 1 }
+            { "type": "string", "minLength": 1, "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" }
           ],
-          "description": "Hostname for ingress (e.g., toolbridge-api.example.com). Required when ingress.enabled is true."
+          "description": "Hostname for ingress (e.g., toolbridge-api.example.com or *.example.com). Supports wildcards. Required when ingress.enabled is true."
         },
         "annotations": {
           "type": "object",
@@ -578,10 +586,10 @@
         },
         "dnsNames": {
           "type": "array",
-          "description": "DNS names for certificate (defaults to ingress.hostname if empty)",
+          "description": "DNS names for certificate (defaults to ingress.hostname if empty). Supports wildcards (e.g., *.example.com)",
           "items": {
             "type": "string",
-            "format": "hostname"
+            "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           }
         }
       }
