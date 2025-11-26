@@ -378,7 +378,7 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 	// Use the Applied flag from PushNoteItem (rows affected) to avoid clobbering when
 	// the LWW guard rejected an equal-timestamp or concurrent update.
 	upsertApplied := ack.Applied
-	var deletedAtFromDB *string
+	var deletedAtMs *int64 // Declared here for use in !upsertApplied path later
 
 	// Normalize sync metadata in payload for client compatibility
 	// Flutter clients expect flat sync fields (version, isDirty, isDeleted, remoteUpdatedAt, updateTime)
@@ -394,11 +394,11 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 
 		// Normalize flat sync fields to match nested sync and server state
 		mutatedPayload["version"] = ack.Version
-		mutatedPayload["isDirty"] = false // REST mutations are already synced
+		mutatedPayload["isDirty"] = 0 // REST mutations are already synced (use 0/1 for client compatibility)
 		if opts.SetDeleted {
-			mutatedPayload["isDeleted"] = true
+			mutatedPayload["isDeleted"] = 1
 		} else {
-			mutatedPayload["isDeleted"] = false
+			mutatedPayload["isDeleted"] = 0
 		}
 		mutatedPayload["remoteUpdatedAt"] = ack.UpdatedAt
 		mutatedPayload["updateTime"] = ack.UpdatedAt
@@ -427,7 +427,6 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 			Msg("skipping payload normalization because a newer write already exists")
 		// Refresh payload for response to reflect the current authoritative state
 		var currentPayload map[string]any
-		var deletedAtMs *int64
 		if err := tx.QueryRow(ctx, `
 			SELECT payload_json, deleted_at_ms
 			FROM note
@@ -437,10 +436,6 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 			return nil, err
 		}
 		mutatedPayload = currentPayload
-		if deletedAtMs != nil {
-			ts := syncx.RFC3339(*deletedAtMs)
-			deletedAtFromDB = &ts
-		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -448,16 +443,19 @@ func (s *NoteService) ApplyNoteMutation(ctx context.Context, userID string, payl
 		return nil, err
 	}
 
-	// Return item
+	// Determine deletedAt for response based on whether our mutation applied
 	var deletedAt *string
-	if upsertApplied && opts.SetDeleted {
-		ts := syncx.RFC3339(timestampMs)
-		deletedAt = &ts
-	}
-
-	if !upsertApplied {
-		if deletedAtFromDB != nil {
-			deletedAt = deletedAtFromDB
+	if upsertApplied {
+		// Our mutation won - use our SetDeleted flag and timestamp
+		if opts.SetDeleted {
+			ts := syncx.RFC3339(timestampMs)
+			deletedAt = &ts
+		}
+	} else {
+		// Concurrent write won - extract deletedAt from the current DB state
+		if deletedAtMs != nil {
+			ts := syncx.RFC3339(*deletedAtMs)
+			deletedAt = &ts
 		} else if syncBlock, ok := mutatedPayload["sync"].(map[string]any); ok {
 			if isDeleted, ok := syncBlock["isDeleted"].(bool); ok && isDeleted {
 				// Best-effort: use ack.UpdatedAt when no explicit deletedAt was provided

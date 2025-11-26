@@ -78,6 +78,106 @@ func TestApplyNoteMutation_SameTimestamp_NoClobber(t *testing.T) {
 	if current.Version != firstItem.Version {
 		t.Fatalf("expected version unchanged; first=%d current=%d", firstItem.Version, current.Version)
 	}
+
+	// Verify that REST mutations normalize isDirty to 0 (not dirty)
+	if isDirty, ok := current.Payload["isDirty"].(float64); !ok || isDirty != 0 {
+		t.Errorf("expected isDirty=0 for REST mutation, got %v (type: %T)", current.Payload["isDirty"], current.Payload["isDirty"])
+	}
+}
+
+// TestApplyNoteMutation_DeleteTombstone_SameTimestamp verifies that delete/tombstone
+// mutations with identical timestamps preserve the winner's deleted state
+func TestApplyNoteMutation_DeleteTombstone_SameTimestamp(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pool := getTestDB(t)
+	defer pool.Close()
+
+	srv := &Server{
+		DB:              pool,
+		RateLimitConfig: DefaultRateLimitConfig,
+		NoteSvc:         syncservice.NewNoteService(pool),
+	}
+
+	ctx := context.Background()
+	userID := createTestUser(t, pool, testUserSubject)
+
+	// Create initial note
+	noteUID := uuid.New()
+	initialPayload := map[string]any{
+		"uid":     noteUID.String(),
+		"title":   "Initial Note",
+		"content": "will be deleted",
+	}
+
+	_, err := srv.NoteSvc.ApplyNoteMutation(ctx, userID, initialPayload, syncservice.MutationOpts{})
+	if err != nil {
+		t.Fatalf("create mutation failed: %v", err)
+	}
+
+	// Delete at timestamp T (first = winner)
+	deleteTs := syncx.NowMs()
+	deletePayload := map[string]any{
+		"uid": noteUID.String(),
+	}
+
+	deleteItem, err := srv.NoteSvc.ApplyNoteMutation(ctx, userID, deletePayload, syncservice.MutationOpts{
+		SetDeleted:       true,
+		ForceTimestampMs: &deleteTs,
+	})
+	if err != nil {
+		t.Fatalf("delete mutation failed: %v", err)
+	}
+
+	if deleteItem.DeletedAt == nil {
+		t.Fatal("expected deletedAt to be set after delete")
+	}
+
+	// Try to update at same timestamp T (second = loser, should not clobber)
+	updatePayload := map[string]any{
+		"uid":     noteUID.String(),
+		"content": "attempting to resurrect",
+	}
+
+	updateItem, err := srv.NoteSvc.ApplyNoteMutation(ctx, userID, updatePayload, syncservice.MutationOpts{
+		ForceTimestampMs: &deleteTs,
+	})
+	if err != nil {
+		t.Fatalf("concurrent update mutation failed: %v", err)
+	}
+
+	// Verify the response reflects the deleted state (not the update)
+	if updateItem.DeletedAt == nil {
+		t.Error("expected response to show deleted state after concurrent update")
+	}
+
+	// Reload from DB to verify persistence
+	current, err := srv.NoteSvc.GetNote(ctx, userID, noteUID)
+	if err != nil {
+		t.Fatalf("failed to reload note: %v", err)
+	}
+
+	// Verify tombstone state is preserved
+	if current.DeletedAt == nil {
+		t.Error("expected note to remain deleted in DB")
+	}
+
+	// Verify isDeleted flag in payload
+	if isDeleted, ok := current.Payload["isDeleted"].(float64); !ok || isDeleted != 1 {
+		t.Errorf("expected isDeleted=1 for tombstone, got %v (type: %T)", current.Payload["isDeleted"], current.Payload["isDeleted"])
+	}
+
+	// Verify content wasn't overwritten
+	if content, ok := current.Payload["content"].(string); ok && content == "attempting to resurrect" {
+		t.Error("expected tombstone content to be preserved, but got resurrected content")
+	}
+
+	// Verify version didn't advance beyond the delete
+	if current.Version != deleteItem.Version {
+		t.Errorf("expected version to match delete operation; delete=%d current=%d", deleteItem.Version, current.Version)
+	}
 }
 
 // TestGetNote_IncludeDeleted tests the includeDeleted query parameter behavior
