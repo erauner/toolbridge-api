@@ -25,7 +25,20 @@ data:
   # Required for RS256 token validation (used with JWT_ISSUER)
   JWT_JWKS_URL: "https://svelte-monolith-27-staging.authkit.app/oauth2/jwks"
 
+  # Primary JWT audience - Flutter/Web client ID
+  # The backend validates that token 'aud' claim matches this value
+  JWT_AUDIENCE: "client_01KAPCBQNQBWMZE9WNSEWY2J3Z"
+
   # JWT tenant claim configuration
   # Claim key to extract tenant/organization ID from JWT tokens
   # WorkOS: "organization_id", Auth0: "org_id" or custom namespace
   TENANT_CLAIM: "organization_id"
+
+  # B2C/B2B Tenant Configuration
+  # Default tenant ID for B2C users without organization memberships
+  DEFAULT_TENANT_ID: "tenant_thinkpen_b2c"
+
+  # MCP (Model Context Protocol) configuration
+  # OAuth audience for MCP server client ID
+  # Used to validate tokens from AI agents and automation
+  MCP_OAUTH_AUDIENCE: "client_01KABXHNQ09QGWEX4APPYG2AH5"

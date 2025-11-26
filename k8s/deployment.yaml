@@ -112,12 +112,34 @@ spec:
               name: toolbridge-config
               key: JWT_JWKS_URL
 
+        # Primary JWT audience (Flutter/Web client ID)
+        - name: JWT_AUDIENCE
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: JWT_AUDIENCE
+
         # JWT tenant claim configuration
         - name: TENANT_CLAIM
           valueFrom:
             configMapKeyRef:
               name: toolbridge-config
               key: TENANT_CLAIM
+
+        # B2C/B2B Tenant Configuration
+        # Default tenant ID for B2C users without organization memberships
+        - name: DEFAULT_TENANT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: DEFAULT_TENANT_ID
+
+        # MCP OAuth audience (MCP server client ID)
+        - name: MCP_OAUTH_AUDIENCE
+          valueFrom:
+            configMapKeyRef:
+              name: toolbridge-config
+              key: MCP_OAUTH_AUDIENCE
 
         # Build complete DATABASE_URL
         - name: DATABASE_URL
