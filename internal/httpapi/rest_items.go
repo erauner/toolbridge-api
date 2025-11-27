@@ -774,9 +774,10 @@ func (s *Server) ArchiveTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set archived status
+	// Set archived status - both status and done for compatibility
 	payload := existing.Payload
 	payload["status"] = "archived"
+	payload["done"] = true
 
 	item, err := s.TaskSvc.ApplyTaskMutation(ctx, userID, payload, syncservice.MutationOpts{})
 	if err != nil {
@@ -829,15 +830,18 @@ func (s *Server) ProcessTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply action
+	// Apply action - set both status and done for compatibility
 	payload := existing.Payload
 	switch req.Action {
 	case "start":
 		payload["status"] = "in_progress"
+		payload["done"] = false
 	case "complete":
 		payload["status"] = "completed"
+		payload["done"] = true
 	case "reopen":
 		payload["status"] = "open"
+		payload["done"] = false
 	default:
 		writeError(w, r, 400, "invalid action: "+req.Action)
 		return
