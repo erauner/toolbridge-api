@@ -33,12 +33,14 @@ type Server struct {
 	syncv1.UnimplementedChatMessageSyncServiceServer
 
 	// Dependencies
-	DB             *pgxpool.Pool
-	NoteSvc        *syncservice.NoteService
-	TaskSvc        *syncservice.TaskService
-	CommentSvc     *syncservice.CommentService
-	ChatSvc        *syncservice.ChatService
-	ChatMessageSvc *syncservice.ChatMessageService
+	DB                  *pgxpool.Pool
+	NoteSvc             *syncservice.NoteService
+	TaskSvc             *syncservice.TaskService
+	CommentSvc          *syncservice.CommentService
+	ChatSvc             *syncservice.ChatService
+	ChatMessageSvc      *syncservice.ChatMessageService
+	TaskListSvc         *syncservice.TaskListService
+	TaskListCategorySvc *syncservice.TaskListCategoryService
 }
 
 // NewServer creates a new gRPC server instance
@@ -49,14 +51,18 @@ func NewServer(
 	commentSvc *syncservice.CommentService,
 	chatSvc *syncservice.ChatService,
 	chatMessageSvc *syncservice.ChatMessageService,
+	taskListSvc *syncservice.TaskListService,
+	taskListCategorySvc *syncservice.TaskListCategoryService,
 ) *Server {
 	return &Server{
-		DB:             db,
-		NoteSvc:        noteSvc,
-		TaskSvc:        taskSvc,
-		CommentSvc:     commentSvc,
-		ChatSvc:        chatSvc,
-		ChatMessageSvc: chatMessageSvc,
+		DB:                  db,
+		NoteSvc:             noteSvc,
+		TaskSvc:             taskSvc,
+		CommentSvc:          commentSvc,
+		ChatSvc:             chatSvc,
+		ChatMessageSvc:      chatMessageSvc,
+		TaskListSvc:         taskListSvc,
+		TaskListCategorySvc: taskListCategorySvc,
 	}
 }
 
@@ -629,6 +635,218 @@ func (cms *ChatMessageServer) Pull(ctx context.Context, req *syncv1.PullRequest)
 }
 
 // ===================================================================
+// TaskListSyncService Wrapper
+// ===================================================================
+
+// TaskListServer wraps the main Server to implement TaskListSyncServiceServer
+type TaskListServer struct {
+	syncv1.UnimplementedTaskListSyncServiceServer
+	*Server
+}
+
+// Push implements TaskListSyncService.Push
+func (tls *TaskListServer) Push(ctx context.Context, req *syncv1.PushRequest) (*syncv1.PushResponse, error) {
+	logger := log.Ctx(ctx)
+	userID := auth.UserID(ctx)
+	if userID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing user")
+	}
+
+	logger.Info().Str("user_id", userID).Int("item_count", len(req.Items)).Msg("grpc_task_lists_push_started")
+
+	tx, err := tls.DB.Begin(ctx)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to begin transaction")
+		return nil, status.Error(codes.Internal, "db error")
+	}
+	defer tx.Rollback(ctx)
+
+	acks := make([]*syncv1.PushAck, 0, len(req.Items))
+	for _, itemStruct := range req.Items {
+		itemMap := itemStruct.AsMap()
+		svcAck := tls.TaskListSvc.PushTaskListItem(ctx, tx, userID, itemMap)
+
+		protoAck := &syncv1.PushAck{
+			Uid:     svcAck.UID,
+			Version: int32(svcAck.Version),
+			Error:   svcAck.Error,
+		}
+		if ms, ok := syncx.ParseTimeToMs(svcAck.UpdatedAt); ok {
+			protoAck.UpdatedAt = timestamppb.New(syncx.MsToTime(ms))
+		}
+		acks = append(acks, protoAck)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		logger.Error().Err(err).Msg("failed to commit transaction")
+		return nil, status.Error(codes.Internal, "commit error")
+	}
+
+	logger.Info().Str("user_id", userID).Int("success_count", len(acks)).Msg("grpc_task_lists_push_completed")
+	return &syncv1.PushResponse{Acks: acks}, nil
+}
+
+// Pull implements TaskListSyncService.Pull
+func (tls *TaskListServer) Pull(ctx context.Context, req *syncv1.PullRequest) (*syncv1.PullResponse, error) {
+	logger := log.Ctx(ctx)
+	userID := auth.UserID(ctx)
+	if userID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing user")
+	}
+
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	cur := syncx.Cursor{Ms: 0, UID: uuid.Nil}
+	if req.Cursor != "" {
+		if decoded, ok := syncx.DecodeCursor(req.Cursor); ok {
+			cur = decoded
+		}
+	}
+
+	logger.Info().Str("user_id", userID).Int("limit", limit).Str("cursor", req.Cursor).Msg("grpc_task_lists_pull_started")
+
+	resp, err := tls.TaskListSvc.PullTaskLists(ctx, userID, cur, limit)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to pull task_lists")
+		return nil, status.Error(codes.Internal, "pull failed")
+	}
+
+	upserts := make([]*structpb.Struct, 0, len(resp.Upserts))
+	for _, item := range resp.Upserts {
+		if st, err := structpb.NewStruct(item); err == nil {
+			upserts = append(upserts, st)
+		}
+	}
+
+	deletes := make([]*structpb.Struct, 0, len(resp.Deletes))
+	for _, item := range resp.Deletes {
+		if st, err := structpb.NewStruct(item); err == nil {
+			deletes = append(deletes, st)
+		}
+	}
+
+	protoResp := &syncv1.PullResponse{Upserts: upserts, Deletes: deletes}
+	if resp.NextCursor != nil {
+		protoResp.NextCursor = *resp.NextCursor
+	}
+
+	logger.Info().Str("user_id", userID).Int("upsert_count", len(upserts)).Int("delete_count", len(deletes)).Msg("grpc_task_lists_pull_completed")
+	return protoResp, nil
+}
+
+// ===================================================================
+// TaskListCategorySyncService Wrapper
+// ===================================================================
+
+// TaskListCategoryServer wraps the main Server to implement TaskListCategorySyncServiceServer
+type TaskListCategoryServer struct {
+	syncv1.UnimplementedTaskListCategorySyncServiceServer
+	*Server
+}
+
+// Push implements TaskListCategorySyncService.Push
+func (tlcs *TaskListCategoryServer) Push(ctx context.Context, req *syncv1.PushRequest) (*syncv1.PushResponse, error) {
+	logger := log.Ctx(ctx)
+	userID := auth.UserID(ctx)
+	if userID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing user")
+	}
+
+	logger.Info().Str("user_id", userID).Int("item_count", len(req.Items)).Msg("grpc_task_list_categories_push_started")
+
+	tx, err := tlcs.DB.Begin(ctx)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to begin transaction")
+		return nil, status.Error(codes.Internal, "db error")
+	}
+	defer tx.Rollback(ctx)
+
+	acks := make([]*syncv1.PushAck, 0, len(req.Items))
+	for _, itemStruct := range req.Items {
+		itemMap := itemStruct.AsMap()
+		svcAck := tlcs.TaskListCategorySvc.PushTaskListCategoryItem(ctx, tx, userID, itemMap)
+
+		protoAck := &syncv1.PushAck{
+			Uid:     svcAck.UID,
+			Version: int32(svcAck.Version),
+			Error:   svcAck.Error,
+		}
+		if ms, ok := syncx.ParseTimeToMs(svcAck.UpdatedAt); ok {
+			protoAck.UpdatedAt = timestamppb.New(syncx.MsToTime(ms))
+		}
+		acks = append(acks, protoAck)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		logger.Error().Err(err).Msg("failed to commit transaction")
+		return nil, status.Error(codes.Internal, "commit error")
+	}
+
+	logger.Info().Str("user_id", userID).Int("success_count", len(acks)).Msg("grpc_task_list_categories_push_completed")
+	return &syncv1.PushResponse{Acks: acks}, nil
+}
+
+// Pull implements TaskListCategorySyncService.Pull
+func (tlcs *TaskListCategoryServer) Pull(ctx context.Context, req *syncv1.PullRequest) (*syncv1.PullResponse, error) {
+	logger := log.Ctx(ctx)
+	userID := auth.UserID(ctx)
+	if userID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing user")
+	}
+
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	cur := syncx.Cursor{Ms: 0, UID: uuid.Nil}
+	if req.Cursor != "" {
+		if decoded, ok := syncx.DecodeCursor(req.Cursor); ok {
+			cur = decoded
+		}
+	}
+
+	logger.Info().Str("user_id", userID).Int("limit", limit).Str("cursor", req.Cursor).Msg("grpc_task_list_categories_pull_started")
+
+	resp, err := tlcs.TaskListCategorySvc.PullTaskListCategories(ctx, userID, cur, limit)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to pull task_list_categories")
+		return nil, status.Error(codes.Internal, "pull failed")
+	}
+
+	upserts := make([]*structpb.Struct, 0, len(resp.Upserts))
+	for _, item := range resp.Upserts {
+		if st, err := structpb.NewStruct(item); err == nil {
+			upserts = append(upserts, st)
+		}
+	}
+
+	deletes := make([]*structpb.Struct, 0, len(resp.Deletes))
+	for _, item := range resp.Deletes {
+		if st, err := structpb.NewStruct(item); err == nil {
+			deletes = append(deletes, st)
+		}
+	}
+
+	protoResp := &syncv1.PullResponse{Upserts: upserts, Deletes: deletes}
+	if resp.NextCursor != nil {
+		protoResp.NextCursor = *resp.NextCursor
+	}
+
+	logger.Info().Str("user_id", userID).Int("upsert_count", len(upserts)).Int("delete_count", len(deletes)).Msg("grpc_task_list_categories_pull_completed")
+	return protoResp, nil
+}
+
+// ===================================================================
 // Core SyncService Implementation (Sessions, Info, Wipe)
 // ===================================================================
 
@@ -663,6 +881,16 @@ func (s *Server) GetServerInfo(ctx context.Context, req *syncv1.GetServerInfoReq
 				Pull:     true,
 			},
 			"chat_messages": {
+				MaxLimit: 1000,
+				Push:     true,
+				Pull:     true,
+			},
+			"task_lists": {
+				MaxLimit: 1000,
+				Push:     true,
+				Pull:     true,
+			},
+			"task_list_categories": {
 				MaxLimit: 1000,
 				Push:     true,
 				Pull:     true,
@@ -817,7 +1045,7 @@ func (s *Server) WipeAccount(ctx context.Context, req *syncv1.WipeAccountRequest
 
 	// Delete all entity rows for this user
 	deleted := make(map[string]int32)
-	tables := []string{"chat_message", "comment", "chat", "task", "note"}
+	tables := []string{"chat_message", "comment", "chat", "task", "task_list", "task_list_category", "note"}
 
 	for _, table := range tables {
 		var count int

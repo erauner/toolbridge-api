@@ -1143,6 +1143,12 @@ const file_sync_v1_sync_proto_rawDesc = "" +
 	"\x04Pull\x12\x1f.toolbridge.sync.v1.PullRequest\x1a .toolbridge.sync.v1.PullResponse\"\x002\xb2\x01\n" +
 	"\x16ChatMessageSyncService\x12K\n" +
 	"\x04Push\x12\x1f.toolbridge.sync.v1.PushRequest\x1a .toolbridge.sync.v1.PushResponse\"\x00\x12K\n" +
+	"\x04Pull\x12\x1f.toolbridge.sync.v1.PullRequest\x1a .toolbridge.sync.v1.PullResponse\"\x002\xaf\x01\n" +
+	"\x13TaskListSyncService\x12K\n" +
+	"\x04Push\x12\x1f.toolbridge.sync.v1.PushRequest\x1a .toolbridge.sync.v1.PushResponse\"\x00\x12K\n" +
+	"\x04Pull\x12\x1f.toolbridge.sync.v1.PullRequest\x1a .toolbridge.sync.v1.PullResponse\"\x002\xb7\x01\n" +
+	"\x1bTaskListCategorySyncService\x12K\n" +
+	"\x04Push\x12\x1f.toolbridge.sync.v1.PushRequest\x1a .toolbridge.sync.v1.PushResponse\"\x00\x12K\n" +
 	"\x04Pull\x12\x1f.toolbridge.sync.v1.PullRequest\x1a .toolbridge.sync.v1.PullResponse\"\x00B;Z9github.com/erauner12/toolbridge-api/gen/go/sync/v1;syncv1b\x06proto3"
 
 var (
@@ -1214,23 +1220,31 @@ var file_sync_v1_sync_proto_depIdxs = []int32{
 	3,  // 27: toolbridge.sync.v1.ChatSyncService.Pull:input_type -> toolbridge.sync.v1.PullRequest
 	0,  // 28: toolbridge.sync.v1.ChatMessageSyncService.Push:input_type -> toolbridge.sync.v1.PushRequest
 	3,  // 29: toolbridge.sync.v1.ChatMessageSyncService.Pull:input_type -> toolbridge.sync.v1.PullRequest
-	6,  // 30: toolbridge.sync.v1.SyncService.GetServerInfo:output_type -> toolbridge.sync.v1.ServerInfo
-	12, // 31: toolbridge.sync.v1.SyncService.BeginSession:output_type -> toolbridge.sync.v1.SyncSession
-	14, // 32: toolbridge.sync.v1.SyncService.EndSession:output_type -> toolbridge.sync.v1.EndSessionResponse
-	16, // 33: toolbridge.sync.v1.SyncService.WipeAccount:output_type -> toolbridge.sync.v1.WipeResult
-	18, // 34: toolbridge.sync.v1.SyncService.GetSyncState:output_type -> toolbridge.sync.v1.UserSyncState
-	1,  // 35: toolbridge.sync.v1.NoteSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
-	4,  // 36: toolbridge.sync.v1.NoteSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
-	1,  // 37: toolbridge.sync.v1.TaskSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
-	4,  // 38: toolbridge.sync.v1.TaskSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
-	1,  // 39: toolbridge.sync.v1.CommentSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
-	4,  // 40: toolbridge.sync.v1.CommentSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
-	1,  // 41: toolbridge.sync.v1.ChatSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
-	4,  // 42: toolbridge.sync.v1.ChatSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
-	1,  // 43: toolbridge.sync.v1.ChatMessageSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
-	4,  // 44: toolbridge.sync.v1.ChatMessageSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
-	30, // [30:45] is the sub-list for method output_type
-	15, // [15:30] is the sub-list for method input_type
+	0,  // 30: toolbridge.sync.v1.TaskListSyncService.Push:input_type -> toolbridge.sync.v1.PushRequest
+	3,  // 31: toolbridge.sync.v1.TaskListSyncService.Pull:input_type -> toolbridge.sync.v1.PullRequest
+	0,  // 32: toolbridge.sync.v1.TaskListCategorySyncService.Push:input_type -> toolbridge.sync.v1.PushRequest
+	3,  // 33: toolbridge.sync.v1.TaskListCategorySyncService.Pull:input_type -> toolbridge.sync.v1.PullRequest
+	6,  // 34: toolbridge.sync.v1.SyncService.GetServerInfo:output_type -> toolbridge.sync.v1.ServerInfo
+	12, // 35: toolbridge.sync.v1.SyncService.BeginSession:output_type -> toolbridge.sync.v1.SyncSession
+	14, // 36: toolbridge.sync.v1.SyncService.EndSession:output_type -> toolbridge.sync.v1.EndSessionResponse
+	16, // 37: toolbridge.sync.v1.SyncService.WipeAccount:output_type -> toolbridge.sync.v1.WipeResult
+	18, // 38: toolbridge.sync.v1.SyncService.GetSyncState:output_type -> toolbridge.sync.v1.UserSyncState
+	1,  // 39: toolbridge.sync.v1.NoteSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
+	4,  // 40: toolbridge.sync.v1.NoteSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
+	1,  // 41: toolbridge.sync.v1.TaskSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
+	4,  // 42: toolbridge.sync.v1.TaskSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
+	1,  // 43: toolbridge.sync.v1.CommentSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
+	4,  // 44: toolbridge.sync.v1.CommentSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
+	1,  // 45: toolbridge.sync.v1.ChatSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
+	4,  // 46: toolbridge.sync.v1.ChatSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
+	1,  // 47: toolbridge.sync.v1.ChatMessageSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
+	4,  // 48: toolbridge.sync.v1.ChatMessageSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
+	1,  // 49: toolbridge.sync.v1.TaskListSyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
+	4,  // 50: toolbridge.sync.v1.TaskListSyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
+	1,  // 51: toolbridge.sync.v1.TaskListCategorySyncService.Push:output_type -> toolbridge.sync.v1.PushResponse
+	4,  // 52: toolbridge.sync.v1.TaskListCategorySyncService.Pull:output_type -> toolbridge.sync.v1.PullResponse
+	34, // [34:53] is the sub-list for method output_type
+	15, // [15:34] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
 	15, // [15:15] is the sub-list for extension extendee
 	0,  // [0:15] is the sub-list for field type_name
@@ -1249,7 +1263,7 @@ func file_sync_v1_sync_proto_init() {
 			NumEnums:      0,
 			NumMessages:   21,
 			NumExtensions: 0,
-			NumServices:   6,
+			NumServices:   8,
 		},
 		GoTypes:           file_sync_v1_sync_proto_goTypes,
 		DependencyIndexes: file_sync_v1_sync_proto_depIdxs,

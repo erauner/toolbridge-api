@@ -46,6 +46,8 @@ func startGRPCServer(pool *pgxpool.Pool, srv *httpapi.Server, jwtCfg auth.JWTCfg
 		srv.CommentSvc,
 		srv.ChatSvc,
 		srv.ChatMessageSvc,
+		srv.TaskListSvc,
+		srv.TaskListCategorySvc,
 	)
 
 	// Register core sync service (sessions, info, wipe, state)
@@ -57,6 +59,8 @@ func startGRPCServer(pool *pgxpool.Pool, srv *httpapi.Server, jwtCfg auth.JWTCfg
 	syncv1.RegisterCommentSyncServiceServer(grpcServerInstance, &grpcapi.CommentServer{Server: grpcApiServer})
 	syncv1.RegisterChatSyncServiceServer(grpcServerInstance, &grpcapi.ChatServer{Server: grpcApiServer})
 	syncv1.RegisterChatMessageSyncServiceServer(grpcServerInstance, &grpcapi.ChatMessageServer{Server: grpcApiServer})
+	syncv1.RegisterTaskListSyncServiceServer(grpcServerInstance, &grpcapi.TaskListServer{Server: grpcApiServer})
+	syncv1.RegisterTaskListCategorySyncServiceServer(grpcServerInstance, &grpcapi.TaskListCategoryServer{Server: grpcApiServer})
 
 	reflection.Register(grpcServerInstance) // Enable reflection for grpcurl testing
 

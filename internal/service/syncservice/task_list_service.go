@@ -394,14 +394,17 @@ func (s *TaskListService) OrphanTasksInList(ctx context.Context, userID string, 
 func (s *TaskListService) OrphanTasksInListTx(ctx context.Context, tx pgx.Tx, userID string, taskListUID uuid.UUID) (int64, error) {
 	logger := log.With().Logger()
 
-	timestampMs := syncx.NowMs()
-	timestampRFC := syncx.RFC3339(timestampMs)
+	nowMs := syncx.NowMs()
 
 	// Update tasks that belong to this list:
 	// 1. Remove taskListUid from payload
 	// 2. Update sync.version and sync.updatedAt to match new version/timestamp
 	// 3. Update updatedTs, updateTime, and updatedAt for client sync
 	// 4. Bump updated_at_ms and version columns
+	//
+	// Uses GREATEST(now, updated_at_ms + 1) to ensure monotonic timestamps per row.
+	// This prevents moving timestamps backward if a task has a future timestamp,
+	// which would cause sync cursor issues where clients miss the orphaning update.
 	query := `
 		UPDATE task
 		SET payload_json = jsonb_set(
@@ -412,15 +415,15 @@ func (s *TaskListService) OrphanTasksInListTx(ctx context.Context, tx pgx.Tx, us
 								payload_json - 'taskListUid',
 								'{sync,version}', to_jsonb(version + 1)
 							),
-							'{sync,updatedAt}', to_jsonb($3::text)
+							'{sync,updatedAt}', to_jsonb(to_char(to_timestamp(GREATEST($3::bigint, updated_at_ms + 1)::double precision / 1000) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 						),
-						'{updatedTs}', to_jsonb($3::text)
+						'{updatedTs}', to_jsonb(to_char(to_timestamp(GREATEST($3::bigint, updated_at_ms + 1)::double precision / 1000) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 					),
-					'{updateTime}', to_jsonb($3::text)
+					'{updateTime}', to_jsonb(to_char(to_timestamp(GREATEST($3::bigint, updated_at_ms + 1)::double precision / 1000) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 				),
-				'{updatedAt}', to_jsonb($3::text)
+				'{updatedAt}', to_jsonb(to_char(to_timestamp(GREATEST($3::bigint, updated_at_ms + 1)::double precision / 1000) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 			),
-		    updated_at_ms = $4,
+		    updated_at_ms = GREATEST($3::bigint, updated_at_ms + 1),
 		    version = version + 1
 		WHERE owner_id = $1
 		  AND payload_json->>'taskListUid' = $2
@@ -430,9 +433,9 @@ func (s *TaskListService) OrphanTasksInListTx(ctx context.Context, tx pgx.Tx, us
 	var ct pgconn.CommandTag
 	var err error
 	if tx != nil {
-		ct, err = tx.Exec(ctx, query, userID, taskListUID.String(), timestampRFC, timestampMs)
+		ct, err = tx.Exec(ctx, query, userID, taskListUID.String(), nowMs)
 	} else {
-		ct, err = s.DB.Exec(ctx, query, userID, taskListUID.String(), timestampRFC, timestampMs)
+		ct, err = s.DB.Exec(ctx, query, userID, taskListUID.String(), nowMs)
 	}
 
 	if err != nil {

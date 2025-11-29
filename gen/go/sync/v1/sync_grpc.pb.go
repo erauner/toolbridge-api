@@ -990,3 +990,284 @@ var ChatMessageSyncService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "sync/v1/sync.proto",
 }
+
+const (
+	TaskListSyncService_Push_FullMethodName = "/toolbridge.sync.v1.TaskListSyncService/Push"
+	TaskListSyncService_Pull_FullMethodName = "/toolbridge.sync.v1.TaskListSyncService/Pull"
+)
+
+// TaskListSyncServiceClient is the client API for TaskListSyncService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type TaskListSyncServiceClient interface {
+	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
+	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error)
+}
+
+type taskListSyncServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewTaskListSyncServiceClient(cc grpc.ClientConnInterface) TaskListSyncServiceClient {
+	return &taskListSyncServiceClient{cc}
+}
+
+func (c *taskListSyncServiceClient) Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PushResponse)
+	err := c.cc.Invoke(ctx, TaskListSyncService_Push_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskListSyncServiceClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PullResponse)
+	err := c.cc.Invoke(ctx, TaskListSyncService_Pull_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// TaskListSyncServiceServer is the server API for TaskListSyncService service.
+// All implementations must embed UnimplementedTaskListSyncServiceServer
+// for forward compatibility.
+type TaskListSyncServiceServer interface {
+	Push(context.Context, *PushRequest) (*PushResponse, error)
+	Pull(context.Context, *PullRequest) (*PullResponse, error)
+	mustEmbedUnimplementedTaskListSyncServiceServer()
+}
+
+// UnimplementedTaskListSyncServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedTaskListSyncServiceServer struct{}
+
+func (UnimplementedTaskListSyncServiceServer) Push(context.Context, *PushRequest) (*PushResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
+}
+func (UnimplementedTaskListSyncServiceServer) Pull(context.Context, *PullRequest) (*PullResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Pull not implemented")
+}
+func (UnimplementedTaskListSyncServiceServer) mustEmbedUnimplementedTaskListSyncServiceServer() {}
+func (UnimplementedTaskListSyncServiceServer) testEmbeddedByValue()                             {}
+
+// UnsafeTaskListSyncServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TaskListSyncServiceServer will
+// result in compilation errors.
+type UnsafeTaskListSyncServiceServer interface {
+	mustEmbedUnimplementedTaskListSyncServiceServer()
+}
+
+func RegisterTaskListSyncServiceServer(s grpc.ServiceRegistrar, srv TaskListSyncServiceServer) {
+	// If the following call pancis, it indicates UnimplementedTaskListSyncServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&TaskListSyncService_ServiceDesc, srv)
+}
+
+func _TaskListSyncService_Push_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PushRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskListSyncServiceServer).Push(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskListSyncService_Push_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskListSyncServiceServer).Push(ctx, req.(*PushRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskListSyncService_Pull_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskListSyncServiceServer).Pull(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskListSyncService_Pull_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskListSyncServiceServer).Pull(ctx, req.(*PullRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// TaskListSyncService_ServiceDesc is the grpc.ServiceDesc for TaskListSyncService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var TaskListSyncService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "toolbridge.sync.v1.TaskListSyncService",
+	HandlerType: (*TaskListSyncServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Push",
+			Handler:    _TaskListSyncService_Push_Handler,
+		},
+		{
+			MethodName: "Pull",
+			Handler:    _TaskListSyncService_Pull_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sync/v1/sync.proto",
+}
+
+const (
+	TaskListCategorySyncService_Push_FullMethodName = "/toolbridge.sync.v1.TaskListCategorySyncService/Push"
+	TaskListCategorySyncService_Pull_FullMethodName = "/toolbridge.sync.v1.TaskListCategorySyncService/Pull"
+)
+
+// TaskListCategorySyncServiceClient is the client API for TaskListCategorySyncService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type TaskListCategorySyncServiceClient interface {
+	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
+	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error)
+}
+
+type taskListCategorySyncServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewTaskListCategorySyncServiceClient(cc grpc.ClientConnInterface) TaskListCategorySyncServiceClient {
+	return &taskListCategorySyncServiceClient{cc}
+}
+
+func (c *taskListCategorySyncServiceClient) Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PushResponse)
+	err := c.cc.Invoke(ctx, TaskListCategorySyncService_Push_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskListCategorySyncServiceClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PullResponse)
+	err := c.cc.Invoke(ctx, TaskListCategorySyncService_Pull_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// TaskListCategorySyncServiceServer is the server API for TaskListCategorySyncService service.
+// All implementations must embed UnimplementedTaskListCategorySyncServiceServer
+// for forward compatibility.
+type TaskListCategorySyncServiceServer interface {
+	Push(context.Context, *PushRequest) (*PushResponse, error)
+	Pull(context.Context, *PullRequest) (*PullResponse, error)
+	mustEmbedUnimplementedTaskListCategorySyncServiceServer()
+}
+
+// UnimplementedTaskListCategorySyncServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedTaskListCategorySyncServiceServer struct{}
+
+func (UnimplementedTaskListCategorySyncServiceServer) Push(context.Context, *PushRequest) (*PushResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
+}
+func (UnimplementedTaskListCategorySyncServiceServer) Pull(context.Context, *PullRequest) (*PullResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Pull not implemented")
+}
+func (UnimplementedTaskListCategorySyncServiceServer) mustEmbedUnimplementedTaskListCategorySyncServiceServer() {
+}
+func (UnimplementedTaskListCategorySyncServiceServer) testEmbeddedByValue() {}
+
+// UnsafeTaskListCategorySyncServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TaskListCategorySyncServiceServer will
+// result in compilation errors.
+type UnsafeTaskListCategorySyncServiceServer interface {
+	mustEmbedUnimplementedTaskListCategorySyncServiceServer()
+}
+
+func RegisterTaskListCategorySyncServiceServer(s grpc.ServiceRegistrar, srv TaskListCategorySyncServiceServer) {
+	// If the following call pancis, it indicates UnimplementedTaskListCategorySyncServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&TaskListCategorySyncService_ServiceDesc, srv)
+}
+
+func _TaskListCategorySyncService_Push_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PushRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskListCategorySyncServiceServer).Push(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskListCategorySyncService_Push_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskListCategorySyncServiceServer).Push(ctx, req.(*PushRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskListCategorySyncService_Pull_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskListCategorySyncServiceServer).Pull(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskListCategorySyncService_Pull_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskListCategorySyncServiceServer).Pull(ctx, req.(*PullRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// TaskListCategorySyncService_ServiceDesc is the grpc.ServiceDesc for TaskListCategorySyncService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var TaskListCategorySyncService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "toolbridge.sync.v1.TaskListCategorySyncService",
+	HandlerType: (*TaskListCategorySyncServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Push",
+			Handler:    _TaskListCategorySyncService_Push_Handler,
+		},
+		{
+			MethodName: "Pull",
+			Handler:    _TaskListCategorySyncService_Pull_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sync/v1/sync.proto",
+}
