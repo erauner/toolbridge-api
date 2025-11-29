@@ -23,11 +23,13 @@ type Server struct {
 	DefaultTenantID string        // Default tenant ID for B2C users (no organization memberships)
 	TenantAuthCache *auth.TenantAuthCache // In-memory cache for tenant authorization validation
 	// Services
-	NoteSvc        *syncservice.NoteService
-	TaskSvc        *syncservice.TaskService
-	CommentSvc     *syncservice.CommentService
-	ChatSvc        *syncservice.ChatService
-	ChatMessageSvc *syncservice.ChatMessageService
+	NoteSvc             *syncservice.NoteService
+	TaskSvc             *syncservice.TaskService
+	TaskListSvc         *syncservice.TaskListService
+	TaskListCategorySvc *syncservice.TaskListCategoryService
+	CommentSvc          *syncservice.CommentService
+	ChatSvc             *syncservice.ChatService
+	ChatMessageSvc      *syncservice.ChatMessageService
 }
 
 // DefaultRateLimitConfig provides the default rate limiting configuration
@@ -177,6 +179,14 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 			// Chat Messages
 			r.Post("/v1/sync/chat_messages/push", s.PushChatMessages)
 			r.Get("/v1/sync/chat_messages/pull", s.PullChatMessages)
+
+			// Task Lists
+			r.Post("/v1/sync/task_lists/push", s.PushTaskLists)
+			r.Get("/v1/sync/task_lists/pull", s.PullTaskLists)
+
+			// Task List Categories
+			r.Post("/v1/sync/task_list_categories/push", s.PushTaskListCategories)
+			r.Get("/v1/sync/task_list_categories/pull", s.PullTaskListCategories)
 		})
 
 		// REST CRUD endpoints require same protections as sync endpoints
@@ -235,6 +245,26 @@ func (s *Server) Routes(jwt auth.JWTCfg) http.Handler {
 			r.Delete("/v1/chat_messages/{uid}", s.DeleteChatMessage)
 			r.Post("/v1/chat_messages/{uid}/archive", s.ArchiveChatMessage)
 			r.Post("/v1/chat_messages/{uid}/process", s.ProcessChatMessage)
+
+			// Task Lists REST endpoints
+			r.Get("/v1/task_lists", s.ListTaskLists)
+			r.Post("/v1/task_lists", s.CreateTaskList)
+			r.Get("/v1/task_lists/{uid}", s.GetTaskList)
+			r.Put("/v1/task_lists/{uid}", s.UpdateTaskList)
+			r.Patch("/v1/task_lists/{uid}", s.PatchTaskList)
+			r.Delete("/v1/task_lists/{uid}", s.DeleteTaskList)
+			r.Post("/v1/task_lists/{uid}/archive", s.ArchiveTaskList)
+			r.Post("/v1/task_lists/{uid}/process", s.ProcessTaskList)
+
+			// Task List Categories REST endpoints
+			r.Get("/v1/task_list_categories", s.ListTaskListCategories)
+			r.Post("/v1/task_list_categories", s.CreateTaskListCategory)
+			r.Get("/v1/task_list_categories/{uid}", s.GetTaskListCategory)
+			r.Put("/v1/task_list_categories/{uid}", s.UpdateTaskListCategory)
+			r.Patch("/v1/task_list_categories/{uid}", s.PatchTaskListCategory)
+			r.Delete("/v1/task_list_categories/{uid}", s.DeleteTaskListCategory)
+			r.Post("/v1/task_list_categories/{uid}/archive", s.ArchiveTaskListCategory)
+			r.Post("/v1/task_list_categories/{uid}/process", s.ProcessTaskListCategory)
 		})
 
 			// Wipe & state routes require auth + session, but NO epoch check

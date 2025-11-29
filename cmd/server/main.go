@@ -126,11 +126,13 @@ func main() {
 		DefaultTenantID: defaultTenantID,
 		TenantAuthCache: tenantAuthCache,
 		// Initialize services
-		NoteSvc:        syncservice.NewNoteService(pool),
-		TaskSvc:        syncservice.NewTaskService(pool),
-		CommentSvc:     syncservice.NewCommentService(pool),
-		ChatSvc:        syncservice.NewChatService(pool),
-		ChatMessageSvc: syncservice.NewChatMessageService(pool),
+		NoteSvc:             syncservice.NewNoteService(pool),
+		TaskSvc:             syncservice.NewTaskService(pool),
+		CommentSvc:          syncservice.NewCommentService(pool),
+		ChatSvc:             syncservice.NewChatService(pool),
+		ChatMessageSvc:      syncservice.NewChatMessageService(pool),
+		TaskListSvc:         syncservice.NewTaskListService(pool),
+		TaskListCategorySvc: syncservice.NewTaskListCategoryService(pool),
 	}
 
 	// Security validation: Always require a strong HS256 secret in production mode

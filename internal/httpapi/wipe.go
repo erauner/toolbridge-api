@@ -84,8 +84,9 @@ func (s *Server) WipeAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete all entity rows for this user
+	// Order matters: delete children before parents (e.g., chat_message before chat)
 	deleted := make(map[string]int)
-	tables := []string{"chat_message", "comment", "chat", "task", "note"}
+	tables := []string{"chat_message", "comment", "chat", "task", "task_list", "task_list_category", "note"}
 
 	for _, table := range tables {
 		var count int
