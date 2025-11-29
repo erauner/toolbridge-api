@@ -77,6 +77,16 @@ func (s *Server) Info(w http.ResponseWriter, r *http.Request) {
 				Push:     true,
 				Pull:     true,
 			},
+			"task_lists": {
+				MaxLimit: 1000,
+				Push:     true,
+				Pull:     true,
+			},
+			"task_list_categories": {
+				MaxLimit: 1000,
+				Push:     true,
+				Pull:     true,
+			},
 		},
 		Locking: LockingCapability{
 			Supported: true,

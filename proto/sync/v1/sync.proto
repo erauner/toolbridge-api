@@ -56,6 +56,16 @@ service ChatMessageSyncService {
   rpc Pull(PullRequest) returns (PullResponse) {}
 }
 
+service TaskListSyncService {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Pull(PullRequest) returns (PullResponse) {}
+}
+
+service TaskListCategorySyncService {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Pull(PullRequest) returns (PullResponse) {}
+}
+
 // ===================================================================
 // Generic Push/Pull Messages (Batch-oriented for Phase 1)
 // ===================================================================
