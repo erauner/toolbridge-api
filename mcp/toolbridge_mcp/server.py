@@ -73,7 +73,11 @@ from toolbridge_mcp.tools import comments  # noqa: F401, E402
 from toolbridge_mcp.tools import chats  # noqa: F401, E402
 from toolbridge_mcp.tools import chat_messages  # noqa: F401, E402
 
-logger.info("✓ ToolBridge MCP server initialized with 40 tools (8 per entity x 5 entities)")
+# Import MCP-UI enabled tools (return both text and UIResource)
+from toolbridge_mcp.tools import notes_ui  # noqa: F401, E402
+from toolbridge_mcp.tools import tasks_ui  # noqa: F401, E402
+
+logger.info("✓ ToolBridge MCP server initialized with 44 tools (40 data + 4 UI)")
 
 # Note: health_check tool is provided by FastMCP by default
 # No need to register a custom one to avoid "Tool already exists" warnings
