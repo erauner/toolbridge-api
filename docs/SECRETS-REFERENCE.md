@@ -72,6 +72,81 @@ ToolBridge handles two distinct types of JWT tokens. Understanding this separati
    - Any other `kid` → validate via WorkOS JWKS endpoint
 4. **RS256 backend signing is optional** - falls back to HS256 if not configured
 
+### Public Key Distribution
+
+Currently, toolbridge-api operates in a **closed-loop model**: it both signs and validates backend tokens using the same key pair. The public key is derived from the private key at startup via `InitBackendSigner`.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                 Current: Closed-Loop Validation                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   toolbridge-api                                                    │
+│   ┌─────────────────────────────────────────────────────────────┐   │
+│   │  Private Key (from secret)                                  │   │
+│   │       │                                                     │   │
+│   │       ├──► Sign backend tokens (/auth/token-exchange)       │   │
+│   │       │                                                     │   │
+│   │       └──► Derive public key at init                        │   │
+│   │                 │                                           │   │
+│   │                 └──► Validate backend tokens (API calls)    │   │
+│   └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**When would you need to distribute the public key?**
+
+If you add microservices that need to validate backend tokens independently (without calling toolbridge-api), you have two options:
+
+#### Option 1: Manual Public Key Distribution
+
+Extract and distribute the public key to downstream services:
+
+```bash
+# Extract public key from private key
+openssl rsa -in backend-private.pem -pubout -out backend-public.pem
+
+# Distribute backend-public.pem to services that need to validate tokens
+```
+
+Each service loads the public key and validates tokens locally. Simple but requires manual key rotation coordination.
+
+#### Option 2: Expose a Backend JWKS Endpoint (Future)
+
+Similar to how WorkOS exposes `/.well-known/jwks.json`, toolbridge-api could expose its own JWKS endpoint for backend tokens:
+
+```
+GET /.well-known/backend-jwks.json
+
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "toolbridge-backend-1",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "<base64url-encoded-modulus>",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+**Benefits:**
+- Standard OIDC/OAuth2 pattern (same as WorkOS, Auth0, Okta, etc.)
+- Automatic key rotation support (multiple keys in JWKS)
+- Services can cache and refresh keys automatically
+- No manual public key distribution needed
+
+**Implementation notes (not yet implemented):**
+- Add `GET /.well-known/backend-jwks.json` endpoint
+- Convert `backendSigner.PublicKey` to JWK format
+- Consider caching headers (`Cache-Control: max-age=3600`)
+- Document the endpoint for downstream service integration
+
+For now, the closed-loop model is sufficient since only toolbridge-api validates backend tokens.
+
 ## Kubernetes Deployment (Go API + PostgreSQL)
 
 ### Required Secrets
