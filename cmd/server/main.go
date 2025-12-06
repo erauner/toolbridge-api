@@ -86,6 +86,16 @@ func main() {
 		log.Info().Str("mcp_audience", mcpAudience).Msg("MCP OAuth audience accepted")
 	}
 
+	// Backend RS256 signing configuration (optional)
+	// When configured, backend tokens (from token exchange) are signed with RS256 instead of HS256
+	backendRSAPrivateKeyPEM := env("JWT_BACKEND_RS256_PRIVATE_KEY", "")
+	backendKeyID := env("JWT_BACKEND_KEY_ID", "")
+
+	// Validate backend RS256 config: key ID must be set when private key is configured
+	if backendRSAPrivateKeyPEM != "" && backendKeyID == "" {
+		log.Fatal().Msg("FATAL: JWT_BACKEND_KEY_ID must be set when JWT_BACKEND_RS256_PRIVATE_KEY is configured")
+	}
+
 	jwtCfg := auth.JWTCfg{
 		HS256Secret:       jwtSecret,
 		DevMode:           isDevMode,
@@ -95,6 +105,9 @@ func main() {
 		Audience:          jwtAudience,
 		AcceptedAudiences: acceptedAudiences,
 		TenantClaim:       env("TENANT_CLAIM", ""),
+
+		BackendRSAPrivateKeyPEM: backendRSAPrivateKeyPEM,
+		BackendKeyID:            backendKeyID,
 	}
 
 	// WorkOS client setup (optional - for tenant resolution endpoint)
@@ -157,6 +170,19 @@ func main() {
 	// Must be called before starting servers to ensure gRPC interceptors can validate tokens
 	if err := auth.InitJWKSCache(jwtCfg); err != nil {
 		log.Warn().Err(err).Msg("failed to pre-fetch JWKS (will retry on first request)")
+	}
+
+	// Initialize backend RS256 signer if configured
+	// This enables RS256 signing for backend tokens (token exchange)
+	if err := auth.InitBackendSigner(jwtCfg); err != nil {
+		log.Fatal().Err(err).Msg("FATAL: failed to initialize backend RS256 signer")
+	}
+
+	// Log backend signing mode
+	if backendRSAPrivateKeyPEM != "" {
+		log.Info().
+			Str("backend_kid", backendKeyID).
+			Msg("Backend RS256 signing enabled for token exchange")
 	}
 
 	// Log authentication mode

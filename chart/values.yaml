@@ -219,10 +219,26 @@ certificate:
 secrets:
   # External secrets management
   # Set these via sealed secrets, external secrets operator, or SOPS
-  jwtSecret: ""          # JWT signing secret (base64)
+  jwtSecret: ""          # JWT HS256 signing secret (required - defense-in-depth & legacy support)
   dbUsername: ""         # Database username
   dbPassword: ""         # Database password (base64)
   databaseUrl: ""        # Complete DATABASE_URL (base64)
+
+  # RS256 Backend Token Signing (Optional)
+  # ======================================
+  # When configured, /auth/token-exchange issues RS256 tokens instead of HS256.
+  # RS256 is recommended for production multi-service deployments.
+  #
+  # Required secret keys (add to your SOPS/external secret):
+  #   jwt-backend-rs256-private-key: PEM-encoded RSA private key (PKCS#8 or PKCS#1)
+  #   jwt-backend-key-id: Unique identifier for this key (e.g., "toolbridge-backend-1")
+  #
+  # Generate with:
+  #   openssl genrsa -out backend-private.pem 2048
+  #   openssl rsa -in backend-private.pem -pubout -out backend-public.pem
+  #
+  # If not configured, backend tokens use HS256 with jwtSecret (fallback behavior).
+  # See docs/SECRETS-REFERENCE.md for complete documentation.
 
   # Use existing secret instead of creating one
   existingSecret: ""

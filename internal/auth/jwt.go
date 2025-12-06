@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -51,6 +53,12 @@ type JWTCfg struct {
 	//
 	// See: Plans/neon-migration-tenant-contract.md
 	TenantClaim string
+
+	// Backend RS256 signing configuration (optional)
+	// When configured, backend tokens (from token exchange) are signed with RS256 instead of HS256.
+	// This enables secure distribution of the public key to downstream services for validation.
+	BackendRSAPrivateKeyPEM string // PEM-encoded RSA private key for backend tokens (optional)
+	BackendKeyID            string // kid used for backend tokens (must be non-empty if private key is set)
 }
 
 // JWKS caching for upstream IdP public keys
@@ -64,6 +72,16 @@ type jwksCache struct {
 }
 
 var globalJWKSCache *jwksCache
+
+// BackendSigner holds the RSA key pair for signing backend tokens (token exchange)
+// Initialized once at startup if BackendRSAPrivateKeyPEM is configured
+type BackendSigner struct {
+	PrivateKey *rsa.PrivateKey
+	PublicKey  *rsa.PublicKey
+	KeyID      string
+}
+
+var backendSigner *BackendSigner
 
 // JWKS response structure from OIDC provider
 type jwksResponse struct {
@@ -208,17 +226,23 @@ func ValidateToken(tokenString string, cfg JWTCfg) (string, jwt.MapClaims, error
 
 	claims := jwt.MapClaims{}
 	t, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
-		// Support both RS256 (upstream IdP) and HS256 (backend / dev)
+		// Support both RS256 (upstream IdP or backend) and HS256 (backend / dev)
 		switch t.Method.(type) {
 		case *jwt.SigningMethodRSA:
-			// RS256 token from upstream IdP - fetch public key from JWKS
+			// Extract kid (key ID) from token header
+			kid, _ := t.Header["kid"].(string)
+
+			// 1) Backend RS256 tokens: use internal backendSigner public key
+			// This routes tokens signed by our backend (token exchange) to the correct key
+			if backendSigner != nil && cfg.BackendKeyID != "" && kid == cfg.BackendKeyID {
+				return backendSigner.PublicKey, nil
+			}
+
+			// 2) External IdP RS256 tokens: validate via JWKS
 			if globalJWKSCache == nil {
 				return nil, errors.New("JWKS cache not initialized")
 			}
-
-			// Extract kid (key ID) from token header
-			kid, ok := t.Header["kid"].(string)
-			if !ok || kid == "" {
+			if kid == "" {
 				return nil, errors.New("missing kid in token header")
 			}
 
@@ -357,6 +381,82 @@ func InitJWKSCache(cfg JWTCfg) error {
 
 	log.Info().Str("jwks_url", cfg.JWKSURL).Msg("upstream IdP RS256 validation enabled")
 	return nil
+}
+
+// InitBackendSigner initializes the backend RS256 signer from configuration
+// Should be called once at application startup if BackendRSAPrivateKeyPEM is configured
+func InitBackendSigner(cfg JWTCfg) error {
+	if cfg.BackendRSAPrivateKeyPEM == "" {
+		// RS256 backend signing not configured, HS256 will be used
+		return nil
+	}
+
+	if cfg.BackendKeyID == "" {
+		return errors.New("BackendKeyID must be set when BackendRSAPrivateKeyPEM is configured")
+	}
+
+	// Parse PEM-encoded private key
+	block, _ := pem.Decode([]byte(cfg.BackendRSAPrivateKeyPEM))
+	if block == nil {
+		return errors.New("failed to decode PEM block for backend RSA private key")
+	}
+
+	var privateKey *rsa.PrivateKey
+	var err error
+
+	// Try PKCS#8 first (more common modern format), then fall back to PKCS#1
+	switch block.Type {
+	case "PRIVATE KEY":
+		// PKCS#8 format
+		parsedKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
+		}
+		var ok bool
+		privateKey, ok = parsedKey.(*rsa.PrivateKey)
+		if !ok {
+			return errors.New("PKCS#8 private key is not an RSA key")
+		}
+	case "RSA PRIVATE KEY":
+		// PKCS#1 format
+		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return fmt.Errorf("failed to parse PKCS#1 private key: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported PEM block type: %s (expected 'PRIVATE KEY' or 'RSA PRIVATE KEY')", block.Type)
+	}
+
+	backendSigner = &BackendSigner{
+		PrivateKey: privateKey,
+		PublicKey:  &privateKey.PublicKey,
+		KeyID:      cfg.BackendKeyID,
+	}
+
+	log.Info().
+		Str("kid", cfg.BackendKeyID).
+		Msg("backend RS256 signer initialized")
+
+	return nil
+}
+
+// SignBackendToken signs a backend JWT using RS256 (if configured) or HS256 (fallback)
+// This centralizes the signing logic for all backend token issuance (token exchange, etc.)
+func SignBackendToken(claims jwt.MapClaims, cfg JWTCfg) (string, error) {
+	// Prefer RS256 when backend signer is configured
+	if backendSigner != nil && cfg.BackendRSAPrivateKeyPEM != "" && cfg.BackendKeyID != "" {
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		token.Header["kid"] = backendSigner.KeyID
+		return token.SignedString(backendSigner.PrivateKey)
+	}
+
+	// Fallback to HS256
+	if cfg.HS256Secret == "" {
+		return "", errors.New("no signing method available: neither RS256 backend key nor HS256 secret is configured")
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(cfg.HS256Secret))
 }
 
 // Middleware creates HTTP middleware for JWT authentication

@@ -11,6 +11,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Note: jwt import kept for jwt.MapClaims type used in claims construction
+
 // TokenExchangeRequest represents RFC 8693 token exchange request
 // https://datatracker.ietf.org/doc/html/rfc8693
 type TokenExchangeRequest struct {
@@ -97,43 +99,19 @@ func (s *Server) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
 
 	claims := jwt.MapClaims{
-		"sub": userID,                        // User identity from MCP token
-		"iss": "toolbridge-api",              // Backend API as issuer
-		"aud": req.Audience,                  // Requested backend audience
-		"exp": expiresAt.Unix(),              // Expiration time
-		"iat": time.Now().Unix(),             // Issued at
-		"nbf": time.Now().Unix(),             // Not before
-		"token_type": "backend",              // Token type metadata
-		"exchanged_from": "mcp_oauth",        // Exchange source metadata
+		"sub":            userID,       // User identity from MCP token
+		"iss":            "toolbridge-api", // Backend API as issuer
+		"aud":            req.Audience, // Requested backend audience
+		"exp":            expiresAt.Unix(), // Expiration time
+		"iat":            time.Now().Unix(), // Issued at
+		"nbf":            time.Now().Unix(), // Not before
+		"token_type":     "backend",    // Token type metadata
+		"exchanged_from": "mcp_oauth",  // Exchange source metadata
 	}
 
-	// Sign JWT with HS256 (using shared secret)
-	//
-	// TODO(SRE-67): RS256 MIGRATION PATH (recommended for production multi-service deployments):
-	// Currently using HS256 with shared secret for simplicity. For production with
-	// multiple services validating backend tokens, consider migrating to RS256:
-	//
-	// Phase 1 - Add RS256 support (opt-in):
-	//   1. Extend JWTCfg with BackendRSAPrivateKeyPEM and BackendKeyID fields
-	//   2. Create BackendSigner struct to hold parsed RSA keys
-	//   3. If RSA key configured, sign with RS256; else fall back to HS256
-	//   4. Update ValidateToken to handle backend RS256 tokens (check iss="toolbridge-api")
-	//
-	// Phase 2 - Production rollout:
-	//   1. Generate RSA key pair for backend tokens
-	//   2. Configure BackendRSAPrivateKeyPEM in production
-	//   3. Distribute public key to services that validate backend tokens
-	//   4. Remove HS256Secret from production config (keep for dev)
-	//
-	// Benefits of RS256:
-	//   - Private key only on signer (token exchange endpoint)
-	//   - Public key can be distributed to validators without security risk
-	//   - Supports key rotation via kid header
-	//   - Industry standard for multi-service JWT validation
-	//
-	// See: internal/auth/jwt.go for validation implementation
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(jwtCfg.HS256Secret))
+	// Sign backend JWT using RS256 (if configured) or HS256 (fallback)
+	// See auth.SignBackendToken and JWTCfg.BackendRSAPrivateKeyPEM for RS256 migration details
+	tokenString, err := auth.SignBackendToken(claims, jwtCfg)
 	if err != nil {
 		log.Ctx(ctx).Error().
 			Err(err).

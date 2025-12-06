@@ -55,6 +55,53 @@ Requires Selection: false
 
 ---
 
+### `test_rs256_backend_signing.go`
+
+**Purpose**: Verify RS256 backend token signing and validation
+
+**What it tests**:
+1. RSA key pair generation (PKCS#8 format)
+2. Backend signer initialization via `InitBackendSigner`
+3. Token signing with RS256 via `SignBackendToken`
+4. Token validation with correct `kid` routing
+5. HS256 fallback when RS256 not configured
+6. Wrong `kid` correctly routes to JWKS (and fails without cache)
+
+**Usage**:
+```bash
+go run test/manual/test_rs256_backend_signing.go
+```
+
+**Expected Output**:
+```
+======================================================================
+  RS256 Backend Signing Integration Test
+======================================================================
+
+Test 1: Initialize backend signer with generated RSA key
+----------------------------------------------------------------------
+  OK: Generated 2048-bit RSA key pair
+  OK: Encoded as PKCS#8 PEM format
+  OK: Backend signer initialized successfully
+
+Test 2: Sign backend token with RS256
+----------------------------------------------------------------------
+  OK: Token signed successfully
+  Token Header: {"alg":"RS256","kid":"integration-test-key-1","typ":"JWT"}
+  OK: Algorithm is RS256
+  OK: Key ID (kid) is correct
+
+...
+
+======================================================================
+  Results: 5 passed, 0 failed
+======================================================================
+```
+
+**No database or server required** - this test runs entirely in-process.
+
+---
+
 ### `prove_oidc_tokens_lack_org_id.go`
 
 **Purpose**: Prove that standard OIDC tokens do NOT contain `organization_id` claim
