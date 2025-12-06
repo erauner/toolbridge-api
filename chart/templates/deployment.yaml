@@ -163,6 +163,20 @@ spec:
             secretKeyRef:
               name: {{ include "toolbridge-api.secretName" . }}
               key: jwt-secret
+        # RS256 backend token signing (optional - falls back to HS256 if not configured)
+        # When configured, /auth/token-exchange issues RS256 tokens instead of HS256
+        - name: JWT_BACKEND_RS256_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: jwt-backend-rs256-private-key
+              optional: true
+        - name: JWT_BACKEND_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "toolbridge-api.secretName" . }}
+              key: jwt-backend-key-id
+              optional: true
         # WorkOS API key for tenant resolution
         - name: WORKOS_API_KEY
           valueFrom:
