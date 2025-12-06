@@ -45,9 +45,10 @@ def render_notes_list_html(notes: Iterable["Note"]) -> str:
 
     items_html = ""
     for note in notes_list:
-        title = escape(note.payload.get("title", "Untitled"))
-        content_preview = escape(note.payload.get("content", "")[:100])
-        if len(note.payload.get("content", "")) > 100:
+        title = escape(note.payload.get("title") or "Untitled")
+        content_raw = note.payload.get("content") or ""
+        content_preview = escape(content_raw[:100])
+        if len(content_raw) > 100:
             content_preview += "..."
         uid = escape(note.uid)
 
@@ -226,10 +227,10 @@ def render_note_detail_html(note: "Note") -> str:
     Returns:
         HTML string with the full note content
     """
-    title = escape(note.payload.get("title", "Untitled"))
-    content = escape(note.payload.get("content", "No content"))
+    title = escape(note.payload.get("title") or "Untitled")
+    content = escape(note.payload.get("content") or "No content")
     uid = escape(note.uid)
-    tags = note.payload.get("tags", [])
+    tags = note.payload.get("tags") or []
 
     tags_html = ""
     if tags:
@@ -237,7 +238,7 @@ def render_note_detail_html(note: "Note") -> str:
             f'<span class="tag">{escape(str(tag))}</span>' for tag in tags
         ) + "</div>"
 
-    status = note.payload.get("status", "")
+    status = note.payload.get("status") or ""
     status_badge = ""
     if status:
         status_badge = f'<span class="status-badge status-{escape(status)}">{escape(status)}</span>'

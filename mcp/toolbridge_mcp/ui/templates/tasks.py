@@ -61,9 +61,10 @@ def render_tasks_list_html(tasks: Iterable["Task"]) -> str:
 
     items_html = ""
     for task in tasks_list:
-        title = escape(task.payload.get("title", "Untitled"))
-        description = escape(task.payload.get("description", "")[:80])
-        if len(task.payload.get("description", "")) > 80:
+        title = escape(task.payload.get("title") or "Untitled")
+        desc_raw = task.payload.get("description") or ""
+        description = escape(desc_raw[:80])
+        if len(desc_raw) > 80:
             description += "..."
         uid = escape(task.uid)
         status = task.payload.get("status", "todo")
@@ -268,13 +269,13 @@ def render_task_detail_html(task: "Task") -> str:
     Returns:
         HTML string with the full task content
     """
-    title = escape(task.payload.get("title", "Untitled"))
-    description = escape(task.payload.get("description", "No description"))
+    title = escape(task.payload.get("title") or "Untitled")
+    description = escape(task.payload.get("description") or "No description")
     uid = escape(task.uid)
-    status = task.payload.get("status", "todo")
-    priority = task.payload.get("priority", "")
-    due_date = task.payload.get("dueDate", "")
-    tags = task.payload.get("tags", [])
+    status = task.payload.get("status") or "todo"
+    priority = task.payload.get("priority") or ""
+    due_date = task.payload.get("dueDate") or ""
+    tags = task.payload.get("tags") or []
 
     status_icon = _get_status_icon(status)
     priority_class = _get_priority_class(priority)
