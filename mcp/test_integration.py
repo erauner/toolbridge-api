@@ -299,6 +299,62 @@ async def test_comments():
     return True
 
 
+async def test_ui_tools():
+    """Test MCP-UI tools return correct content structure."""
+    from toolbridge_mcp.tools.notes_ui import list_notes_ui, show_note_ui
+    from toolbridge_mcp.tools.tasks_ui import list_tasks_ui, show_task_ui
+    from toolbridge_mcp.tools.notes import create_note
+    from toolbridge_mcp.tools.tasks import create_task
+    from mcp.types import TextContent
+
+    logger.info("━━━ Testing MCP-UI Tools ━━━")
+
+    user_id = f"ui-test-{uuid.uuid4().hex[:8]}"
+    await setup_test_context(user_id)
+
+    # 1. Create test data
+    logger.info("1. Creating test note and task...")
+    note = await create_note(title="UI Test Note", content="Testing UI rendering")
+    task = await create_task(title="UI Test Task", description="Testing UI rendering")
+    logger.success(f"✓ Created note={note.uid[:8]}... task={task.uid[:8]}...")
+
+    # 2. Test list_notes_ui
+    logger.info("2. Testing list_notes_ui...")
+    result = await list_notes_ui(limit=10)
+    assert isinstance(result, list), "Should return a list"
+    assert len(result) == 2, "Should return [TextContent, UIResource]"
+    assert isinstance(result[0], TextContent), "First element should be TextContent"
+    assert result[0].type == "text", "TextContent should have type='text'"
+    assert result[1].type == "resource", "Second element should be UIResource"
+    assert "text/html" in result[1].resource.mimeType, "UIResource should have HTML mime type"
+    assert "<html>" in result[1].resource.text, "UIResource should contain HTML"
+    logger.success(f"✓ list_notes_ui returns valid [TextContent, UIResource]")
+
+    # 3. Test show_note_ui
+    logger.info("3. Testing show_note_ui...")
+    result = await show_note_ui(uid=note.uid)
+    assert len(result) == 2
+    assert "UI Test Note" in result[1].resource.text, "HTML should contain note title"
+    logger.success(f"✓ show_note_ui returns HTML with note content")
+
+    # 4. Test list_tasks_ui
+    logger.info("4. Testing list_tasks_ui...")
+    result = await list_tasks_ui(limit=10)
+    assert len(result) == 2
+    assert result[1].type == "resource"
+    logger.success(f"✓ list_tasks_ui returns valid [TextContent, UIResource]")
+
+    # 5. Test show_task_ui
+    logger.info("5. Testing show_task_ui...")
+    result = await show_task_ui(uid=task.uid)
+    assert len(result) == 2
+    assert "UI Test Task" in result[1].resource.text, "HTML should contain task title"
+    logger.success(f"✓ show_task_ui returns HTML with task content")
+
+    logger.success("━━━ MCP-UI Tools: ALL TESTS PASSED ━━━")
+    return True
+
+
 async def main():
     """Run all integration tests."""
     logger.info("╔══════════════════════════════════════════════════════════════╗")
@@ -313,6 +369,7 @@ async def main():
         ("Tasks CRUD", test_tasks_crud),
         ("Chats & Messages", test_chats_and_messages),
         ("Comments", test_comments),
+        ("MCP-UI Tools", test_ui_tools),
     ]
 
     results = []
@@ -354,6 +411,7 @@ async def main():
         logger.info("  ✓ Go API accepts and processes requests")
         logger.info("  ✓ Full CRUD operations work end-to-end")
         logger.info("  ✓ All 5 entity types functional (notes, tasks, comments, chats, messages)")
+        logger.info("  ✓ MCP-UI tools return [TextContent, UIResource] structure")
         return 0
     else:
         logger.error("━━━ SOME INTEGRATION TESTS FAILED ━━━")
