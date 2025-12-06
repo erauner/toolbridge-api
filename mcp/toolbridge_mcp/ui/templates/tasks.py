@@ -240,18 +240,18 @@ def render_tasks_list_html(tasks: Iterable["Task"]) -> str:
             }}
 
             // View task details
-            function viewTask(uid) {{
-                callTool('show_task_ui', {{ task_uid: uid }});
+            function viewTask(taskUid) {{
+                callTool('show_task_ui', {{ uid: taskUid }});
             }}
 
-            // Complete a task (mark as done)
-            function completeTask(uid) {{
-                callTool('complete_task', {{ task_uid: uid }});
+            // Complete a task (mark as done) using process_task action
+            function completeTask(taskUid) {{
+                callTool('process_task', {{ uid: taskUid, action: 'complete' }});
             }}
 
             // Archive a completed task
-            function archiveTask(uid) {{
-                callTool('archive_task', {{ task_uid: uid }});
+            function archiveTask(taskUid) {{
+                callTool('archive_task', {{ uid: taskUid }});
             }}
         </script>
     </body>

@@ -110,14 +110,14 @@ async def list_notes_ui(limit: int = 20) -> List[Union[TextContent, EmbeddedReso
 
 
 @mcp.tool()
-async def show_note_ui(note_uid: str) -> List[Union[TextContent, EmbeddedResource]]:
+async def show_note_ui(uid: str) -> List[Union[TextContent, EmbeddedResource]]:
     """Show a single note with rich HTML rendering for MCP-UI hosts.
 
     Returns both text fallback and interactive HTML UI.
     """
     # Find note by uid and convert to Pydantic model
     notes = get_mock_notes()
-    note = next((n for n in notes if n.uid == note_uid), notes[0])
+    note = next((n for n in notes if n.uid == uid), notes[0])
     html = notes_templates.render_note_detail_html(note)
     title = note.payload.get("title", "Note")
     return build_ui_with_text(
@@ -143,14 +143,14 @@ async def list_tasks_ui(limit: int = 20) -> List[Union[TextContent, EmbeddedReso
 
 
 @mcp.tool()
-async def show_task_ui(task_uid: str) -> List[Union[TextContent, EmbeddedResource]]:
+async def show_task_ui(uid: str) -> List[Union[TextContent, EmbeddedResource]]:
     """Show a single task with rich HTML rendering for MCP-UI hosts.
 
     Returns both text fallback and interactive HTML UI.
     """
     # Find task by uid and convert to Pydantic model
     tasks = get_mock_tasks()
-    task = next((t for t in tasks if t.uid == task_uid), tasks[0])
+    task = next((t for t in tasks if t.uid == uid), tasks[0])
     html = tasks_templates.render_task_detail_html(task)
     title = task.payload.get("title", "Task")
     return build_ui_with_text(
@@ -165,25 +165,7 @@ async def show_task_ui(task_uid: str) -> List[Union[TextContent, EmbeddedResourc
 # ============================================================
 
 @mcp.tool()
-async def edit_note(note_uid: str) -> List[Union[TextContent, EmbeddedResource]]:
-    """Edit a note (stub - returns confirmation and refreshes UI).
-
-    In a real implementation, this would open an edit form.
-    """
-    notes = get_mock_notes()
-    note = next((n for n in notes if n.uid == note_uid), notes[0])
-    title = note.payload.get("title", "Note")
-    # Return the note detail view (simulating edit mode)
-    html = notes_templates.render_note_detail_html(note)
-    return build_ui_with_text(
-        uri=f"ui://toolbridge/notes/{note.uid}/edit",
-        html=html,
-        text_summary=f"Editing note: {title}",
-    )
-
-
-@mcp.tool()
-async def delete_note(note_uid: str) -> List[Union[TextContent, EmbeddedResource]]:
+async def delete_note(uid: str) -> List[Union[TextContent, EmbeddedResource]]:
     """Delete a note and return updated list.
 
     Marks the note as deleted and returns the updated notes list.
@@ -193,7 +175,7 @@ async def delete_note(note_uid: str) -> List[Union[TextContent, EmbeddedResource
     # Find and mark note as deleted
     note_title = "Unknown"
     for note in mock_state["notes"]:
-        if note["uid"] == note_uid:
+        if note["uid"] == uid:
             note["deletedAt"] = datetime.now().isoformat()
             note_title = note["payload"].get("title", "Note")
             break
@@ -209,31 +191,38 @@ async def delete_note(note_uid: str) -> List[Union[TextContent, EmbeddedResource
 
 
 @mcp.tool()
-async def complete_task(task_uid: str) -> List[Union[TextContent, EmbeddedResource]]:
-    """Mark a task as complete and return updated list.
+async def process_task(uid: str, action: str) -> List[Union[TextContent, EmbeddedResource]]:
+    """Process a task action (state machine transition).
 
-    Sets the task status to 'done' and returns the updated tasks list.
+    Supported actions: start, complete, reopen.
+    Returns the updated tasks list.
     """
-    # Find and mark task as complete
+    # Find and process the task
     task_title = "Unknown"
     for task in mock_state["tasks"]:
-        if task["uid"] == task_uid:
-            task["payload"]["status"] = "done"
+        if task["uid"] == uid:
             task_title = task["payload"].get("title", "Task")
+            if action == "complete":
+                task["payload"]["status"] = "done"
+            elif action == "start":
+                task["payload"]["status"] = "in_progress"
+            elif action == "reopen":
+                task["payload"]["status"] = "todo"
             break
 
     # Return updated tasks list
     tasks = get_mock_tasks()
     html = tasks_templates.render_tasks_list_html(tasks)
+    action_emoji = {"complete": "✅", "start": "🔄", "reopen": "↩️"}.get(action, "✓")
     return build_ui_with_text(
         uri="ui://toolbridge/tasks/list",
         html=html,
-        text_summary=f"✅ Completed '{task_title}' - {len(tasks)} task(s) total",
+        text_summary=f"{action_emoji} {action.capitalize()}d '{task_title}' - {len(tasks)} task(s) total",
     )
 
 
 @mcp.tool()
-async def archive_task(task_uid: str) -> List[Union[TextContent, EmbeddedResource]]:
+async def archive_task(uid: str) -> List[Union[TextContent, EmbeddedResource]]:
     """Archive a task and return updated list.
 
     Marks the task as archived (deleted) and returns the updated tasks list.
@@ -243,7 +232,7 @@ async def archive_task(task_uid: str) -> List[Union[TextContent, EmbeddedResourc
     # Find and mark task as archived
     task_title = "Unknown"
     for task in mock_state["tasks"]:
-        if task["uid"] == task_uid:
+        if task["uid"] == uid:
             task["deletedAt"] = datetime.now().isoformat()
             task_title = task["payload"].get("title", "Task")
             break

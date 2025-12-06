@@ -59,7 +59,6 @@ def render_notes_list_html(notes: Iterable["Note"]) -> str:
             <div class="note-meta">UID: {uid[:8]}... | v{note.version}</div>
             <div class="note-actions">
                 <button class="btn btn-view" onclick="viewNote('{uid}')">👁 View</button>
-                <button class="btn btn-edit" onclick="editNote('{uid}')">✏️ Edit</button>
                 <button class="btn btn-delete" onclick="deleteNote('{uid}')">🗑️ Delete</button>
             </div>
         </li>
@@ -162,13 +161,6 @@ def render_notes_list_html(notes: Iterable["Note"]) -> str:
             .btn-view:hover {{
                 background: #2563eb;
             }}
-            .btn-edit {{
-                background: #f59e0b;
-                color: white;
-            }}
-            .btn-edit:hover {{
-                background: #d97706;
-            }}
             .btn-delete {{
                 background: #ef4444;
                 color: white;
@@ -198,18 +190,13 @@ def render_notes_list_html(notes: Iterable["Note"]) -> str:
             }}
 
             // View note details
-            function viewNote(uid) {{
-                callTool('show_note_ui', {{ note_uid: uid }});
-            }}
-
-            // Edit a note
-            function editNote(uid) {{
-                callTool('edit_note', {{ note_uid: uid }});
+            function viewNote(noteUid) {{
+                callTool('show_note_ui', {{ uid: noteUid }});
             }}
 
             // Delete a note (no confirm - browser dialogs blocked in iframes)
-            function deleteNote(uid) {{
-                callTool('delete_note', {{ note_uid: uid }});
+            function deleteNote(noteUid) {{
+                callTool('delete_note', {{ uid: noteUid }});
             }}
         </script>
     </body>
