@@ -3,6 +3,8 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"testing"
 	"time"
 
@@ -461,3 +463,381 @@ func TestValidateToken_MissingSubClaim(t *testing.T) {
 }
 
 // Note: contains() helper function is defined in tenant_headers_test.go
+
+// =============================================================================
+// RS256 Backend Signer Tests
+// =============================================================================
+
+// TestInitBackendSigner_PKCS8 tests initialization with PKCS#8 format private key
+func TestInitBackendSigner_PKCS8(t *testing.T) {
+	// Reset global state
+	backendSigner = nil
+
+	// Generate a test key and encode as PKCS#8
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate RSA key: %v", err)
+	}
+
+	pkcs8Bytes, err := marshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to marshal PKCS#8: %v", err)
+	}
+
+	pemBlock := pemEncode(pkcs8Bytes, "PRIVATE KEY")
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: pemBlock,
+		BackendKeyID:            "test-backend-key-1",
+	}
+
+	err = InitBackendSigner(cfg)
+	if err != nil {
+		t.Fatalf("InitBackendSigner failed: %v", err)
+	}
+
+	if backendSigner == nil {
+		t.Fatal("Expected backendSigner to be initialized")
+	}
+	if backendSigner.KeyID != "test-backend-key-1" {
+		t.Errorf("Expected KeyID=%s, got %s", "test-backend-key-1", backendSigner.KeyID)
+	}
+	if backendSigner.PrivateKey == nil {
+		t.Error("Expected PrivateKey to be set")
+	}
+	if backendSigner.PublicKey == nil {
+		t.Error("Expected PublicKey to be set")
+	}
+
+	// Cleanup
+	backendSigner = nil
+}
+
+// TestInitBackendSigner_PKCS1 tests initialization with PKCS#1 format private key
+func TestInitBackendSigner_PKCS1(t *testing.T) {
+	// Reset global state
+	backendSigner = nil
+
+	// Generate a test key and encode as PKCS#1
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate RSA key: %v", err)
+	}
+
+	pkcs1Bytes := marshalPKCS1PrivateKey(privateKey)
+	pemBlock := pemEncode(pkcs1Bytes, "RSA PRIVATE KEY")
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: pemBlock,
+		BackendKeyID:            "test-backend-key-2",
+	}
+
+	err = InitBackendSigner(cfg)
+	if err != nil {
+		t.Fatalf("InitBackendSigner failed: %v", err)
+	}
+
+	if backendSigner == nil {
+		t.Fatal("Expected backendSigner to be initialized")
+	}
+	if backendSigner.KeyID != "test-backend-key-2" {
+		t.Errorf("Expected KeyID=%s, got %s", "test-backend-key-2", backendSigner.KeyID)
+	}
+
+	// Cleanup
+	backendSigner = nil
+}
+
+// TestInitBackendSigner_MissingKeyID tests that missing key ID returns error
+func TestInitBackendSigner_MissingKeyID(t *testing.T) {
+	backendSigner = nil
+
+	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	pkcs1Bytes := marshalPKCS1PrivateKey(privateKey)
+	pemBlock := pemEncode(pkcs1Bytes, "RSA PRIVATE KEY")
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: pemBlock,
+		BackendKeyID:            "", // Missing!
+	}
+
+	err := InitBackendSigner(cfg)
+	if err == nil {
+		t.Fatal("Expected error when BackendKeyID is missing")
+	}
+	if !contains(err.Error(), "BackendKeyID must be set") {
+		t.Errorf("Expected 'BackendKeyID must be set' error, got: %v", err)
+	}
+
+	backendSigner = nil
+}
+
+// TestInitBackendSigner_InvalidPEM tests that invalid PEM returns error
+func TestInitBackendSigner_InvalidPEM(t *testing.T) {
+	backendSigner = nil
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: "not-valid-pem-data",
+		BackendKeyID:            "test-key",
+	}
+
+	err := InitBackendSigner(cfg)
+	if err == nil {
+		t.Fatal("Expected error for invalid PEM")
+	}
+	if !contains(err.Error(), "failed to decode PEM") {
+		t.Errorf("Expected 'failed to decode PEM' error, got: %v", err)
+	}
+
+	backendSigner = nil
+}
+
+// TestInitBackendSigner_EmptyConfig tests that empty config is a no-op
+func TestInitBackendSigner_EmptyConfig(t *testing.T) {
+	backendSigner = nil
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: "",
+		BackendKeyID:            "",
+	}
+
+	err := InitBackendSigner(cfg)
+	if err != nil {
+		t.Fatalf("Expected no error for empty config, got: %v", err)
+	}
+	if backendSigner != nil {
+		t.Error("Expected backendSigner to remain nil for empty config")
+	}
+}
+
+// TestSignBackendToken_RS256 tests signing with RS256 when configured
+func TestSignBackendToken_RS256(t *testing.T) {
+	backendSigner = nil
+
+	// Setup backend signer
+	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	backendSigner = &BackendSigner{
+		PrivateKey: privateKey,
+		PublicKey:  &privateKey.PublicKey,
+		KeyID:      "rs256-test-key",
+	}
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: "dummy-pem", // Just needs to be non-empty
+		BackendKeyID:            "rs256-test-key",
+		HS256Secret:             "fallback-secret",
+	}
+
+	claims := jwt.MapClaims{
+		"sub":        "user_123",
+		"iss":        "toolbridge-api",
+		"token_type": "backend",
+		"exp":        time.Now().Add(1 * time.Hour).Unix(),
+	}
+
+	tokenString, err := SignBackendToken(claims, cfg)
+	if err != nil {
+		t.Fatalf("SignBackendToken failed: %v", err)
+	}
+
+	// Parse token to verify it's RS256 with correct kid
+	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return backendSigner.PublicKey, nil
+	})
+	if err != nil {
+		t.Fatalf("Failed to parse token: %v", err)
+	}
+	if !token.Valid {
+		t.Error("Token should be valid")
+	}
+
+	// Check kid header
+	kid, ok := token.Header["kid"].(string)
+	if !ok || kid != "rs256-test-key" {
+		t.Errorf("Expected kid=%s, got %v", "rs256-test-key", token.Header["kid"])
+	}
+
+	// Check algorithm
+	if token.Header["alg"] != "RS256" {
+		t.Errorf("Expected alg=RS256, got %v", token.Header["alg"])
+	}
+
+	backendSigner = nil
+}
+
+// TestSignBackendToken_HS256Fallback tests HS256 fallback when RS256 not configured
+func TestSignBackendToken_HS256Fallback(t *testing.T) {
+	backendSigner = nil // No RS256 signer
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: "", // Not configured
+		BackendKeyID:            "",
+		HS256Secret:             "test-hs256-secret",
+	}
+
+	claims := jwt.MapClaims{
+		"sub":        "user_456",
+		"iss":        "toolbridge-api",
+		"token_type": "backend",
+		"exp":        time.Now().Add(1 * time.Hour).Unix(),
+	}
+
+	tokenString, err := SignBackendToken(claims, cfg)
+	if err != nil {
+		t.Fatalf("SignBackendToken failed: %v", err)
+	}
+
+	// Parse token to verify it's HS256
+	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte("test-hs256-secret"), nil
+	})
+	if err != nil {
+		t.Fatalf("Failed to parse token: %v", err)
+	}
+	if !token.Valid {
+		t.Error("Token should be valid")
+	}
+
+	if token.Header["alg"] != "HS256" {
+		t.Errorf("Expected alg=HS256, got %v", token.Header["alg"])
+	}
+}
+
+// TestSignBackendToken_NoSigningMethod tests error when no signing method available
+func TestSignBackendToken_NoSigningMethod(t *testing.T) {
+	backendSigner = nil
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: "",
+		BackendKeyID:            "",
+		HS256Secret:             "", // Neither configured!
+	}
+
+	claims := jwt.MapClaims{"sub": "user_789"}
+
+	_, err := SignBackendToken(claims, cfg)
+	if err == nil {
+		t.Fatal("Expected error when no signing method available")
+	}
+	if !contains(err.Error(), "no signing method available") {
+		t.Errorf("Expected 'no signing method available' error, got: %v", err)
+	}
+}
+
+// TestValidateToken_RS256BackendToken tests full round-trip: sign with RS256, validate
+func TestValidateToken_RS256BackendToken(t *testing.T) {
+	backendSigner = nil
+	globalJWKSCache = nil // Ensure JWKS isn't used
+
+	// Setup backend signer
+	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	backendSigner = &BackendSigner{
+		PrivateKey: privateKey,
+		PublicKey:  &privateKey.PublicKey,
+		KeyID:      "backend-rs256-key",
+	}
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: "dummy",
+		BackendKeyID:            "backend-rs256-key",
+		HS256Secret:             "fallback",
+		Issuer:                  "https://external-idp.com", // External IdP config
+		Audience:                "https://api.example.com",
+	}
+
+	// Sign a backend token
+	claims := jwt.MapClaims{
+		"sub":        "user_backend_rs256",
+		"iss":        "toolbridge-api",
+		"aud":        "internal-service",
+		"token_type": "backend",
+		"exp":        time.Now().Add(1 * time.Hour).Unix(),
+		"iat":        time.Now().Unix(),
+	}
+
+	tokenString, err := SignBackendToken(claims, cfg)
+	if err != nil {
+		t.Fatalf("SignBackendToken failed: %v", err)
+	}
+
+	// Validate the token - should use backend signer's public key
+	sub, returnedClaims, err := ValidateToken(tokenString, cfg)
+	if err != nil {
+		t.Fatalf("ValidateToken failed: %v", err)
+	}
+
+	if sub != "user_backend_rs256" {
+		t.Errorf("Expected sub=%s, got %s", "user_backend_rs256", sub)
+	}
+
+	// Verify it was treated as backend token (no issuer/audience errors)
+	if returnedClaims["token_type"] != "backend" {
+		t.Errorf("Expected token_type=backend, got %v", returnedClaims["token_type"])
+	}
+
+	backendSigner = nil
+}
+
+// TestValidateToken_RS256BackendToken_WrongKid tests that wrong kid falls through to JWKS
+func TestValidateToken_RS256BackendToken_WrongKid(t *testing.T) {
+	backendSigner = nil
+	globalJWKSCache = nil
+
+	// Setup backend signer with one key ID
+	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	backendSigner = &BackendSigner{
+		PrivateKey: privateKey,
+		PublicKey:  &privateKey.PublicKey,
+		KeyID:      "backend-key-1",
+	}
+
+	cfg := JWTCfg{
+		BackendRSAPrivateKeyPEM: "dummy",
+		BackendKeyID:            "backend-key-1",
+	}
+
+	// Create a token with DIFFERENT kid
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"sub": "user_123",
+		"exp": time.Now().Add(1 * time.Hour).Unix(),
+	})
+	token.Header["kid"] = "different-key-id" // Not matching backend signer
+
+	tokenString, _ := token.SignedString(privateKey)
+
+	// Should fail because kid doesn't match backend signer and no JWKS cache
+	_, _, err := ValidateToken(tokenString, cfg)
+	if err == nil {
+		t.Fatal("Expected error for non-matching kid without JWKS")
+	}
+	// Error is wrapped: "jwt validation failed: token is unverifiable: ..."
+	// The contains() helper only checks prefixes, so check for jwt validation failed
+	if !contains(err.Error(), "jwt validation failed") {
+		t.Errorf("Expected jwt validation error, got: %v", err)
+	}
+
+	backendSigner = nil
+}
+
+// Helper functions for tests
+func marshalPKCS8PrivateKey(key *rsa.PrivateKey) ([]byte, error) {
+	return x509.MarshalPKCS8PrivateKey(key)
+}
+
+func marshalPKCS1PrivateKey(key *rsa.PrivateKey) []byte {
+	return x509.MarshalPKCS1PrivateKey(key)
+}
+
+func pemEncode(data []byte, blockType string) string {
+	block := &pem.Block{
+		Type:  blockType,
+		Bytes: data,
+	}
+	return string(pem.EncodeToMemory(block))
+}

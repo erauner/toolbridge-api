@@ -8,6 +8,70 @@ ToolBridge uses authentication via:
 1. **JWT tokens** for user identity validation (RS256 via OIDC JWKS or HS256 for testing)
 2. **WorkOS API** for tenant authorization validation (organization membership checks)
 
+## Token Architecture
+
+ToolBridge handles two distinct types of JWT tokens. Understanding this separation is important for configuration and troubleshooting.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            TOKEN FLOW DIAGRAM                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐     ┌─────────────────┐     ┌──────────────────────────┐  │
+│  │   WorkOS     │     │   MCP Server    │     │     ToolBridge API       │  │
+│  │   AuthKit    │     │   (Fly.io)      │     │     (Kubernetes)         │  │
+│  └──────┬───────┘     └────────┬────────┘     └────────────┬─────────────┘  │
+│         │                      │                           │                 │
+│         │  1. User Login       │                           │                 │
+│         │◄─────────────────────┤                           │                 │
+│         │                      │                           │                 │
+│         │  2. WorkOS Token     │                           │                 │
+│         │  (RS256, WorkOS key) │                           │                 │
+│         ├─────────────────────►│                           │                 │
+│         │                      │                           │                 │
+│         │                      │  3. Token Exchange        │                 │
+│         │                      │  POST /auth/token-exchange│                 │
+│         │                      ├──────────────────────────►│                 │
+│         │                      │                           │                 │
+│         │                      │                    ┌──────┴──────┐         │
+│         │                      │                    │ Validate    │         │
+│         │                      │                    │ WorkOS token│         │
+│         │                      │                    │ via JWKS    │         │
+│         │                      │                    └──────┬──────┘         │
+│         │                      │                           │                 │
+│         │                      │  4. Backend Token         │                 │
+│         │                      │  (RS256, OUR key)         │                 │
+│         │                      │◄──────────────────────────┤                 │
+│         │                      │                           │                 │
+│         │                      │  5. API calls with        │                 │
+│         │                      │  Backend Token            │                 │
+│         │                      ├──────────────────────────►│                 │
+│         │                      │                           │                 │
+│         │                      │                    ┌──────┴──────┐         │
+│         │                      │                    │ Validate    │         │
+│         │                      │                    │ Backend token│        │
+│         │                      │                    │ via OUR key │         │
+│         │                      │                    └─────────────┘         │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Token Types
+
+| Token Type | Issuer | Signed With | Validated With | Purpose |
+|------------|--------|-------------|----------------|---------|
+| **WorkOS Token** | WorkOS AuthKit | WorkOS RSA key | WorkOS JWKS endpoint | Initial user authentication |
+| **Backend Token** | `toolbridge-api` | Our RSA key (or HS256) | Our public key | Internal API calls after exchange |
+
+### Key Points
+
+1. **No WorkOS changes needed** for backend token configuration - WorkOS tokens and backend tokens are completely separate
+2. **Backend tokens** are issued by `/auth/token-exchange` after validating an incoming WorkOS token
+3. **The `kid` header** distinguishes token types during validation:
+   - `kid` matching `JWT_BACKEND_KEY_ID` → validate with backend public key
+   - Any other `kid` → validate via WorkOS JWKS endpoint
+4. **RS256 backend signing is optional** - falls back to HS256 if not configured
+
 ## Kubernetes Deployment (Go API + PostgreSQL)
 
 ### Required Secrets
@@ -27,8 +91,19 @@ stringData:
   password: <generated-postgres-password>
   database-url: postgres://toolbridge:<password>@toolbridge-api-postgres-rw.toolbridge.svc.cluster.local:5432/toolbridge?sslmode=require
 
-  # JWT configuration (HS256 for backend tokens, OIDC RS256 for production)
-  jwt-secret: <generated-hs256-secret>  # Required for backend token signing
+  # JWT configuration
+  # - HS256: required for legacy/backend tokens and dev/test (defense-in-depth)
+  # - RS256: optional for backend tokens (recommended for multi-service deployments)
+  jwt-secret: <generated-hs256-secret>  # Required (defense-in-depth & legacy support)
+
+  # Optional: RS256 backend token signing (recommended for production multi-service deployments)
+  # When configured, /auth/token-exchange issues RS256 tokens with kid=jwt-backend-key-id
+  # Validators use the embedded public key (no external JWKS required for backend tokens)
+  jwt-backend-rs256-private-key: |-
+    -----BEGIN PRIVATE KEY-----
+    ...
+    -----END PRIVATE KEY-----
+  jwt-backend-key-id: "toolbridge-backend-1"
 
   # WorkOS API key for tenant authorization (multi-tenant mode)
   workos-api-key: <your-workos-api-key>  # Optional - required for B2B tenant validation
@@ -40,8 +115,15 @@ stringData:
 # PostgreSQL password
 openssl rand -base64 32
 
-# JWT HS256 secret (required for backend token signing)
+# JWT HS256 secret (required for defense-in-depth & legacy support)
 openssl rand -base64 32
+
+# RS256 backend key pair (optional - recommended for production multi-service)
+# Generate a 2048-bit RSA key pair:
+openssl genrsa -out backend-private.pem 2048
+openssl rsa -in backend-private.pem -pubout -out backend-public.pem
+# Use backend-private.pem content for jwt-backend-rs256-private-key
+# Distribute backend-public.pem to downstream services for token validation
 ```
 
 ### Managing K8s Secrets
@@ -135,6 +217,11 @@ HTTP_ADDR=:8080
 
 # Default tenant ID for B2C users
 DEFAULT_TENANT_ID=tenant_thinkpen_b2c
+
+# Optional: RS256 backend token signing
+# If set, JWT_BACKEND_KEY_ID must also be provided
+# JWT_BACKEND_RS256_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+# JWT_BACKEND_KEY_ID="toolbridge-backend-1"
 ```
 
 ### Python MCP Service (mcp/.env)
@@ -157,7 +244,8 @@ TOOLBRIDGE_PORT=8001
 
 ### When to Rotate
 
-- **JWT HS256 secret:** Every 90 days (if using HS256)
+- **JWT HS256 secret:** Every 90 days (if using HS256 for backend tokens)
+- **JWT RS256 backend key:** Every 180 days (if using RS256 for backend tokens)
 - **PostgreSQL password:** Every 180 days or on suspected compromise
 - **WorkOS API key:** On suspected compromise (rotate via WorkOS dashboard)
 
@@ -187,7 +275,7 @@ kubectl rollout restart deployment/toolbridge-api -n toolbridge
 
 #### 2. Rotate JWT HS256 Secret (if using)
 
-**Note:** Invalidates all existing tokens. Users must re-authenticate.
+**Note:** Invalidates all existing HS256 tokens. Users must re-authenticate.
 
 ```bash
 # Step 1: Generate new secret
@@ -200,10 +288,32 @@ sops toolbridge-secret.sops.yaml
 # Step 3: Wait for deployment
 kubectl rollout status deployment/toolbridge-api -n toolbridge
 
-# Step 4: Notify users to re-authenticate (all tokens now invalid)
+# Step 4: Notify users to re-authenticate (all HS256 tokens now invalid)
 ```
 
-#### 3. Rotate WorkOS API Key
+#### 3. Rotate JWT RS256 Backend Key (if using)
+
+**Note:** Invalidates all existing RS256 backend tokens. MCP clients must re-exchange tokens.
+
+```bash
+# Step 1: Generate new RSA key pair
+openssl genrsa -out backend-private-new.pem 2048
+openssl rsa -in backend-private-new.pem -pubout -out backend-public-new.pem
+
+# Step 2: Update K8s secret with new key and NEW key ID (to distinguish from old tokens)
+sops toolbridge-secret.sops.yaml
+# Update jwt-backend-rs256-private-key with content of backend-private-new.pem
+# Update jwt-backend-key-id to a new value (e.g., "toolbridge-backend-2")
+# Commit, push
+
+# Step 3: Wait for deployment
+kubectl rollout status deployment/toolbridge-api -n toolbridge
+
+# Step 4: Distribute new public key to downstream services (if any)
+# MCP clients will automatically get new tokens via token exchange
+```
+
+#### 4. Rotate WorkOS API Key
 
 ```bash
 # Step 1: Generate new API key in WorkOS dashboard
