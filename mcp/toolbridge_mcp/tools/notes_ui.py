@@ -56,8 +56,12 @@ async def list_notes_ui(
         include_deleted=include_deleted,
     )
 
-    # Generate HTML using templates
-    html = notes_templates.render_notes_list_html(notes_response.items)
+    # Generate HTML using templates (pass context for action button tool calls)
+    html = notes_templates.render_notes_list_html(
+        notes_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+    )
 
     # Human-readable summary (shown even if host ignores UIResource)
     count = len(notes_response.items)
@@ -130,6 +134,8 @@ async def show_note_ui(
 @mcp.tool()
 async def delete_note_ui(
     uid: Annotated[str, Field(description="UID of the note to delete")],
+    limit: Annotated[int, Field(ge=1, le=100, description="Max notes to display in refreshed list")] = 20,
+    include_deleted: Annotated[bool, Field(description="Include deleted notes in refreshed list")] = False,
 ) -> List[Union[TextContent, EmbeddedResource]]:
     """
     Delete a note and return updated UI (MCP-UI).
@@ -138,22 +144,31 @@ async def delete_note_ui(
 
     Args:
         uid: Unique identifier of the note to delete
+        limit: Maximum notes to display in refreshed list (preserves list context)
+        include_deleted: Whether to include deleted notes (preserves list context)
 
     Returns:
         List containing TextContent (summary) and UIResource (updated HTML list)
 
     Examples:
         >>> await delete_note_ui("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
+
+        # Delete with custom list context
+        >>> await delete_note_ui("c1d9b7dc-...", limit=50, include_deleted=True)
     """
-    logger.info(f"Deleting note UI: uid={uid}")
+    logger.info(f"Deleting note UI: uid={uid}, limit={limit}, include_deleted={include_deleted}")
 
     # Perform the delete using the underlying tool
     deleted_note: Note = await delete_note(uid=uid)
     note_title = deleted_note.payload.get("title", "Note")
 
-    # Fetch updated notes list and render UI
-    notes_response: NotesListResponse = await list_notes(limit=20)
-    html = notes_templates.render_notes_list_html(notes_response.items)
+    # Fetch updated notes list with preserved context and render UI
+    notes_response: NotesListResponse = await list_notes(limit=limit, include_deleted=include_deleted)
+    html = notes_templates.render_notes_list_html(
+        notes_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+    )
 
     summary = f"🗑️ Deleted '{note_title}' - {len(notes_response.items)} note(s) remaining"
 

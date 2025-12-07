@@ -57,8 +57,12 @@ async def list_tasks_ui(
         include_deleted=include_deleted,
     )
 
-    # Generate HTML using templates
-    html = tasks_templates.render_tasks_list_html(tasks_response.items)
+    # Generate HTML using templates (pass context for action button tool calls)
+    html = tasks_templates.render_tasks_list_html(
+        tasks_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+    )
 
     # Human-readable summary (shown even if host ignores UIResource)
     count = len(tasks_response.items)
@@ -141,6 +145,8 @@ async def show_task_ui(
 async def process_task_ui(
     uid: Annotated[str, Field(description="UID of the task to process")],
     action: Annotated[str, Field(description="Action to perform (start, complete, reopen)")],
+    limit: Annotated[int, Field(ge=1, le=100, description="Max tasks to display in refreshed list")] = 20,
+    include_deleted: Annotated[bool, Field(description="Include deleted tasks in refreshed list")] = False,
 ) -> List[Union[TextContent, EmbeddedResource]]:
     """
     Process a task action and return updated UI (MCP-UI).
@@ -151,6 +157,8 @@ async def process_task_ui(
     Args:
         uid: Unique identifier of the task
         action: Action to perform (start, complete, reopen)
+        limit: Maximum tasks to display in refreshed list (preserves list context)
+        include_deleted: Whether to include deleted tasks (preserves list context)
 
     Returns:
         List containing TextContent (summary) and UIResource (updated HTML list)
@@ -159,18 +167,22 @@ async def process_task_ui(
         # Complete a task
         >>> await process_task_ui("c1d9b7dc-...", "complete")
 
-        # Start a task
-        >>> await process_task_ui("c1d9b7dc-...", "start")
+        # Start a task with custom list context
+        >>> await process_task_ui("c1d9b7dc-...", "start", limit=50)
     """
-    logger.info(f"Processing task UI: uid={uid}, action={action}")
+    logger.info(f"Processing task UI: uid={uid}, action={action}, limit={limit}, include_deleted={include_deleted}")
 
     # Perform the action using the underlying tool
     updated_task: Task = await process_task(uid=uid, action=action)
     task_title = updated_task.payload.get("title", "Task")
 
-    # Fetch updated task list and render UI
-    tasks_response: TasksListResponse = await list_tasks(limit=20)
-    html = tasks_templates.render_tasks_list_html(tasks_response.items)
+    # Fetch updated task list with preserved context and render UI
+    tasks_response: TasksListResponse = await list_tasks(limit=limit, include_deleted=include_deleted)
+    html = tasks_templates.render_tasks_list_html(
+        tasks_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+    )
 
     action_emoji = {"complete": "✅", "start": "🔄", "reopen": "↩️"}.get(action, "✓")
     summary = f"{action_emoji} {action.capitalize()}d '{task_title}' - {len(tasks_response.items)} task(s) total"
@@ -185,6 +197,8 @@ async def process_task_ui(
 @mcp.tool()
 async def archive_task_ui(
     uid: Annotated[str, Field(description="UID of the task to archive")],
+    limit: Annotated[int, Field(ge=1, le=100, description="Max tasks to display in refreshed list")] = 20,
+    include_deleted: Annotated[bool, Field(description="Include deleted tasks in refreshed list")] = False,
 ) -> List[Union[TextContent, EmbeddedResource]]:
     """
     Archive a task and return updated UI (MCP-UI).
@@ -193,22 +207,31 @@ async def archive_task_ui(
 
     Args:
         uid: Unique identifier of the task to archive
+        limit: Maximum tasks to display in refreshed list (preserves list context)
+        include_deleted: Whether to include deleted tasks (preserves list context)
 
     Returns:
         List containing TextContent (summary) and UIResource (updated HTML list)
 
     Examples:
         >>> await archive_task_ui("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
+
+        # Archive with custom list context
+        >>> await archive_task_ui("c1d9b7dc-...", limit=50, include_deleted=True)
     """
-    logger.info(f"Archiving task UI: uid={uid}")
+    logger.info(f"Archiving task UI: uid={uid}, limit={limit}, include_deleted={include_deleted}")
 
     # Perform the archive using the underlying tool
     archived_task: Task = await archive_task(uid=uid)
     task_title = archived_task.payload.get("title", "Task")
 
-    # Fetch updated task list and render UI
-    tasks_response: TasksListResponse = await list_tasks(limit=20)
-    html = tasks_templates.render_tasks_list_html(tasks_response.items)
+    # Fetch updated task list with preserved context and render UI
+    tasks_response: TasksListResponse = await list_tasks(limit=limit, include_deleted=include_deleted)
+    html = tasks_templates.render_tasks_list_html(
+        tasks_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+    )
 
     summary = f"📦 Archived '{task_title}' - {len(tasks_response.items)} task(s) remaining"
 

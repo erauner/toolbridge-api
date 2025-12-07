@@ -15,12 +15,18 @@ if TYPE_CHECKING:
     from toolbridge_mcp.tools.notes import Note
 
 
-def render_notes_list_html(notes: Iterable["Note"]) -> str:
+def render_notes_list_html(
+    notes: Iterable["Note"],
+    limit: int = 20,
+    include_deleted: bool = False,
+) -> str:
     """
     Render an HTML list of notes.
 
     Args:
         notes: Iterable of Note objects to display
+        limit: Current list limit (passed to action tools to preserve context)
+        include_deleted: Current include_deleted setting (passed to action tools)
 
     Returns:
         HTML string with a styled list of notes
@@ -178,6 +184,12 @@ def render_notes_list_html(notes: Iterable["Note"]) -> str:
         </ul>
 
         <script>
+            // List context for preserving state across action tool calls
+            const LIST_CONTEXT = {{
+                limit: {limit},
+                include_deleted: {'true' if include_deleted else 'false'}
+            }};
+
             // MCP-UI action helper - sends tool calls to the host
             function callTool(toolName, params) {{
                 window.parent.postMessage({{
@@ -196,7 +208,11 @@ def render_notes_list_html(notes: Iterable["Note"]) -> str:
 
             // Delete a note - uses UI tool for interactive response
             function deleteNote(noteUid) {{
-                callTool('delete_note_ui', {{ uid: noteUid }});
+                callTool('delete_note_ui', {{
+                    uid: noteUid,
+                    limit: LIST_CONTEXT.limit,
+                    include_deleted: LIST_CONTEXT.include_deleted
+                }});
             }}
         </script>
     </body>
