@@ -73,9 +73,9 @@ def render_tasks_list_html(
         if len(desc_raw) > 80:
             description += "..."
         uid = escape(task.uid)
-        status = task.payload.get("status", "todo")
-        priority = task.payload.get("priority", "")
-        due_date = task.payload.get("dueDate", "")
+        status = task.payload.get("status") or "todo"
+        priority = task.payload.get("priority") or ""
+        due_date = task.payload.get("dueDate") or ""
 
         status_icon = _get_status_icon(status)
         priority_class = _get_priority_class(priority)
