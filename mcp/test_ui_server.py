@@ -110,7 +110,10 @@ async def list_notes_ui(limit: int = 20) -> List[Union[TextContent, EmbeddedReso
 
 
 @mcp.tool()
-async def show_note_ui(uid: str) -> List[Union[TextContent, EmbeddedResource]]:
+async def show_note_ui(
+    uid: str,
+    include_deleted: bool = False,
+) -> List[Union[TextContent, EmbeddedResource]]:
     """Show a single note with rich HTML rendering for MCP-UI hosts.
 
     Returns both text fallback and interactive HTML UI.
@@ -143,7 +146,10 @@ async def list_tasks_ui(limit: int = 20) -> List[Union[TextContent, EmbeddedReso
 
 
 @mcp.tool()
-async def show_task_ui(uid: str) -> List[Union[TextContent, EmbeddedResource]]:
+async def show_task_ui(
+    uid: str,
+    include_deleted: bool = False,
+) -> List[Union[TextContent, EmbeddedResource]]:
     """Show a single task with rich HTML rendering for MCP-UI hosts.
 
     Returns both text fallback and interactive HTML UI.
