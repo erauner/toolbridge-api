@@ -140,11 +140,16 @@ async def list_notes_ui(
             ui_format=fmt.value,
         )
 
+    # Build informative text summary with actual note titles
+    note_titles = [n.payload.get("title", "Untitled") for n in notes]
+    titles_text = ", ".join(note_titles) if note_titles else "none"
+    text_summary = f"Displaying {len(notes)} note(s): {titles_text}"
+
     return build_ui_with_text_and_dom(
         uri="ui://toolbridge/notes/list",
         html=html,
         remote_dom=remote_dom,
-        text_summary=f"Displaying {len(notes)} note(s)",
+        text_summary=text_summary,
         ui_format=fmt,
     )
 
@@ -218,11 +223,16 @@ async def list_tasks_ui(
             ui_format=fmt.value,
         )
 
+    # Build informative text summary with actual task titles
+    task_titles = [t.payload.get("title", "Untitled") for t in tasks]
+    titles_text = ", ".join(task_titles) if task_titles else "none"
+    text_summary = f"Displaying {len(tasks)} task(s): {titles_text}"
+
     return build_ui_with_text_and_dom(
         uri="ui://toolbridge/tasks/list",
         html=html,
         remote_dom=remote_dom,
-        text_summary=f"Displaying {len(tasks)} task(s)",
+        text_summary=text_summary,
         ui_format=fmt,
     )
 
