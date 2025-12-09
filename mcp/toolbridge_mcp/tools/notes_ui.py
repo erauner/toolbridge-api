@@ -16,6 +16,16 @@ from toolbridge_mcp.tools.notes import list_notes, get_note, delete_note, Note, 
 from toolbridge_mcp.ui.resources import build_ui_with_text_and_dom, UIContent, UIFormat
 from toolbridge_mcp.ui.templates import notes as notes_templates
 from toolbridge_mcp.ui.remote_dom import notes as notes_dom_templates
+from toolbridge_mcp.ui.remote_dom import note_edits as note_edits_dom
+from toolbridge_mcp.ui.remote_dom.design import Layout, get_chat_metadata
+from toolbridge_mcp.note_edit_sessions import (
+    create_session,
+    get_session,
+    discard_session,
+)
+from toolbridge_mcp.utils.diff import compute_line_diff
+from fastmcp.server.dependencies import get_access_token
+import httpx
 
 
 @mcp.tool()
@@ -247,4 +257,302 @@ async def delete_note_ui(
         remote_dom=remote_dom,
         text_summary=summary,
         ui_format=UIFormat(ui_format),
+    )
+
+
+@mcp.tool()
+async def edit_note_ui(
+    uid: Annotated[str, Field(description="UID of the note to edit")],
+    new_content: Annotated[
+        str,
+        Field(description="Proposed full rewritten note content (markdown)"),
+    ],
+    summary: Annotated[
+        str | None,
+        Field(description="Short human summary of the change, optional"),
+    ] = None,
+    ui_format: Annotated[
+        str,
+        Field(
+            description="UI format: 'remote-dom' (default) or 'both'",
+            pattern="^(remote-dom|both)$",
+        ),
+    ] = "remote-dom",
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """
+    Propose changes to a note and display a diff preview (MCP-UI).
+
+    This tool creates an edit session with the proposed changes and returns
+    a visual diff preview with Accept/Discard buttons. The user must click
+    Accept to apply the changes via the apply_note_edit tool.
+
+    Use this tool when the user asks you to rewrite, refactor, or modify
+    the content of a note in Editor Chat mode.
+
+    Args:
+        uid: Unique identifier of the note (UUID format)
+        new_content: The complete rewritten note content with changes applied
+        summary: Optional short human-readable description of what changed
+        ui_format: UI format to return - 'remote-dom' (default) or 'both'
+
+    Returns:
+        List containing TextContent (summary) and Remote DOM diff preview
+        with Accept/Discard action buttons
+
+    Examples:
+        # Propose a rewrite with summary
+        >>> await edit_note_ui(
+        ...     uid="c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f",
+        ...     new_content="# Updated Title\\n\\nNew paragraph content...",
+        ...     summary="Converted to heading format and simplified content"
+        ... )
+    """
+    logger.info(f"Creating note edit session: uid={uid}, ui_format={ui_format}")
+
+    # Get user ID for session tracking (optional)
+    user_id: str | None = None
+    try:
+        token = get_access_token()
+        user_id = token.claims.get("sub")
+    except Exception:
+        pass
+
+    # Fetch the current note
+    note: Note = await get_note(uid=uid, include_deleted=False)
+    original_content = (note.payload.get("content") or "").strip()
+    title = (note.payload.get("title") or "Untitled note").strip()
+
+    # Create edit session
+    session = create_session(
+        note=note,
+        proposed_content=new_content,
+        summary=summary,
+        user_id=user_id,
+    )
+
+    # Compute diff hunks
+    diff_hunks = compute_line_diff(original_content, new_content)
+
+    # Render Remote DOM diff preview
+    remote_dom = note_edits_dom.render_note_edit_diff_dom(
+        note=note,
+        diff_hunks=diff_hunks,
+        edit_id=session.id,
+        summary=summary,
+    )
+
+    # Build fallback text summary
+    text_summary = summary or f"Proposed changes to '{title}' (v{note.version})"
+
+    # Unique URI per session to avoid dedup collisions
+    ui_uri = f"ui://toolbridge/notes/{uid}/edit/{session.id}"
+
+    # Chat framing metadata
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,  # Remote DOM only for now
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=UIFormat(ui_format),
+        remote_dom_ui_metadata=ui_metadata,
+        remote_dom_metadata={
+            "note_uid": uid,
+            "edit_id": session.id,
+        },
+    )
+
+
+@mcp.tool()
+async def apply_note_edit(
+    edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
+    ui_format: Annotated[
+        str,
+        Field(
+            description="UI format: 'remote-dom' (default) or 'both'",
+            pattern="^(remote-dom|both)$",
+        ),
+    ] = "remote-dom",
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """
+    Apply a pending note edit session.
+
+    This tool is called when the user clicks "Apply changes" on a diff preview.
+    It performs optimistic concurrency checking and updates the note via the REST API.
+
+    **Important**: This tool should NOT be called by the LLM directly. It is invoked
+    only by the Flutter UI when the user clicks the Accept button.
+
+    Args:
+        edit_id: The edit session ID from a previous edit_note_ui call
+        ui_format: UI format to return - 'remote-dom' (default) or 'both'
+
+    Returns:
+        List containing TextContent (summary) and Remote DOM confirmation
+
+    Raises:
+        ValueError: If session not found or expired
+        httpx.HTTPStatusError: 409 if note was modified concurrently
+    """
+    logger.info(f"Applying note edit: edit_id={edit_id}")
+
+    # Retrieve session
+    session = get_session(edit_id)
+    if session is None:
+        error_msg = f"Edit session '{edit_id}' not found or expired"
+        logger.warning(error_msg)
+        
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error_msg,
+            ui_format=UIFormat(ui_format),
+        )
+
+    try:
+        # Fetch latest note to check version
+        current = await get_note(uid=session.note_uid, include_deleted=False)
+
+        # Version conflict check
+        if current.version != session.base_version:
+            error_msg = (
+                f"Note '{session.title}' was modified since the edit was proposed. "
+                f"Expected v{session.base_version}, found v{current.version}. "
+                "Please re-run edit_note_ui to create a fresh diff."
+            )
+            logger.warning(f"Version conflict: {error_msg}")
+            
+            # Discard the stale session
+            discard_session(edit_id)
+            
+            remote_dom = note_edits_dom.render_note_edit_error_dom(
+                error_msg, note_uid=session.note_uid
+            )
+            return build_ui_with_text_and_dom(
+                uri=f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}/conflict",
+                html=None,
+                remote_dom=remote_dom,
+                text_summary=error_msg,
+                ui_format=UIFormat(ui_format),
+            )
+
+        # Import update_note here to avoid circular imports
+        from toolbridge_mcp.tools.notes import update_note
+
+        # Prepare additional fields (preserve tags, etc.)
+        additional_fields = {
+            k: v for k, v in current.payload.items()
+            if k not in ("title", "content")
+        }
+
+        # Apply the update with optimistic locking
+        updated = await update_note(
+            uid=session.note_uid,
+            title=current.payload.get("title") or "",
+            content=session.proposed_content,
+            if_match=session.base_version,
+            additional_fields=additional_fields if additional_fields else None,
+        )
+
+        # Discard the session after successful apply
+        discard_session(edit_id)
+
+        # Build success response
+        text_summary = (
+            f"Applied note edit to '{session.title}'. "
+            f"New version: v{updated.version}."
+        )
+
+        remote_dom = note_edits_dom.render_note_edit_success_dom(updated)
+        ui_uri = f"ui://toolbridge/notes/{updated.uid}"
+        ui_metadata = get_chat_metadata(
+            frame_style=Layout.CHAT_FRAME_CARD,
+            max_width=Layout.MAX_WIDTH_DETAIL,
+        )
+
+        return build_ui_with_text_and_dom(
+            uri=ui_uri,
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=text_summary,
+            ui_format=UIFormat(ui_format),
+            remote_dom_ui_metadata=ui_metadata,
+        )
+
+    except httpx.HTTPStatusError as e:
+        error_msg = f"Failed to update note: {e.response.status_code} - {e.response.text}"
+        logger.error(f"HTTP error applying note edit: {error_msg}")
+        
+        remote_dom = note_edits_dom.render_note_edit_error_dom(
+            error_msg, note_uid=session.note_uid
+        )
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error_msg,
+            ui_format=UIFormat(ui_format),
+        )
+
+    except Exception as e:
+        error_msg = f"Unexpected error applying note edit: {str(e)}"
+        logger.exception(error_msg)
+        
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error_msg,
+            ui_format=UIFormat(ui_format),
+        )
+
+
+@mcp.tool()
+async def discard_note_edit(
+    edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """
+    Discard a pending note edit session.
+
+    This tool is called when the user clicks "Discard" on a diff preview.
+    It removes the pending edit session without applying any changes.
+
+    **Important**: This tool should NOT be called by the LLM directly. It is invoked
+    only by the Flutter UI when the user clicks the Discard button.
+
+    Args:
+        edit_id: The edit session ID from a previous edit_note_ui call
+
+    Returns:
+        List containing TextContent (summary) and optional Remote DOM confirmation
+    """
+    logger.info(f"Discarding note edit: edit_id={edit_id}")
+
+    session = discard_session(edit_id)
+    
+    if session is None:
+        # Already discarded or expired
+        title = "note"
+        text_summary = f"Edit session '{edit_id}' was already discarded or expired."
+    else:
+        title = session.title
+        text_summary = f"Discarded pending edit session for '{title}'."
+
+    # Build confirmation UI
+    remote_dom = note_edits_dom.render_note_edit_discarded_dom(title)
+    ui_uri = f"ui://toolbridge/notes/edit/{edit_id}/discarded"
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=UIFormat.REMOTE_DOM,
     )
