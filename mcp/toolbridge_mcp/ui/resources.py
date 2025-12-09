@@ -51,32 +51,48 @@ def _build_html_resource(uri: str, html: str) -> EmbeddedResource:
     return ui_resource
 
 
-def _build_remote_dom_resource(uri: str, dom: Dict[str, Any]) -> EmbeddedResource:
+def _build_remote_dom_resource(
+    uri: str,
+    dom: Dict[str, Any],
+    ui_metadata: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> EmbeddedResource:
     """
     Build a Remote DOM UIResource.
 
     Args:
         uri: Stable ui:// URI for caching and identity
         dom: Remote DOM tree (root node dict) compatible with RemoteDomNode.fromJson
+        ui_metadata: Optional additional uiMetadata fields (e.g., chat.frameStyle, chat.maxWidth)
+        metadata: Optional additional metadata fields
 
     Returns:
         EmbeddedResource with application/vnd.mcp-ui.remote-dom mimeType
     """
     dom_json = json.dumps(dom, separators=(",", ":"))
 
-    # Include same metadata fields as HTML resources for host compatibility
+    # Base uiMetadata
+    base_ui_metadata: Dict[str, Any] = {
+        "preferred-frame-size": ["100%", "100%"],
+    }
+    if ui_metadata:
+        base_ui_metadata.update(ui_metadata)
+
+    # Base metadata
+    base_metadata: Dict[str, Any] = {
+        "ai.nanobot.meta/workspace": True,
+    }
+    if metadata:
+        base_metadata.update(metadata)
+
     return EmbeddedResource(
         type="resource",
         resource={
             "uri": uri,
             "mimeType": "application/vnd.mcp-ui.remote-dom",
             "text": dom_json,
-            "uiMetadata": {
-                "preferred-frame-size": ["100%", "100%"],
-            },
-            "metadata": {
-                "ai.nanobot.meta/workspace": True,
-            },
+            "uiMetadata": base_ui_metadata,
+            "metadata": base_metadata,
             "encoding": "text",
         },
     )
@@ -128,6 +144,8 @@ def build_ui_with_text_and_dom(
     remote_dom: Optional[Dict[str, Any]],
     text_summary: str,
     ui_format: UIFormat,
+    remote_dom_ui_metadata: Optional[Dict[str, Any]] = None,
+    remote_dom_metadata: Optional[Dict[str, Any]] = None,
 ) -> UIContent:
     """
     Build UI content with text + HTML and/or Remote DOM, depending on ui_format.
@@ -138,6 +156,9 @@ def build_ui_with_text_and_dom(
         remote_dom: Remote DOM tree dict (required when ui_format is REMOTE_DOM or BOTH)
         text_summary: Human-readable explanation for non-UI hosts
         ui_format: Which format(s) to include in the response
+        remote_dom_ui_metadata: Optional uiMetadata for Remote DOM resource
+            (e.g., {"chat.frameStyle": "card", "chat.maxWidth": 640})
+        remote_dom_metadata: Optional metadata for Remote DOM resource
 
     Returns:
         List of content blocks:
@@ -155,6 +176,7 @@ def build_ui_with_text_and_dom(
         ...     remote_dom={"type": "column", "children": [...]},
         ...     text_summary="Showing 5 notes",
         ...     ui_format=UIFormat.BOTH,
+        ...     remote_dom_ui_metadata={"chat.frameStyle": "card", "chat.maxWidth": 640},
         ... )
     """
     content: UIContent = [
@@ -169,6 +191,11 @@ def build_ui_with_text_and_dom(
     if ui_format in (UIFormat.REMOTE_DOM, UIFormat.BOTH):
         if remote_dom is None:
             raise ValueError("remote_dom must be provided for ui_format=remote-dom/both")
-        content.append(_build_remote_dom_resource(uri, remote_dom))
+        content.append(_build_remote_dom_resource(
+            uri,
+            remote_dom,
+            ui_metadata=remote_dom_ui_metadata,
+            metadata=remote_dom_metadata,
+        ))
 
     return content

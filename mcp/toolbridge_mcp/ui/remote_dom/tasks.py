@@ -1,12 +1,44 @@
 """Remote DOM templates for Tasks UI.
 
 Builds Remote DOM tree structures for native Flutter rendering via RemoteDomView.
+Uses design tokens for consistent styling with native ToolBridge UI.
 """
 
 from typing import Iterable, TYPE_CHECKING, Dict, Any, List
 
+from toolbridge_mcp.ui.remote_dom.design import (
+    TextStyle,
+    Spacing,
+    Layout,
+    Color,
+    Icon,
+    ChipVariant,
+    ButtonVariant,
+    chip_node,
+    wrap_node,
+    text_node,
+)
+
 if TYPE_CHECKING:
     from toolbridge_mcp.tools.tasks import Task
+
+
+def _get_status_chip(status: str) -> Dict[str, Any]:
+    """Get a chip node for task status with appropriate styling."""
+    status_label = status.replace("_", " ").title()
+    
+    # Use different chip variants based on status
+    if status == "done":
+        return chip_node(status_label, ChipVariant.FILLED, Icon.CHECK_CIRCLE)
+    elif status == "in_progress":
+        return chip_node(status_label, ChipVariant.OUTLINED, Icon.PENDING)
+    else:
+        return chip_node(status_label, ChipVariant.ASSIST)
+
+
+def _get_priority_chip(priority: str) -> Dict[str, Any]:
+    """Get a chip node for task priority."""
+    return chip_node(f"Priority: {priority}", ChipVariant.OUTLINED, Icon.FLAG)
 
 
 def render_tasks_list_dom(
@@ -32,20 +64,17 @@ def render_tasks_list_dom(
     header: List[Dict[str, Any]] = [
         {
             "type": "row",
-            "props": {"gap": 8, "crossAxisAlignment": "center"},
+            "props": {"gap": Spacing.GAP_SM, "crossAxisAlignment": "center"},
             "children": [
-                {"type": "icon", "props": {"icon": "task", "size": 24, "color": "primary"}},
-                {"type": "text", "props": {"text": "Tasks", "style": "headlineMedium"}},
+                {"type": "icon", "props": {"icon": Icon.TASK, "size": 24, "color": Color.PRIMARY}},
+                text_node("Tasks", TextStyle.HEADLINE_MEDIUM),
             ],
         },
-        {
-            "type": "text",
-            "props": {
-                "text": f"Showing {len(tasks_list)} task(s)",
-                "style": "bodySmall",
-                "color": "onSurface",
-            },
-        },
+        text_node(
+            f"Showing {len(tasks_list)} task(s)",
+            TextStyle.BODY_SMALL,
+            Color.ON_SURFACE,
+        ),
     ]
 
     cards: List[Dict[str, Any]] = []
@@ -57,14 +86,28 @@ def render_tasks_list_dom(
         priority = task.payload.get("priority") or ""
         due_date = task.payload.get("dueDate") or ""
 
-        status_label = status.replace("_", " ").title()
+        # Build card children
+        card_children: List[Dict[str, Any]] = [
+            text_node(title, TextStyle.TITLE_MEDIUM),
+        ]
 
-        meta_text_parts = [f"Status: {status_label}"]
+        # Add description if present
+        if description:
+            card_children.append(
+                text_node(description, TextStyle.BODY_SMALL, max_lines=3, overflow="ellipsis")
+            )
+
+        # Build metadata chips
+        meta_chips: List[Dict[str, Any]] = [_get_status_chip(status)]
+
         if priority:
-            meta_text_parts.append(f"Priority: {priority}")
+            meta_chips.append(_get_priority_chip(priority))
+
         if due_date:
-            meta_text_parts.append(f"Due: {due_date[:10]}")
-        meta_text = " | ".join(meta_text_parts)
+            meta_chips.append(chip_node(f"Due: {due_date[:10]}", ChipVariant.ASSIST, Icon.CALENDAR))
+
+        # Add metadata chips in a wrap layout
+        card_children.append(wrap_node(meta_chips, Spacing.GAP_SM, Spacing.GAP_XS))
 
         # Choose button label based on status
         if status == "done":
@@ -77,7 +120,7 @@ def render_tasks_list_dom(
                     "include_deleted": include_deleted,
                     "ui_format": ui_format,
                 },
-                "icon": "archive",
+                "icon": Icon.ARCHIVE,
             }
         else:
             primary_button = {
@@ -90,78 +133,68 @@ def render_tasks_list_dom(
                     "include_deleted": include_deleted,
                     "ui_format": ui_format,
                 },
-                "icon": "task_alt",
+                "icon": Icon.TASK_ALT,
             }
 
-        cards.append(
+        # Action buttons
+        card_children.append(
             {
-                "type": "card",
-                "props": {"padding": 16},
+                "type": "row",
+                "props": {"gap": Spacing.GAP_SM},
                 "children": [
                     {
-                        "type": "text",
-                        "props": {"text": title, "style": "titleMedium"},
-                    },
-                    {
-                        "type": "text",
+                        "type": "button",
                         "props": {
-                            "text": description,
-                            "style": "bodySmall",
-                            "maxLines": 3,
-                            "overflow": "ellipsis",
+                            "label": "View",
+                            "variant": ButtonVariant.TEXT,
+                            "icon": Icon.VISIBILITY,
+                        },
+                        "action": {
+                            "type": "tool",
+                            "payload": {
+                                "toolName": "show_task_ui",
+                                "params": {
+                                    "uid": task.uid,
+                                    "include_deleted": include_deleted,
+                                    "ui_format": ui_format,
+                                },
+                            },
                         },
                     },
                     {
-                        "type": "text",
-                        "props": {"text": meta_text, "style": "caption"},
-                    },
-                    {
-                        "type": "row",
-                        "props": {"gap": 8},
-                        "children": [
-                            {
-                                "type": "button",
-                                "props": {
-                                    "label": "View",
-                                    "variant": "text",
-                                    "icon": "visibility",
-                                },
-                                "action": {
-                                    "type": "tool",
-                                    "payload": {
-                                        "toolName": "show_task_ui",
-                                        "params": {
-                                            "uid": task.uid,
-                                            "include_deleted": include_deleted,
-                                            "ui_format": ui_format,
-                                        },
-                                    },
-                                },
+                        "type": "button",
+                        "props": {
+                            "label": primary_button["label"],
+                            "variant": ButtonVariant.TEXT,
+                            "icon": primary_button["icon"],
+                        },
+                        "action": {
+                            "type": "tool",
+                            "payload": {
+                                "toolName": primary_button["toolName"],
+                                "params": primary_button["params"],
                             },
-                            {
-                                "type": "button",
-                                "props": {
-                                    "label": primary_button["label"],
-                                    "variant": "text",
-                                    "icon": primary_button["icon"],
-                                },
-                                "action": {
-                                    "type": "tool",
-                                    "payload": {
-                                        "toolName": primary_button["toolName"],
-                                        "params": primary_button["params"],
-                                    },
-                                },
-                            },
-                        ],
+                        },
                     },
                 ],
             }
         )
 
+        cards.append(
+            {
+                "type": "card",
+                "props": {"padding": Spacing.PADDING_CARD},
+                "children": card_children,
+            }
+        )
+
     return {
         "type": "column",
-        "props": {"gap": 12, "padding": 16},
+        "props": {
+            "gap": Spacing.LIST_GAP,
+            "padding": Spacing.PADDING_CONTAINER,
+            "maxWidth": Layout.MAX_WIDTH_LIST,
+        },
         "children": header + cards,
     }
 
@@ -186,84 +219,62 @@ def render_task_detail_dom(
     priority = task.payload.get("priority") or ""
     due_date = task.payload.get("dueDate") or ""
     tags = task.payload.get("tags") or []
-
-    status_label = status.replace("_", " ").title()
-
-    tag_nodes: List[Dict[str, Any]] = [
-        {
-            "type": "container",
-            "props": {
-                "padding": {"left": 8, "right": 8, "top": 4, "bottom": 4},
-                "borderRadius": 16,
-            },
-            "children": [
-                {"type": "text", "props": {"text": str(tag), "style": "labelSmall"}},
-            ],
-        }
-        for tag in tags
-    ]
+    updated_at = task.updated_at
 
     children: List[Dict[str, Any]] = [
+        # Header with icon and title
         {
             "type": "row",
-            "props": {"gap": 8, "crossAxisAlignment": "center"},
+            "props": {"gap": Spacing.GAP_SM, "crossAxisAlignment": "center"},
             "children": [
-                {"type": "icon", "props": {"icon": "task", "size": 24, "color": "primary"}},
-                {"type": "text", "props": {"text": title, "style": "headlineMedium"}},
+                {"type": "icon", "props": {"icon": Icon.TASK, "size": 24, "color": Color.PRIMARY}},
+                text_node(title, TextStyle.HEADLINE_MEDIUM),
             ],
-        },
-        {
-            "type": "text",
-            "props": {"text": f"Status: {status_label}", "style": "bodySmall"},
         },
     ]
 
+    # Build status/priority/due date chips
+    meta_chips: List[Dict[str, Any]] = [_get_status_chip(status)]
+
     if priority:
-        children.append(
-            {
-                "type": "text",
-                "props": {"text": f"Priority: {priority}", "style": "bodySmall"},
-            }
-        )
+        meta_chips.append(_get_priority_chip(priority))
 
     if due_date:
-        children.append(
-            {
-                "type": "text",
-                "props": {"text": f"Due: {due_date}", "style": "bodySmall"},
-            }
-        )
+        meta_chips.append(chip_node(f"Due: {due_date}", ChipVariant.ASSIST, Icon.CALENDAR))
 
-    if tag_nodes:
-        children.append(
-            {"type": "row", "props": {"gap": 8}, "children": tag_nodes}
-        )
+    children.append(wrap_node(meta_chips, Spacing.GAP_SM, Spacing.GAP_XS))
 
+    # Add tags as chips in a wrap layout
+    if tags:
+        tag_chips = [chip_node(str(tag), ChipVariant.OUTLINED, Icon.TAG) for tag in tags]
+        children.append(wrap_node(tag_chips, Spacing.GAP_SM, Spacing.GAP_XS))
+
+    # Description card
     children.append(
         {
             "type": "card",
-            "props": {"padding": 16},
+            "props": {"padding": Spacing.PADDING_CARD},
             "children": [
-                {
-                    "type": "text",
-                    "props": {"text": description, "style": "bodyMedium"},
-                }
+                text_node(description, TextStyle.BODY_MEDIUM),
             ],
         }
     )
 
+    # Metadata footer
+    meta_parts = [f"UID: {task.uid}", f"v{task.version}"]
+    if updated_at:
+        meta_parts.append(f"Updated: {str(updated_at)[:19]}")
+    
     children.append(
-        {
-            "type": "text",
-            "props": {
-                "text": f"UID: {task.uid}  |  v{task.version}",
-                "style": "caption",
-            },
-        }
+        text_node("  |  ".join(meta_parts), TextStyle.CAPTION, Color.ON_SURFACE_VARIANT)
     )
 
     return {
         "type": "column",
-        "props": {"gap": 12, "padding": 16},
+        "props": {
+            "gap": Spacing.LIST_GAP,
+            "padding": Spacing.PADDING_CONTAINER,
+            "maxWidth": Layout.MAX_WIDTH_DETAIL,
+        },
         "children": children,
     }
