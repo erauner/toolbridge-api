@@ -228,7 +228,7 @@ def _render_diff_hunk(hunk: "DiffHunk") -> Dict[str, Any] | None:
                 "props": {
                     "padding": 12,
                     "color": Color.ERROR_CONTAINER,
-                    "borderRadius": 8 if not hunk.proposed else {"topLeft": 8, "topRight": 8},
+                    "borderRadius": 8,
                 },
                 "children": [
                     {
@@ -255,7 +255,7 @@ def _render_diff_hunk(hunk: "DiffHunk") -> Dict[str, Any] | None:
                 "props": {
                     "padding": 12,
                     "color": Color.PRIMARY_CONTAINER,
-                    "borderRadius": 8 if not hunk.original else {"bottomLeft": 8, "bottomRight": 8},
+                    "borderRadius": 8,
                 },
                 "children": [
                     {
