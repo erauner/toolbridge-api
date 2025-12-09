@@ -136,15 +136,28 @@ def render_notes_list_dom(
         cards.append(
             {
                 "type": "card",
-                "props": {"padding": Spacing.PADDING_CARD},
-                "children": card_children,
+                "props": {
+                    "padding": 20,  # More generous card padding
+                },
+                "children": [
+                    {
+                        "type": "column",
+                        "props": {
+                            "gap": Spacing.GAP_MD,
+                            "crossAxisAlignment": "stretch",
+                        },
+                        "children": card_children,
+                    }
+                ],
             }
         )
 
-    # Build root props - only include maxWidth if set
+    # Build root props for list view - full width, generous spacing
     root_props = {
-        "gap": Spacing.LIST_GAP,
-        "padding": Spacing.PADDING_CONTAINER,
+        "gap": Spacing.SECTION_GAP,  # Larger gap between cards
+        "padding": 24,  # More generous outer padding
+        "fullWidth": True,
+        "crossAxisAlignment": "stretch",
     }
     if Layout.MAX_WIDTH_LIST is not None:
         root_props["maxWidth"] = Layout.MAX_WIDTH_LIST
