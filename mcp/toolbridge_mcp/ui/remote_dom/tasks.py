@@ -88,13 +88,13 @@ def render_tasks_list_dom(
 
         # Build card children
         card_children: List[Dict[str, Any]] = [
-            text_node(title, TextStyle.TITLE_MEDIUM),
+            text_node(title, TextStyle.TITLE_LARGE),
         ]
 
         # Add description if present
         if description:
             card_children.append(
-                text_node(description, TextStyle.BODY_SMALL, max_lines=3, overflow="ellipsis")
+                text_node(description, TextStyle.BODY_MEDIUM, max_lines=3, overflow="ellipsis")
             )
 
         # Build metadata chips

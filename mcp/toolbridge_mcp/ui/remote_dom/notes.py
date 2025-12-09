@@ -68,8 +68,8 @@ def render_notes_list_dom(
         updated_at = note.updated_at
 
         card_children: List[Dict[str, Any]] = [
-            text_node(title, TextStyle.TITLE_MEDIUM),
-            text_node(preview, TextStyle.BODY_SMALL, max_lines=3, overflow="ellipsis"),
+            text_node(title, TextStyle.TITLE_LARGE),
+            text_node(preview, TextStyle.BODY_MEDIUM, max_lines=3, overflow="ellipsis"),
         ]
 
         # Add metadata line (updated timestamp)
