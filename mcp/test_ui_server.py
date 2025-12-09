@@ -84,8 +84,29 @@ from toolbridge_mcp.ui.templates import notes as notes_templates
 from toolbridge_mcp.ui.templates import tasks as tasks_templates
 from toolbridge_mcp.ui.remote_dom import notes as notes_dom_templates
 from toolbridge_mcp.ui.remote_dom import tasks as tasks_dom_templates
+from toolbridge_mcp.ui.remote_dom import note_edits as note_edits_dom
+from toolbridge_mcp.ui.remote_dom.design import Layout, get_chat_metadata
 from toolbridge_mcp.tools.notes import Note
 from toolbridge_mcp.tools.tasks import Task
+from toolbridge_mcp.utils.diff import compute_line_diff
+from dataclasses import dataclass, field
+from datetime import datetime
+import uuid
+
+# Simple in-memory session storage for edit previews
+@dataclass
+class MockEditSession:
+    """Lightweight edit session for test server."""
+    id: str
+    note_uid: str
+    base_version: int
+    title: str
+    original_content: str
+    proposed_content: str
+    summary: str | None = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+mock_edit_sessions: dict[str, MockEditSession] = {}
 
 
 def get_mock_notes():
@@ -449,6 +470,196 @@ async def archive_task_ui(
     )
 
 
+# ============================================================
+# Note Edit tools (for Editor Chat testing)
+# ============================================================
+
+@mcp.tool()
+async def edit_note_ui(
+    uid: str,
+    new_content: str,
+    summary: str | None = None,
+    ui_format: str = "remote-dom",
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """Propose changes to a note and display a diff preview (MCP-UI).
+
+    Creates an edit session with the proposed changes and returns
+    a visual diff preview with Accept/Discard buttons.
+
+    Args:
+        uid: UID of the note to edit
+        new_content: The complete rewritten note content
+        summary: Optional short description of what changed
+        ui_format: UI format to return - 'remote-dom' (default) or 'both'
+
+    Returns:
+        List containing TextContent (summary) and Remote DOM diff preview
+    """
+    logger.info(f"Creating note edit session: uid={uid}")
+
+    # Find note by uid
+    note_dict = next((n for n in mock_state["notes"] if n["uid"] == uid), None)
+    if not note_dict:
+        note_dict = mock_state["notes"][0]  # Fallback to first note
+
+    note = Note(**note_dict)
+    original_content = (note.payload.get("content") or "").strip()
+    title = (note.payload.get("title") or "Untitled note").strip()
+
+    # Create edit session
+    session_id = uuid.uuid4().hex
+    session = MockEditSession(
+        id=session_id,
+        note_uid=uid,
+        base_version=note.version,
+        title=title,
+        original_content=original_content,
+        proposed_content=new_content,
+        summary=summary,
+    )
+    mock_edit_sessions[session_id] = session
+
+    # Compute diff hunks
+    diff_hunks = compute_line_diff(original_content, new_content)
+
+    # Render Remote DOM diff preview
+    remote_dom = note_edits_dom.render_note_edit_diff_dom(
+        note=note,
+        diff_hunks=diff_hunks,
+        edit_id=session_id,
+        summary=summary,
+    )
+
+    # Build fallback text summary
+    text_summary = summary or f"Proposed changes to '{title}' (v{note.version})"
+
+    ui_uri = f"ui://toolbridge/notes/{uid}/edit/{session_id}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+    fmt = validate_ui_format(ui_format)
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=fmt,
+        remote_dom_ui_metadata=ui_metadata,
+        remote_dom_metadata={
+            "note_uid": uid,
+            "edit_id": session_id,
+        },
+    )
+
+
+@mcp.tool()
+async def apply_note_edit(
+    edit_id: str,
+    ui_format: str = "remote-dom",
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """Apply a pending note edit session.
+
+    Called when the user clicks "Accept" on a diff preview.
+
+    Args:
+        edit_id: The edit session ID from a previous edit_note_ui call
+        ui_format: UI format to return - 'remote-dom' (default) or 'both'
+
+    Returns:
+        List containing TextContent (summary) and Remote DOM confirmation
+    """
+    logger.info(f"Applying note edit: edit_id={edit_id}")
+    fmt = validate_ui_format(ui_format)
+
+    session = mock_edit_sessions.get(edit_id)
+    if session is None:
+        error_msg = f"Edit session '{edit_id}' not found or expired"
+        logger.warning(error_msg)
+
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error_msg,
+            ui_format=fmt,
+        )
+
+    # Apply the change to mock data
+    for note in mock_state["notes"]:
+        if note["uid"] == session.note_uid:
+            note["payload"]["content"] = session.proposed_content
+            note["version"] += 1
+            note["updatedAt"] = datetime.now().isoformat()
+            break
+
+    # Build updated note model
+    note_dict = next((n for n in mock_state["notes"] if n["uid"] == session.note_uid), None)
+    if note_dict:
+        updated_note = Note(**note_dict)
+    else:
+        updated_note = Note(uid=session.note_uid, version=1, updatedAt="", payload={"title": session.title, "content": session.proposed_content})
+
+    # Remove session
+    del mock_edit_sessions[edit_id]
+
+    text_summary = f"Applied note edit to '{session.title}'. New version: v{updated_note.version}."
+    remote_dom = note_edits_dom.render_note_edit_success_dom(updated_note)
+    ui_uri = f"ui://toolbridge/notes/{updated_note.uid}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=fmt,
+        remote_dom_ui_metadata=ui_metadata,
+    )
+
+
+@mcp.tool()
+async def discard_note_edit(
+    edit_id: str,
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """Discard a pending note edit session.
+
+    Called when the user clicks "Discard" on a diff preview.
+
+    Args:
+        edit_id: The edit session ID from a previous edit_note_ui call
+
+    Returns:
+        List containing TextContent (summary) and Remote DOM confirmation
+    """
+    logger.info(f"Discarding note edit: edit_id={edit_id}")
+
+    session = mock_edit_sessions.pop(edit_id, None)
+
+    if session is None:
+        title = "note"
+        text_summary = f"Edit session '{edit_id}' was already discarded or expired."
+    else:
+        title = session.title
+        text_summary = f"Discarded pending edit session for '{title}'."
+
+    remote_dom = note_edits_dom.render_note_edit_discarded_dom(title)
+    ui_uri = f"ui://toolbridge/notes/edit/{edit_id}/discarded"
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=UIFormat.REMOTE_DOM,
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     from starlette.applications import Starlette
@@ -460,13 +671,16 @@ if __name__ == "__main__":
     logger.info("  MCP-UI Test Server (No Authentication)")
     logger.info("=" * 60)
     logger.info("")
-    logger.info("This server has 7 UI tools with mock data for testing MCP-UI.")
+    logger.info("This server has 10 UI tools with mock data for testing MCP-UI.")
     logger.info("Supports both HTML and Remote DOM formats via ui_format parameter.")
     logger.info("")
     logger.info("Tools available:")
     logger.info("  - list_notes_ui: List notes with HTML/Remote DOM rendering")
     logger.info("  - show_note_ui: Show single note with HTML/Remote DOM rendering")
     logger.info("  - delete_note_ui: Delete note and return updated list")
+    logger.info("  - edit_note_ui: Propose note edits with diff preview")
+    logger.info("  - apply_note_edit: Apply a pending note edit")
+    logger.info("  - discard_note_edit: Discard a pending note edit")
     logger.info("  - list_tasks_ui: List tasks with HTML/Remote DOM rendering")
     logger.info("  - show_task_ui: Show single task with HTML/Remote DOM rendering")
     logger.info("  - process_task_ui: Process task action (start/complete/reopen)")
