@@ -190,13 +190,24 @@ def render_notes_list_html(
                 include_deleted: {'true' if include_deleted else 'false'}
             }};
 
-            // MCP-UI action helper - sends tool calls to the host
+            // Host-adaptive action helper - works with both ChatGPT Apps and MCP-UI hosts
+            // ChatGPT Apps: uses window.openai.callTool (Apps SDK)
+            // MCP-UI hosts (ToolBridge, Nanobot, Goose): uses window.parent.postMessage
             function callTool(toolName, params) {{
+                const finalParams = params || {{}};
+
+                // ChatGPT Apps environment (Apps SDK)
+                if (window.openai && typeof window.openai.callTool === 'function') {{
+                    window.openai.callTool(toolName, finalParams);
+                    return;
+                }}
+
+                // MCP-UI hosts (ToolBridge Flutter, Nanobot, Goose, etc.)
                 window.parent.postMessage({{
                     type: 'tool',
                     payload: {{
                         toolName: toolName,
-                        params: params
+                        params: finalParams
                     }}
                 }}, '*');
             }}

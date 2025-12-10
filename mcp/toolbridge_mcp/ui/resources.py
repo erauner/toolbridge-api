@@ -16,6 +16,12 @@ from mcp.types import TextContent, EmbeddedResource
 UIContent = List[Union[TextContent, EmbeddedResource]]
 
 
+# Default MIME type for HTML UI resources.
+# For ChatGPT Apps (Skybridge), this can be set to "text/html+skybridge".
+# Standard MCP-UI hosts use "text/html".
+HTML_MIME_TYPE = "text/html"
+
+
 class UIFormat(str, Enum):
     """Supported UI output formats."""
     HTML = "html"
@@ -32,7 +38,8 @@ def _build_html_resource(uri: str, html: str) -> EmbeddedResource:
         html: HTML markup to render
 
     Returns:
-        EmbeddedResource with text/html mimeType
+        EmbeddedResource with mimeType set to HTML_MIME_TYPE
+        (text/html for standard MCP-UI, text/html+skybridge for ChatGPT Apps)
     """
     ui_resource = create_ui_resource({
         "uri": uri,
@@ -48,6 +55,12 @@ def _build_html_resource(uri: str, html: str) -> EmbeddedResource:
         },
         "encoding": "text",
     })
+
+    # Enforce configured HTML MIME type (e.g., for ChatGPT Apps Skybridge compatibility)
+    if hasattr(ui_resource, 'resource') and hasattr(ui_resource.resource, 'mimeType'):
+        if ui_resource.resource.mimeType != HTML_MIME_TYPE:
+            ui_resource.resource.mimeType = HTML_MIME_TYPE
+
     return ui_resource
 
 
