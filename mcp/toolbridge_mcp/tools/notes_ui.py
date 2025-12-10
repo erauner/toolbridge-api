@@ -12,7 +12,22 @@ from loguru import logger
 from mcp.types import TextContent, EmbeddedResource
 
 from toolbridge_mcp.mcp_instance import mcp
-from toolbridge_mcp.tools.notes import list_notes, get_note, delete_note, Note, NotesListResponse
+from toolbridge_mcp.tools.notes import (
+    list_notes as list_notes_tool,
+    get_note as get_note_tool,
+    delete_note as delete_note_tool,
+    update_note as update_note_tool,
+    Note,
+    NotesListResponse,
+)
+
+# Access the underlying async functions from FunctionTool wrappers.
+# The @mcp.tool() decorator wraps functions in FunctionTool objects,
+# so we need to use .fn to call the original function directly.
+_list_notes = list_notes_tool.fn
+_get_note = get_note_tool.fn
+_delete_note = delete_note_tool.fn
+_update_note = update_note_tool.fn
 from toolbridge_mcp.ui.resources import build_ui_with_text_and_dom, UIContent, UIFormat
 from toolbridge_mcp.ui.templates import notes as notes_templates
 from toolbridge_mcp.ui.templates import note_edits as note_edits_templates
@@ -125,7 +140,7 @@ async def list_notes_ui(
     logger.info(f"Rendering notes UI: limit={limit}, include_deleted={include_deleted}, ui_format={ui_format}")
 
     # Reuse existing data tool to fetch notes
-    notes_response: NotesListResponse = await list_notes(
+    notes_response: NotesListResponse = await _list_notes(
         limit=limit,
         cursor=None,
         include_deleted=include_deleted,
@@ -207,7 +222,7 @@ async def show_note_ui(
     logger.info(f"Rendering note UI: uid={uid}, include_deleted={include_deleted}, ui_format={ui_format}")
 
     # Fetch the note using existing data tool
-    note: Note = await get_note(uid=uid, include_deleted=include_deleted)
+    note: Note = await _get_note(uid=uid, include_deleted=include_deleted)
 
     html: str | None = None
     remote_dom: dict | None = None
@@ -276,11 +291,11 @@ async def delete_note_ui(
     logger.info(f"Deleting note UI: uid={uid}, limit={limit}, include_deleted={include_deleted}, ui_format={ui_format}")
 
     # Perform the delete using the underlying tool
-    deleted_note: Note = await delete_note(uid=uid)
+    deleted_note: Note = await _delete_note(uid=uid)
     note_title = deleted_note.payload.get("title", "Note")
 
     # Fetch updated notes list with preserved context
-    notes_response: NotesListResponse = await list_notes(limit=limit, include_deleted=include_deleted)
+    notes_response: NotesListResponse = await _list_notes(limit=limit, include_deleted=include_deleted)
 
     html: str | None = None
     remote_dom: dict | None = None
@@ -379,7 +394,7 @@ async def edit_note_ui(
         pass
 
     # Fetch the current note
-    note: Note = await get_note(uid=uid, include_deleted=False)
+    note: Note = await _get_note(uid=uid, include_deleted=False)
     title = (note.payload.get("title") or "Untitled note").strip()
 
     # Compute diff hunks before creating session
@@ -504,7 +519,7 @@ async def apply_note_edit(
 
     try:
         # Fetch latest note to check version
-        current = await get_note(uid=session.note_uid, include_deleted=False)
+        current = await _get_note(uid=session.note_uid, include_deleted=False)
 
         # Version conflict check
         if current.version != session.base_version:
@@ -574,9 +589,6 @@ async def apply_note_edit(
             }
             merged_content = apply_hunk_decisions(diff_hunks, decisions)
 
-        # Import update_note here to avoid circular imports
-        from toolbridge_mcp.tools.notes import update_note
-
         # Prepare additional fields (preserve tags, etc.)
         additional_fields = {
             k: v for k, v in current.payload.items()
@@ -584,7 +596,7 @@ async def apply_note_edit(
         }
 
         # Apply the update with optimistic locking using merged content
-        updated = await update_note(
+        updated = await _update_note(
             uid=session.note_uid,
             title=current.payload.get("title") or "",
             content=merged_content,
@@ -763,7 +775,7 @@ async def accept_note_edit_hunk(
     )
 
     # Fetch note for rendering
-    note = await get_note(uid=session.note_uid, include_deleted=False)
+    note = await _get_note(uid=session.note_uid, include_deleted=False)
 
     # Build HTML and/or Remote DOM
     html: str | None = None
@@ -861,7 +873,7 @@ async def reject_note_edit_hunk(
     )
 
     # Fetch note for rendering
-    note = await get_note(uid=session.note_uid, include_deleted=False)
+    note = await _get_note(uid=session.note_uid, include_deleted=False)
 
     # Build HTML and/or Remote DOM
     html: str | None = None
@@ -962,7 +974,7 @@ async def revise_note_edit_hunk(
     )
 
     # Fetch note for rendering
-    note = await get_note(uid=session.note_uid, include_deleted=False)
+    note = await _get_note(uid=session.note_uid, include_deleted=False)
 
     # Build HTML and/or Remote DOM
     html: str | None = None
