@@ -102,23 +102,24 @@ def compute_line_diff(
         
         if tag == "equal":
             # Unchanged section - optionally truncate if too long (for display only)
-            if orig_text:
-                display_text = orig_text
-                if truncate_unchanged:
-                    lines = orig_text.split("\n")
-                    if len(lines) > max_unchanged_lines:
-                        # Show first and last few lines
-                        half = max_unchanged_lines // 2
-                        display_text = (
-                            "\n".join(lines[:half]) +
-                            f"\n... ({len(lines) - max_unchanged_lines} lines unchanged) ...\n" +
-                            "\n".join(lines[-half:])
-                        )
-                hunks.append(DiffHunk(
-                    kind="unchanged",
-                    original=display_text,
-                    proposed=display_text,
-                ))
+            # Always emit the hunk, even for blank-line-only sections (orig_text == "")
+            # to preserve blank lines when applying decisions.
+            display_text = orig_text
+            if truncate_unchanged and orig_text:
+                lines = orig_text.split("\n")
+                if len(lines) > max_unchanged_lines:
+                    # Show first and last few lines
+                    half = max_unchanged_lines // 2
+                    display_text = (
+                        "\n".join(lines[:half]) +
+                        f"\n... ({len(lines) - max_unchanged_lines} lines unchanged) ...\n" +
+                        "\n".join(lines[-half:])
+                    )
+            hunks.append(DiffHunk(
+                kind="unchanged",
+                original=display_text,
+                proposed=display_text,
+            ))
         
         elif tag == "replace":
             # Modified section

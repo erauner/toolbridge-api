@@ -88,7 +88,7 @@ from toolbridge_mcp.ui.remote_dom import note_edits as note_edits_dom
 from toolbridge_mcp.ui.remote_dom.design import Layout, get_chat_metadata
 from toolbridge_mcp.tools.notes import Note
 from toolbridge_mcp.tools.tasks import Task
-from toolbridge_mcp.utils.diff import compute_line_diff, annotate_hunks_with_ids
+from toolbridge_mcp.utils.diff import compute_line_diff, annotate_hunks_with_ids, DiffHunk
 from toolbridge_mcp.note_edit_sessions import NoteEditHunkState
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -128,6 +128,47 @@ class MockEditSession:
         return True
 
 mock_edit_sessions: dict[str, MockEditSession] = {}
+
+MAX_UNCHANGED_LINES_DISPLAY = 5
+
+
+def _truncate_unchanged_for_display(
+    hunks: list[DiffHunk],
+    max_lines: int = MAX_UNCHANGED_LINES_DISPLAY,
+) -> list[DiffHunk]:
+    """
+    Truncate long unchanged sections for display purposes.
+
+    Called AFTER annotate_hunks_with_ids so line ranges are accurate.
+    """
+    result = []
+    for h in hunks:
+        if h.kind == "unchanged" and h.original:
+            lines = h.original.split("\n")
+            if len(lines) > max_lines:
+                half = max_lines // 2
+                truncated = (
+                    "\n".join(lines[:half])
+                    + f"\n... ({len(lines) - max_lines} lines unchanged) ...\n"
+                    + "\n".join(lines[-half:])
+                )
+                result.append(
+                    DiffHunk(
+                        kind=h.kind,
+                        original=truncated,
+                        proposed=truncated,
+                        id=h.id,
+                        orig_start=h.orig_start,
+                        orig_end=h.orig_end,
+                        new_start=h.new_start,
+                        new_end=h.new_end,
+                    )
+                )
+            else:
+                result.append(h)
+        else:
+            result.append(h)
+    return result
 
 
 def get_mock_notes():
@@ -532,9 +573,10 @@ async def edit_note_ui(
     original_content = note.payload.get("content") or ""
     title = (note.payload.get("title") or "Untitled note").strip()
 
-    # Compute diff hunks and annotate with IDs
-    diff_hunks = compute_line_diff(original_content, new_content)
+    # Compute diff hunks with full content, annotate line ranges, then truncate for display
+    diff_hunks = compute_line_diff(original_content, new_content, truncate_unchanged=False)
     diff_hunks = annotate_hunks_with_ids(diff_hunks)
+    diff_hunks = _truncate_unchanged_for_display(diff_hunks)
 
     # Build per-hunk state (unchanged = accepted, others = pending)
     hunk_states = [
