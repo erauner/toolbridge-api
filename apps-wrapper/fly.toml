@@ -9,6 +9,7 @@ primary_region = "sjc"
 [env]
   NODE_ENV = "production"
   PYTHON_MCP_URL = "https://toolbridge-mcp-staging.fly.dev/mcp"
+  PUBLIC_BASE_URL = "https://toolbridge-apps.fly.dev"
 
 [http_service]
   internal_port = 8080

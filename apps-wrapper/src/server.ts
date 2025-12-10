@@ -8,6 +8,7 @@
  * - Embedded resources without adapter → MCP-UI hosts (text/html)
  * - Tool responses include BOTH for cross-host compatibility
  *
+ * Supports OAuth 2.1 via WorkOS AuthKit (proxied to Python backend).
  * Supports both stdio (local) and HTTP/SSE (Fly.io) transports.
  */
 
@@ -20,6 +21,8 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { mcpAuthMetadataRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import type { OAuthMetadata } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { createUIResource, type UIResource } from "@mcp-ui/server";
 import express from "express";
 
@@ -29,10 +32,42 @@ import { RESOURCE_DEFINITIONS, createWidgetHtml } from "./resources/index.js";
 
 // Configuration
 const PYTHON_MCP_URL = process.env.PYTHON_MCP_URL || "https://toolbridge-mcp-staging.fly.dev/mcp";
+const PYTHON_BASE_URL = PYTHON_MCP_URL.replace(/\/mcp$/, ""); // e.g., https://toolbridge-mcp-staging.fly.dev
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://toolbridge-apps.fly.dev";
 const SERVER_NAME = "ToolBridge Apps";
 const SERVER_VERSION = "1.0.0";
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const USE_HTTP = process.env.USE_HTTP === "true" || process.env.NODE_ENV === "production";
+
+// Cache for OAuth metadata from Python backend
+let oauthMetadataCache: OAuthMetadata | null = null;
+
+/**
+ * Fetch OAuth metadata from Python backend's well-known endpoint.
+ * This tells clients where to authenticate (WorkOS AuthKit).
+ */
+async function fetchOAuthMetadata(): Promise<OAuthMetadata> {
+  if (oauthMetadataCache) {
+    return oauthMetadataCache;
+  }
+
+  const metadataUrl = `${PYTHON_BASE_URL}/.well-known/oauth-authorization-server`;
+  console.error(`[Apps] Fetching OAuth metadata from: ${metadataUrl}`);
+
+  const response = await fetch(metadataUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch OAuth metadata: ${response.status}`);
+  }
+
+  oauthMetadataCache = await response.json() as OAuthMetadata;
+  console.error("[Apps] OAuth metadata cached:", {
+    issuer: oauthMetadataCache.issuer,
+    authorization_endpoint: oauthMetadataCache.authorization_endpoint,
+    token_endpoint: oauthMetadataCache.token_endpoint,
+  });
+
+  return oauthMetadataCache;
+}
 
 // Create MCP client to proxy to Python backend
 const mcpClient = new McpClient(PYTHON_MCP_URL);
@@ -219,17 +254,60 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 // Store transports by session ID for SSE
 const transports = new Map<string, SSEServerTransport>();
 
+// Store access tokens by session ID (set during OAuth flow or from Authorization header)
+const sessionTokens = new Map<string, string>();
+
 async function startHttpServer() {
   const app = express();
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // OAuth Metadata - Tell clients where to authenticate (WorkOS AuthKit)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // Fetch OAuth metadata from Python backend at startup
+  const oauthMetadata = await fetchOAuthMetadata();
+
+  // Mount OAuth metadata router - exposes /.well-known/oauth-authorization-server
+  // and /.well-known/oauth-protected-resource/sse
+  const resourceServerUrl = new URL(`${PUBLIC_BASE_URL}/sse`);
+  app.use(
+    mcpAuthMetadataRouter({
+      oauthMetadata,
+      resourceServerUrl,
+      resourceName: SERVER_NAME,
+    })
+  );
+
+  console.error("[Apps] OAuth metadata router mounted");
+  console.error(`[Apps] Authorization server: ${oauthMetadata.issuer}`);
+  console.error(`[Apps] Protected resource: ${resourceServerUrl.href}`);
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Health Check
+  // ════════════════════════════════════════════════════════════════════════════
 
   // Health check endpoint
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", server: SERVER_NAME, version: SERVER_VERSION });
   });
 
-  // SSE endpoint for MCP
+  // ════════════════════════════════════════════════════════════════════════════
+  // MCP over SSE with OAuth Bearer Token Support
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // SSE endpoint for MCP - extract bearer token from Authorization header
   app.get("/sse", async (req, res) => {
     console.error("[Apps] SSE connection request received");
+
+    // Extract bearer token if present
+    const authHeader = req.headers.authorization;
+    let accessToken: string | undefined;
+    if (authHeader?.startsWith("Bearer ")) {
+      accessToken = authHeader.substring(7);
+      console.error("[Apps] Bearer token received (length:", accessToken.length, ")");
+    } else {
+      console.error("[Apps] No bearer token in request - client may not be authenticated");
+    }
 
     // Create transport - it tells client to POST to /message?sessionId=xxx
     const transport = new SSEServerTransport("/message", res);
@@ -237,13 +315,18 @@ async function startHttpServer() {
 
     console.error(`[Apps] SSE session created: ${sessionId}`);
 
-    // Store transport by session ID
+    // Store transport and token by session ID
     transports.set(sessionId, transport);
+    if (accessToken) {
+      sessionTokens.set(sessionId, accessToken);
+      console.error(`[Apps] Token stored for session: ${sessionId}`);
+    }
 
     // Handle client disconnect
     res.on("close", () => {
       console.error(`[Apps] SSE connection closed: ${sessionId}`);
       transports.delete(sessionId);
+      sessionTokens.delete(sessionId);
     });
 
     // Connect the MCP server to this transport
@@ -270,6 +353,20 @@ async function startHttpServer() {
         id: null,
       });
       return;
+    }
+
+    // Check for bearer token in Authorization header (ChatGPT sends it here too)
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      sessionTokens.set(sessionId, token);
+      console.error(`[Apps] Token updated for session: ${sessionId}`);
+    }
+
+    // Set the token on the MCP client for this request
+    const token = sessionTokens.get(sessionId);
+    if (token) {
+      mcpClient.setAccessToken(token);
     }
 
     // Pass the message to the transport for processing
