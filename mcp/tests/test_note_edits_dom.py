@@ -376,6 +376,18 @@ class TestRenderDiffContent:
         assert "custom" in result_str
         assert "proposed" not in result_str
 
+    def test_removed_with_revised_shows_replacement(self):
+        """Test that revised removal shows both deleted and replacement lines."""
+        result = _render_diff_content("removed", "deleted line", "", revised_text="replacement")
+
+        result_str = str(result)
+        # Should show original as removed (red)
+        assert "- " in result_str
+        assert "deleted line" in result_str
+        # Should also show revised_text as added (green)
+        assert "+ " in result_str
+        assert "replacement" in result_str
+
     def test_empty_returns_none(self):
         """Test that empty content returns None."""
         result = _render_diff_content("modified", "", "")

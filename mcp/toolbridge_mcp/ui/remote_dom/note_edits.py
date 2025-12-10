@@ -418,9 +418,13 @@ def _render_diff_content(
     display_proposed = revised_text if revised_text is not None else proposed
     
     if kind == "removed":
-        # Only show removed lines
+        # Show removed lines
         for line in original.split('\n'):
             children.append(_render_diff_line(line, is_added=False))
+        # If revised, also show the replacement text
+        if revised_text:
+            for line in revised_text.split('\n'):
+                children.append(_render_diff_line(line, is_added=True))
     
     elif kind == "added":
         # Only show added lines
