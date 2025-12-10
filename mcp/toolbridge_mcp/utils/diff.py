@@ -14,7 +14,7 @@ from typing import List, Literal
 class DiffHunk:
     """
     A single hunk of a diff.
-    
+
     Attributes:
         kind: Type of change - 'unchanged', 'added', 'removed', or 'modified'
         original: Original text (empty for 'added')
@@ -24,6 +24,8 @@ class DiffHunk:
         orig_end: 1-based end line in original text (None for pure inserts)
         new_start: 1-based start line in proposed text (None for pure deletes)
         new_end: 1-based end line in proposed text (None for pure deletes)
+        _orig_line_count: Internal field for accurate line counting (set by compute_line_diff)
+        _new_line_count: Internal field for accurate line counting (set by compute_line_diff)
     """
     kind: Literal["unchanged", "added", "removed", "modified"]
     original: str
@@ -33,6 +35,9 @@ class DiffHunk:
     orig_end: int | None = None
     new_start: int | None = None
     new_end: int | None = None
+    # Internal fields for accurate line counting (avoids splitlines issues with trailing newlines)
+    _orig_line_count: int | None = None
+    _new_line_count: int | None = None
 
 
 @dataclass
@@ -106,6 +111,10 @@ def compute_line_diff(
         if new_text.endswith("\n"):
             new_text = new_text[:-1]
         
+        # Compute accurate line counts from difflib indices (not from stripped text)
+        orig_line_count = i2 - i1
+        new_line_count = j2 - j1
+
         if tag == "equal":
             # Unchanged section - optionally truncate if too long (for display only)
             # Always emit the hunk, even for blank-line-only sections (orig_text == "")
@@ -125,30 +134,38 @@ def compute_line_diff(
                 kind="unchanged",
                 original=display_text,
                 proposed=display_text,
+                _orig_line_count=orig_line_count,
+                _new_line_count=new_line_count,
             ))
-        
+
         elif tag == "replace":
             # Modified section
             hunks.append(DiffHunk(
                 kind="modified",
                 original=orig_text,
                 proposed=new_text,
+                _orig_line_count=orig_line_count,
+                _new_line_count=new_line_count,
             ))
-        
+
         elif tag == "delete":
             # Removed section
             hunks.append(DiffHunk(
                 kind="removed",
                 original=orig_text,
                 proposed="",
+                _orig_line_count=orig_line_count,
+                _new_line_count=0,
             ))
-        
+
         elif tag == "insert":
             # Added section
             hunks.append(DiffHunk(
                 kind="added",
                 original="",
                 proposed=new_text,
+                _orig_line_count=0,
+                _new_line_count=new_line_count,
             ))
     
     # Merge consecutive hunks of the same kind to reduce noise
@@ -159,22 +176,24 @@ def _merge_consecutive_hunks(hunks: List[DiffHunk]) -> List[DiffHunk]:
     """Merge consecutive hunks of the same kind."""
     if not hunks:
         return []
-    
+
     merged: List[DiffHunk] = []
     current = hunks[0]
-    
+
     for hunk in hunks[1:]:
         if hunk.kind == current.kind:
-            # Merge into current
+            # Merge into current, summing line counts
             current = DiffHunk(
                 kind=current.kind,
                 original=_join_texts(current.original, hunk.original),
                 proposed=_join_texts(current.proposed, hunk.proposed),
+                _orig_line_count=(current._orig_line_count or 0) + (hunk._orig_line_count or 0),
+                _new_line_count=(current._new_line_count or 0) + (hunk._new_line_count or 0),
             )
         else:
             merged.append(current)
             current = hunk
-    
+
     merged.append(current)
     return merged
 
@@ -204,26 +223,33 @@ def count_changes(hunks: List[DiffHunk]) -> dict:
 def annotate_hunks_with_ids(hunks: List[DiffHunk]) -> List[DiffHunk]:
     """
     Annotate hunks with stable IDs and line ranges.
-    
+
     Assigns sequential IDs ('h1', 'h2', ...) and computes orig_start/orig_end
     and new_start/new_end based on line counts.
-    
+
     Args:
         hunks: List of DiffHunk objects from compute_line_diff
-        
+
     Returns:
         New list of DiffHunk objects with id and line range fields populated
     """
     annotated: List[DiffHunk] = []
     orig_line = 1
     new_line = 1
-    
+
     for i, hunk in enumerate(hunks):
         hunk_id = f"h{i + 1}"
-        
-        # Count lines in original and proposed
-        orig_len = len(hunk.original.splitlines()) if hunk.original else 0
-        new_len = len(hunk.proposed.splitlines()) if hunk.proposed else 0
+
+        # Use stored line counts if available (accurate), fall back to splitlines (legacy)
+        if hunk._orig_line_count is not None:
+            orig_len = hunk._orig_line_count
+        else:
+            orig_len = len(hunk.original.splitlines()) if hunk.original else 0
+
+        if hunk._new_line_count is not None:
+            new_len = hunk._new_line_count
+        else:
+            new_len = len(hunk.proposed.splitlines()) if hunk.proposed else 0
         
         # For 'added' hunks, no original lines
         if hunk.kind == "added":

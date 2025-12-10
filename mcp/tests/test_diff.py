@@ -205,6 +205,33 @@ class TestAnnotateHunksWithIds:
         result = annotate_hunks_with_ids([])
         assert result == []
 
+    def test_line_ranges_accurate_with_trailing_blank_lines(self):
+        """Test that line ranges are accurate when hunks end with blank lines.
+
+        Regression test: splitlines() undercounts lines when text ends with newlines.
+        The _orig_line_count/_new_line_count fields from compute_line_diff fix this.
+        """
+        # A followed by 2 blank lines, then B->C change
+        original = "A\n\n\nB"
+        proposed = "A\n\n\nC"
+
+        hunks = compute_line_diff(original, proposed, truncate_unchanged=False)
+        result = annotate_hunks_with_ids(hunks)
+
+        # Unchanged section: lines 1-3 (A on line 1, blank on line 2, blank on line 3)
+        assert result[0].kind == "unchanged"
+        assert result[0].orig_start == 1
+        assert result[0].orig_end == 3
+        assert result[0].new_start == 1
+        assert result[0].new_end == 3
+
+        # Modified section: line 4 (B -> C)
+        assert result[1].kind == "modified"
+        assert result[1].orig_start == 4
+        assert result[1].orig_end == 4
+        assert result[1].new_start == 4
+        assert result[1].new_end == 4
+
 
 class TestApplyHunkDecisions:
     """Tests for apply_hunk_decisions function."""
