@@ -88,7 +88,8 @@ from toolbridge_mcp.ui.remote_dom import note_edits as note_edits_dom
 from toolbridge_mcp.ui.remote_dom.design import Layout, get_chat_metadata
 from toolbridge_mcp.tools.notes import Note
 from toolbridge_mcp.tools.tasks import Task
-from toolbridge_mcp.utils.diff import compute_line_diff
+from toolbridge_mcp.utils.diff import compute_line_diff, annotate_hunks_with_ids
+from toolbridge_mcp.note_edit_sessions import NoteEditHunkState
 from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
@@ -524,13 +525,30 @@ async def edit_note_ui(
     )
     mock_edit_sessions[session_id] = session
 
-    # Compute diff hunks
+    # Compute diff hunks and annotate with IDs
     diff_hunks = compute_line_diff(original_content, new_content)
+    diff_hunks = annotate_hunks_with_ids(diff_hunks)
 
-    # Render Remote DOM diff preview
+    # Build per-hunk state (unchanged = accepted, others = pending)
+    hunk_states = [
+        NoteEditHunkState(
+            id=h.id or "",
+            kind=h.kind,
+            original=h.original,
+            proposed=h.proposed,
+            status="accepted" if h.kind == "unchanged" else "pending",
+            orig_start=h.orig_start,
+            orig_end=h.orig_end,
+            new_start=h.new_start,
+            new_end=h.new_end,
+        )
+        for h in diff_hunks
+    ]
+
+    # Render Remote DOM diff preview with per-hunk actions
     remote_dom = note_edits_dom.render_note_edit_diff_dom(
         note=note,
-        diff_hunks=diff_hunks,
+        hunks=hunk_states,
         edit_id=session_id,
         summary=summary,
     )

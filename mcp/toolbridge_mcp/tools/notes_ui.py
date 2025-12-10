@@ -22,8 +22,11 @@ from toolbridge_mcp.note_edit_sessions import (
     create_session,
     get_session,
     discard_session,
+    set_hunk_status,
+    get_hunk_counts,
+    NoteEditHunkState,
 )
-from toolbridge_mcp.utils.diff import compute_line_diff
+from toolbridge_mcp.utils.diff import compute_line_diff, annotate_hunks_with_ids, DiffHunk, HunkDecision, apply_hunk_decisions
 from fastmcp.server.dependencies import get_access_token
 import httpx
 
@@ -321,21 +324,24 @@ async def edit_note_ui(
     note: Note = await get_note(uid=uid, include_deleted=False)
     title = (note.payload.get("title") or "Untitled note").strip()
 
-    # Create edit session (preserves whitespace verbatim)
+    # Compute diff hunks before creating session
+    original_content = note.payload.get("content") or ""
+    diff_hunks = compute_line_diff(original_content, new_content)
+    diff_hunks = annotate_hunks_with_ids(diff_hunks)
+
+    # Create edit session with annotated hunks
     session = create_session(
         note=note,
         proposed_content=new_content,
         summary=summary,
         user_id=user_id,
+        hunks=diff_hunks,
     )
 
-    # Compute diff hunks using session's preserved content
-    diff_hunks = compute_line_diff(session.original_content, session.proposed_content)
-
-    # Render Remote DOM diff preview
+    # Render Remote DOM diff preview using session hunk state
     remote_dom = note_edits_dom.render_note_edit_diff_dom(
         note=note,
-        diff_hunks=diff_hunks,
+        hunks=session.hunks,
         edit_id=session.id,
         summary=summary,
     )
@@ -441,6 +447,53 @@ async def apply_note_edit(
                 ui_format=UIFormat(ui_format),
             )
 
+        # Check for pending hunks - all changed hunks must be resolved
+        unresolved = [
+            h for h in session.hunks
+            if h.kind != "unchanged" and h.status == "pending"
+        ]
+        if unresolved:
+            error_msg = (
+                f"There are {len(unresolved)} pending change(s). "
+                "Please accept, reject, or revise each change before applying."
+            )
+            logger.warning(f"Pending hunks: {error_msg}")
+            
+            remote_dom = note_edits_dom.render_note_edit_error_dom(
+                error_msg, note_uid=session.note_uid
+            )
+            return build_ui_with_text_and_dom(
+                uri=f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}/pending",
+                html=None,
+                remote_dom=remote_dom,
+                text_summary=error_msg,
+                ui_format=UIFormat(ui_format),
+            )
+
+        # Determine content to apply - use merged content from hunk decisions
+        if session.current_content is not None:
+            merged_content = session.current_content
+        else:
+            # Defensive fallback: recompute from hunk decisions
+            diff_hunks = [
+                DiffHunk(
+                    kind=h.kind,
+                    original=h.original,
+                    proposed=h.proposed,
+                    id=h.id,
+                    orig_start=h.orig_start,
+                    orig_end=h.orig_end,
+                    new_start=h.new_start,
+                    new_end=h.new_end,
+                )
+                for h in session.hunks
+            ]
+            decisions = {
+                h.id: HunkDecision(status=h.status, revised_text=h.revised_text)
+                for h in session.hunks if h.id
+            }
+            merged_content = apply_hunk_decisions(diff_hunks, decisions)
+
         # Import update_note here to avoid circular imports
         from toolbridge_mcp.tools.notes import update_note
 
@@ -450,11 +503,11 @@ async def apply_note_edit(
             if k not in ("title", "content")
         }
 
-        # Apply the update with optimistic locking
+        # Apply the update with optimistic locking using merged content
         updated = await update_note(
             uid=session.note_uid,
             title=current.payload.get("title") or "",
-            content=session.proposed_content,
+            content=merged_content,
             if_match=session.base_version,
             additional_fields=additional_fields if additional_fields else None,
         )
@@ -554,4 +607,247 @@ async def discard_note_edit(
         remote_dom=remote_dom,
         text_summary=text_summary,
         ui_format=UIFormat.REMOTE_DOM,
+    )
+
+
+@mcp.tool()
+async def accept_note_edit_hunk(
+    edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
+    hunk_id: Annotated[str, Field(description="ID of the diff hunk to accept (e.g., 'h1', 'h2')")],
+    ui_format: Annotated[
+        str,
+        Field(
+            description="UI format: 'remote-dom' only",
+            pattern="^(remote-dom)$",
+        ),
+    ] = "remote-dom",
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """
+    Accept a specific diff hunk in a pending note edit session.
+
+    Marks the hunk as accepted, meaning the proposed change will be included
+    when the edit is applied.
+
+    **Important**: This tool should NOT be called by the LLM directly. It is invoked
+    only by the Flutter UI when the user clicks the Accept button on a specific hunk.
+
+    Args:
+        edit_id: The edit session ID from a previous edit_note_ui call
+        hunk_id: The ID of the hunk to accept (e.g., 'h1', 'h2')
+        ui_format: UI format to return - 'remote-dom' only
+
+    Returns:
+        List containing TextContent (summary) and updated Remote DOM diff preview
+    """
+    logger.info(f"Accepting hunk: edit_id={edit_id}, hunk_id={hunk_id}")
+
+    session = set_hunk_status(edit_id, hunk_id, "accepted")
+    if session is None:
+        error_msg = f"Edit session '{edit_id}' not found or expired"
+        logger.warning(error_msg)
+        
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error_msg,
+            ui_format=UIFormat(ui_format),
+        )
+
+    # Get current counts for summary
+    counts = get_hunk_counts(edit_id)
+    text_summary = (
+        f"Accepted hunk {hunk_id}. "
+        f"Status: {counts['accepted']} accepted, {counts['rejected']} rejected, "
+        f"{counts['revised']} revised, {counts['pending']} pending."
+    )
+
+    # Fetch note for rendering
+    note = await get_note(uid=session.note_uid, include_deleted=False)
+
+    # Render updated diff DOM
+    remote_dom = note_edits_dom.render_note_edit_diff_dom(
+        note=note,
+        hunks=session.hunks,
+        edit_id=edit_id,
+        summary=session.summary,
+    )
+
+    ui_uri = f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=UIFormat(ui_format),
+        remote_dom_ui_metadata=ui_metadata,
+    )
+
+
+@mcp.tool()
+async def reject_note_edit_hunk(
+    edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
+    hunk_id: Annotated[str, Field(description="ID of the diff hunk to reject (e.g., 'h1', 'h2')")],
+    ui_format: Annotated[
+        str,
+        Field(
+            description="UI format: 'remote-dom' only",
+            pattern="^(remote-dom)$",
+        ),
+    ] = "remote-dom",
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """
+    Reject a specific diff hunk in a pending note edit session.
+
+    Marks the hunk as rejected, meaning the proposed change will NOT be included
+    when the edit is applied (the original content will be kept).
+
+    **Important**: This tool should NOT be called by the LLM directly. It is invoked
+    only by the Flutter UI when the user clicks the Reject button on a specific hunk.
+
+    Args:
+        edit_id: The edit session ID from a previous edit_note_ui call
+        hunk_id: The ID of the hunk to reject (e.g., 'h1', 'h2')
+        ui_format: UI format to return - 'remote-dom' only
+
+    Returns:
+        List containing TextContent (summary) and updated Remote DOM diff preview
+    """
+    logger.info(f"Rejecting hunk: edit_id={edit_id}, hunk_id={hunk_id}")
+
+    session = set_hunk_status(edit_id, hunk_id, "rejected")
+    if session is None:
+        error_msg = f"Edit session '{edit_id}' not found or expired"
+        logger.warning(error_msg)
+        
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error_msg,
+            ui_format=UIFormat(ui_format),
+        )
+
+    # Get current counts for summary
+    counts = get_hunk_counts(edit_id)
+    text_summary = (
+        f"Rejected hunk {hunk_id}. "
+        f"Status: {counts['accepted']} accepted, {counts['rejected']} rejected, "
+        f"{counts['revised']} revised, {counts['pending']} pending."
+    )
+
+    # Fetch note for rendering
+    note = await get_note(uid=session.note_uid, include_deleted=False)
+
+    # Render updated diff DOM
+    remote_dom = note_edits_dom.render_note_edit_diff_dom(
+        note=note,
+        hunks=session.hunks,
+        edit_id=edit_id,
+        summary=session.summary,
+    )
+
+    ui_uri = f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=UIFormat(ui_format),
+        remote_dom_ui_metadata=ui_metadata,
+    )
+
+
+@mcp.tool()
+async def revise_note_edit_hunk(
+    edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
+    hunk_id: Annotated[str, Field(description="ID of the diff hunk to revise (e.g., 'h1', 'h2')")],
+    revised_text: Annotated[str, Field(description="Replacement text for this hunk")],
+    ui_format: Annotated[
+        str,
+        Field(
+            description="UI format: 'remote-dom' only",
+            pattern="^(remote-dom)$",
+        ),
+    ] = "remote-dom",
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """
+    Revise a specific diff hunk in a pending note edit session.
+
+    Replaces the proposed change with custom text provided by the user.
+    The revised text will be used instead of the original proposed change.
+
+    **Important**: This tool should NOT be called by the LLM directly. It is invoked
+    only by the Flutter UI when the user clicks the Revise button and provides
+    replacement text.
+
+    Args:
+        edit_id: The edit session ID from a previous edit_note_ui call
+        hunk_id: The ID of the hunk to revise (e.g., 'h1', 'h2')
+        revised_text: The replacement text to use instead of the proposed change
+        ui_format: UI format to return - 'remote-dom' only
+
+    Returns:
+        List containing TextContent (summary) and updated Remote DOM diff preview
+    """
+    logger.info(f"Revising hunk: edit_id={edit_id}, hunk_id={hunk_id}")
+
+    session = set_hunk_status(edit_id, hunk_id, "revised", revised_text=revised_text)
+    if session is None:
+        error_msg = f"Edit session '{edit_id}' not found or expired"
+        logger.warning(error_msg)
+        
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error_msg,
+            ui_format=UIFormat(ui_format),
+        )
+
+    # Get current counts for summary
+    counts = get_hunk_counts(edit_id)
+    text_summary = (
+        f"Revised hunk {hunk_id}. "
+        f"Status: {counts['accepted']} accepted, {counts['rejected']} rejected, "
+        f"{counts['revised']} revised, {counts['pending']} pending."
+    )
+
+    # Fetch note for rendering
+    note = await get_note(uid=session.note_uid, include_deleted=False)
+
+    # Render updated diff DOM
+    remote_dom = note_edits_dom.render_note_edit_diff_dom(
+        note=note,
+        hunks=session.hunks,
+        edit_id=edit_id,
+        summary=session.summary,
+    )
+
+    ui_uri = f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=text_summary,
+        ui_format=UIFormat(ui_format),
+        remote_dom_ui_metadata=ui_metadata,
     )
