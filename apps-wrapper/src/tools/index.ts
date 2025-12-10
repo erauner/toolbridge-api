@@ -15,8 +15,8 @@ export interface ToolDefinition {
     properties: Record<string, unknown>;
     required?: string[];
   };
-  // ChatGPT Apps metadata
-  outputTemplate: string;
+  // ChatGPT Apps metadata (optional for non-UI tools)
+  outputTemplate?: string;
   invokingMessage?: string;
   invokedMessage?: string;
   widgetAccessible?: boolean;
@@ -284,5 +284,167 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     invokingMessage: "Rejecting change...",
     invokedMessage: "Change rejected",
     widgetAccessible: true,
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // BASIC NOTE CRUD TOOLS (no UI widget, text responses)
+  // ════════════════════════════════════════════════════════════════
+  {
+    name: "create_note",
+    description:
+      "Create a new note. Returns the created note with its UID. Use list_notes_ui afterward to see the note in the UI.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "Title of the note",
+        },
+        content: {
+          type: "string",
+          description: "Content of the note (markdown supported)",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional tags for the note",
+        },
+      },
+      required: ["title", "content"],
+    },
+    invokingMessage: "Creating note...",
+    invokedMessage: "Note created",
+  },
+  {
+    name: "update_note",
+    description: "Update an existing note's title, content, or tags.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uid: {
+          type: "string",
+          description: "Unique identifier of the note to update",
+        },
+        title: {
+          type: "string",
+          description: "New title (optional)",
+        },
+        content: {
+          type: "string",
+          description: "New content (optional)",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "New tags (optional)",
+        },
+      },
+      required: ["uid"],
+    },
+    invokingMessage: "Updating note...",
+    invokedMessage: "Note updated",
+  },
+  {
+    name: "list_notes",
+    description:
+      "List notes as text/JSON. For a visual list, use list_notes_ui instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          description: "Maximum number of notes to return (1-100)",
+          default: 20,
+        },
+        include_deleted: {
+          type: "boolean",
+          description: "Whether to include soft-deleted notes",
+          default: false,
+        },
+      },
+    },
+    invokingMessage: "Fetching notes...",
+    invokedMessage: "Notes retrieved",
+  },
+  {
+    name: "get_note",
+    description:
+      "Get a single note by UID. For a visual view, use show_note_ui instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uid: {
+          type: "string",
+          description: "Unique identifier of the note",
+        },
+      },
+      required: ["uid"],
+    },
+    invokingMessage: "Fetching note...",
+    invokedMessage: "Note retrieved",
+  },
+  {
+    name: "delete_note",
+    description: "Soft-delete a note by UID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uid: {
+          type: "string",
+          description: "Unique identifier of the note to delete",
+        },
+      },
+      required: ["uid"],
+    },
+    invokingMessage: "Deleting note...",
+    invokedMessage: "Note deleted",
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // BASIC TASK CRUD TOOLS (no UI widget, text responses)
+  // ════════════════════════════════════════════════════════════════
+  {
+    name: "update_task",
+    description: "Update an existing task's status or other properties.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uid: {
+          type: "string",
+          description: "Unique identifier of the task to update",
+        },
+        status: {
+          type: "string",
+          description: "New status (e.g., 'pending', 'in_progress', 'completed')",
+        },
+        title: {
+          type: "string",
+          description: "New title (optional)",
+        },
+        description: {
+          type: "string",
+          description: "New description (optional)",
+        },
+      },
+      required: ["uid"],
+    },
+    invokingMessage: "Updating task...",
+    invokedMessage: "Task updated",
+  },
+  {
+    name: "delete_task",
+    description: "Soft-delete a task by UID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uid: {
+          type: "string",
+          description: "Unique identifier of the task to delete",
+        },
+      },
+      required: ["uid"],
+    },
+    invokingMessage: "Deleting task...",
+    invokedMessage: "Task deleted",
   },
 ];

@@ -172,26 +172,34 @@ function createNotesListWidget(baseStyles: string, bridgeScript: string, dataJso
 
     function render() {
       const root = document.getElementById('root');
-      const notes = data.notes || [];
+      // Handle both { notes: [...] } and { items: [...] } formats
+      const notes = data.notes || data.items || [];
 
       if (notes.length === 0) {
         root.innerHTML = '<div class="empty">No notes found</div>';
         return;
       }
 
-      root.innerHTML = notes.map(note => \`
+      root.innerHTML = notes.map(note => {
+        // Handle both flat structure and payload structure
+        const title = note.title || note.payload?.title || 'Untitled';
+        const content = note.content || note.payload?.content || '';
+        const tags = note.tags || note.payload?.tags || [];
+        const uid = note.uid;
+        return \`
         <div class="card">
-          <div class="title">\${escapeHtml(note.title || 'Untitled')}</div>
-          <div class="preview">\${escapeHtml(truncate(note.content || '', 100))}</div>
+          <div class="title">\${escapeHtml(title)}</div>
+          <div class="preview">\${escapeHtml(truncate(content, 100))}</div>
           <div class="meta">
-            \${note.tags?.length ? note.tags.map(t => \`<span class="badge badge-info">\${escapeHtml(t)}</span>\`).join(' ') : ''}
+            \${tags.length ? tags.map(t => \`<span class="badge badge-info">\${escapeHtml(t)}</span>\`).join(' ') : ''}
           </div>
           <div class="actions">
-            <button class="btn btn-primary" onclick="viewNote('\${note.uid}')">View</button>
-            <button class="btn btn-danger" onclick="deleteNote('\${note.uid}')">Delete</button>
+            <button class="btn btn-primary" onclick="viewNote('\${uid}')">View</button>
+            <button class="btn btn-danger" onclick="deleteNote('\${uid}')">Delete</button>
           </div>
         </div>
-      \`).join('');
+      \`;
+      }).join('');
     }
 
     function escapeHtml(str) {
@@ -205,12 +213,12 @@ function createNotesListWidget(baseStyles: string, bridgeScript: string, dataJso
     }
 
     function viewNote(uid) {
-      callTool('get_note_ui', { uid });
+      callTool('show_note_ui', { uid });
     }
 
     function deleteNote(uid) {
       if (confirm('Delete this note?')) {
-        callTool('delete_note', { uid });
+        callTool('delete_note_ui', { uid });
       }
     }
 
@@ -240,18 +248,24 @@ function createNoteDetailWidget(baseStyles: string, bridgeScript: string, dataJs
     function render() {
       const root = document.getElementById('root');
       const note = data.note || data;
+      // Handle both flat structure and payload structure
+      const title = note.title || note.payload?.title || 'Untitled';
+      const content = note.content || note.payload?.content || '';
+      const tags = note.tags || note.payload?.tags || [];
+      const uid = note.uid || 'N/A';
+      const version = note.version || 1;
 
       root.innerHTML = \`
         <div class="card">
-          <div class="title">\${escapeHtml(note.title || 'Untitled')}</div>
-          <div class="content">\${escapeHtml(note.content || '')}</div>
+          <div class="title">\${escapeHtml(title)}</div>
+          <div class="content">\${escapeHtml(content)}</div>
           <div class="meta">
-            \${note.tags?.length ? note.tags.map(t => \`<span class="badge badge-info">\${escapeHtml(t)}</span>\`).join(' ') : ''}
+            \${tags.length ? tags.map(t => \`<span class="badge badge-info">\${escapeHtml(t)}</span>\`).join(' ') : ''}
           </div>
           <div class="meta" style="margin-top: 12px">
             <div class="meta-row">
-              <span>UID: \${note.uid || 'N/A'}</span>
-              <span>Version: \${note.version || 1}</span>
+              <span>UID: \${uid}</span>
+              <span>Version: \${version}</span>
             </div>
           </div>
           <div class="actions">
@@ -277,7 +291,7 @@ function createNoteDetailWidget(baseStyles: string, bridgeScript: string, dataJs
     function deleteNote() {
       const note = data.note || data;
       if (confirm('Delete this note?')) {
-        callTool('delete_note', { uid: note.uid });
+        callTool('delete_note_ui', { uid: note.uid });
       }
     }
 
@@ -386,7 +400,7 @@ function createNoteEditWidget(baseStyles: string, bridgeScript: string, dataJson
 
     function applyChanges() {
       const indices = Array.from(acceptedHunks);
-      callTool('apply_diff_hunks', {
+      callTool('apply_note_edit', {
         edit_id: data.edit_id,
         accepted_indices: indices
       });

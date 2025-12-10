@@ -147,12 +147,54 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 // TOOLS - Call tools by proxying to Python MCP
 // ════════════════════════════════════════════════════════════════════════════
 
+// Map UI tools to their data equivalents for ChatGPT Apps SDK
+// ChatGPT needs raw data (structuredContent), not pre-rendered HTML
+const UI_TO_DATA_TOOL_MAP: Record<string, string> = {
+  "list_notes_ui": "list_notes",
+  "show_note_ui": "get_note",
+  // delete_note_ui, edit_note_ui, etc. still use their UI versions
+  // as they return confirmation/diff views
+};
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   console.error(`[Apps] Calling tool: ${name}`, JSON.stringify(args));
 
   // Find tool definition for metadata
   const toolDef = TOOL_DEFINITIONS.find((t) => t.name === name);
+
+  // For UI tools that have data equivalents, call the data tool to get structuredContent
+  const dataTool = UI_TO_DATA_TOOL_MAP[name];
+  let structuredContentFromDataTool: Record<string, unknown> | undefined;
+
+  if (dataTool) {
+    console.error(`[Apps] Fetching data via: ${dataTool}`);
+    try {
+      // Strip UI-specific args when calling data tools
+      const dataArgs = { ...args };
+      delete dataArgs.ui_format;
+      const dataResult = await mcpClient.callTool(dataTool, dataArgs || {});
+      console.error(`[Apps] Data tool result keys:`, Object.keys(dataResult));
+      console.error(`[Apps] Data tool structuredContent:`, typeof dataResult.structuredContent, dataResult.structuredContent ? 'present' : 'absent');
+      console.error(`[Apps] Data tool content[0]:`, dataResult.content?.[0]?.type, dataResult.content?.[0]?.text?.slice(0, 200));
+
+      // Data tools return structuredContent directly
+      if (dataResult.structuredContent && typeof dataResult.structuredContent === 'object') {
+        structuredContentFromDataTool = dataResult.structuredContent as Record<string, unknown>;
+      } else if (dataResult.content?.[0]?.type === 'text') {
+        // Parse JSON from text content
+        try {
+          const parsed = JSON.parse(dataResult.content[0].text || '{}');
+          structuredContentFromDataTool = parsed;
+        } catch {
+          console.error(`[Apps] Failed to parse data tool text as JSON`);
+        }
+      }
+      console.error(`[Apps] Data tool returned:`, JSON.stringify(structuredContentFromDataTool)?.slice(0, 300));
+    } catch (e) {
+      console.error(`[Apps] Data tool failed:`, e);
+    }
+  }
 
   try {
     // Proxy to Python MCP backend
@@ -162,12 +204,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     console.error(`[Apps] structuredContent type:`, typeof result.structuredContent);
     console.error(`[Apps] content length:`, result.content?.length);
 
+    // Debug: log all content items
+    result.content?.forEach((c, i) => {
+      if (c.type === 'text') {
+        console.error(`[Apps] content[${i}] type=text:`, c.text?.slice(0, 300));
+      } else if (c.type === 'resource') {
+        console.error(`[Apps] content[${i}] type=resource uri=${c.resource?.uri} mimeType=${c.resource?.mimeType}`);
+        console.error(`[Apps] content[${i}] resource text (first 500):`, c.resource?.text?.slice(0, 500));
+      } else {
+        console.error(`[Apps] content[${i}] type=${c.type}:`, JSON.stringify(c).slice(0, 200));
+      }
+    });
+
     // Extract structured data from the result if available
     // IMPORTANT: structuredContent must be an object, not an array
     // ChatGPT Apps SDK expects { key: value } format for template hydration
     let structuredContent: Record<string, unknown> | undefined = undefined;
 
-    if (result.structuredContent && typeof result.structuredContent === 'object' && !Array.isArray(result.structuredContent)) {
+    // Prefer data from the dedicated data tool (for UI tools)
+    if (structuredContentFromDataTool) {
+      structuredContent = structuredContentFromDataTool;
+      console.error(`[Apps] Using structuredContent from data tool`);
+    } else if (result.structuredContent && typeof result.structuredContent === 'object' && !Array.isArray(result.structuredContent)) {
       structuredContent = result.structuredContent as Record<string, unknown>;
     } else if (result.content && result.content.length > 0) {
       // Try to extract structured data from text content
@@ -188,7 +246,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
-    console.error(`[Apps] Final structuredContent:`, structuredContent ? 'object' : 'undefined');
+    console.error(`[Apps] Final structuredContent:`, structuredContent ? JSON.stringify(structuredContent).slice(0, 500) : 'undefined');
 
     // Create embedded UI resource for MCP-UI hosts (without adapter)
     let embeddedResource: UIResource | null = null;
