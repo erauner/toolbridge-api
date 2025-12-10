@@ -17,7 +17,7 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createUIResource } from "@mcp-ui/server";
+import { createUIResource, type UIResource } from "@mcp-ui/server";
 
 import { McpClient } from "./mcp-client.js";
 import { TOOL_DEFINITIONS } from "./tools/index.js";
@@ -51,19 +51,24 @@ const server = new Server(
 
 // Create static templates with Apps SDK adapter enabled
 // These use text/html+skybridge MIME type and inject the bridge script
-const staticTemplates = new Map<string, ReturnType<typeof createUIResource>>();
+const staticTemplates = new Map<string, UIResource>();
 
 for (const resourceDef of RESOURCE_DEFINITIONS) {
+  // Ensure URI matches the expected type pattern
+  const uri = resourceDef.uri as `ui://${string}`;
+
   const template = createUIResource({
-    uri: resourceDef.uri,
-    name: resourceDef.name,
-    description: resourceDef.description,
+    uri,
+    encoding: "text",
     // Enable Apps SDK adapter for ChatGPT integration
     adapters: {
       appsSdk: {
         enabled: true,
-        widgetDescription: resourceDef.widgetDescription,
       },
+    },
+    // Store widget description in metadata
+    metadata: {
+      widgetDescription: resourceDef.widgetDescription,
     },
     // Initial template content - will be replaced with actual data on tool call
     content: {
@@ -116,12 +121,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const structuredContent = result.structuredContent || result.content;
 
     // Create embedded UI resource for MCP-UI hosts (without adapter)
-    let embeddedResource = null;
+    let embeddedResource: UIResource | null = null;
     if (toolDef?.outputTemplate) {
       const html = createWidgetHtml(toolDef.outputTemplate, structuredContent);
+      const embeddedUri = `ui://toolbridge/embedded/${name}` as `ui://${string}`;
       embeddedResource = createUIResource({
-        uri: `${toolDef.outputTemplate}#embedded`,
-        name: `${toolDef.name} Result`,
+        uri: embeddedUri,
+        encoding: "text",
         // NO adapter - this is for MCP-UI hosts
         content: {
           type: "rawHtml",
@@ -138,7 +144,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Text fallback for non-widget hosts
         ...(result.content || []),
         // Embedded UI resource for MCP-UI hosts (they ignore _meta)
-        ...(embeddedResource ? [embeddedResource.resource] : []),
+        ...(embeddedResource ? [embeddedResource] : []),
       ],
       // Structured data for template hydration
       structuredContent,
@@ -168,8 +174,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   console.error("[Apps] Listing resources");
 
+  // Return resource metadata for listing
   return {
-    resources: Array.from(staticTemplates.values()).map((template) => template.resource),
+    resources: RESOURCE_DEFINITIONS.map((def) => ({
+      uri: def.uri,
+      name: def.name,
+      description: def.description,
+      mimeType: "text/html+skybridge",
+    })),
   };
 });
 
@@ -188,9 +200,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     throw new Error(`Resource not found: ${uri}`);
   }
 
-  // Return the template - @mcp-ui/server handles:
-  // - text/html+skybridge MIME type
-  // - Bridge script injection
+  // Return the template resource content
   return {
     contents: [template.resource],
   };
