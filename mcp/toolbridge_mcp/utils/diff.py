@@ -101,15 +101,11 @@ def compute_line_diff(
     hunks: List[DiffHunk] = []
     
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        # Join lines preserving their endings, then strip only the final newline.
-        # This keeps internal blank lines intact while avoiding trailing newline duplication.
+        # Join lines preserving their endings exactly.
+        # We keep trailing newlines intact and concatenate segments directly in _join_segments,
+        # which preserves the original file structure (including trailing newline or lack thereof).
         orig_text = "".join(orig_lines[i1:i2])
         new_text = "".join(new_lines[j1:j2])
-        # Strip only a single trailing newline (not all of them) to avoid duplication when joining
-        if orig_text.endswith("\n"):
-            orig_text = orig_text[:-1]
-        if new_text.endswith("\n"):
-            new_text = new_text[:-1]
         
         # Compute accurate line counts from difflib indices (not from stripped text)
         orig_line_count = i2 - i1
@@ -199,12 +195,11 @@ def _merge_consecutive_hunks(hunks: List[DiffHunk]) -> List[DiffHunk]:
 
 
 def _join_texts(a: str, b: str) -> str:
-    """Join two text strings with a newline if both non-empty."""
-    if not a:
-        return b
-    if not b:
-        return a
-    return f"{a}\n{b}"
+    """Join two text strings by direct concatenation.
+
+    Since texts preserve their original line endings, we concatenate directly.
+    """
+    return a + b
 
 
 def count_changes(hunks: List[DiffHunk]) -> dict:
@@ -359,14 +354,15 @@ def apply_hunk_decisions(
 
 def _join_segments(segments: List[str]) -> str:
     """
-    Join content segments, handling newlines properly.
+    Join content segments by direct concatenation.
 
-    Each segment already has internal newlines from the original/proposed
-    content. We join with a single newline between segments.
+    Each segment preserves its original line endings from the source content.
+    We concatenate directly (no separator) to preserve the exact structure,
+    including whether the content had a trailing newline or not.
 
     Empty strings are preserved - they represent intentional blank lines.
     """
     # Filter out None values but keep empty strings (blank lines)
     result_parts = [s for s in segments if s is not None]
 
-    return "\n".join(result_parts)
+    return "".join(result_parts)

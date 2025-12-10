@@ -116,10 +116,10 @@ class TestComputeLineDiff:
         assert result[0].kind == "unchanged"
         assert result[1].kind == "modified"
 
-        # Unchanged section should preserve the blank lines
-        # The text is "A\n\n" (A followed by 2 newlines, minus the trailing one)
-        assert result[0].original == "A\n\n"
-        assert result[0].proposed == "A\n\n"
+        # Unchanged section preserves all line endings from original
+        # Lines: ['A\n', '\n', '\n'] joined = "A\n\n\n"
+        assert result[0].original == "A\n\n\n"
+        assert result[0].proposed == "A\n\n\n"
 
         # Round-trip: applying all accepted should reproduce proposed
         annotated = annotate_hunks_with_ids(result)
@@ -350,9 +350,10 @@ class TestApplyHunkDecisions:
 
     def test_preserves_blank_line_hunks(self):
         """Test that blank-line-only hunks are preserved when accepted."""
+        # Hunks preserve original line endings (as compute_line_diff produces)
         hunks = [
-            DiffHunk(kind="unchanged", original="line 1", proposed="line 1", id="h1"),
-            DiffHunk(kind="added", original="", proposed="", id="h2"),  # Blank line
+            DiffHunk(kind="unchanged", original="line 1\n", proposed="line 1\n", id="h1"),
+            DiffHunk(kind="added", original="", proposed="\n", id="h2"),  # Blank line added
             DiffHunk(kind="unchanged", original="line 3", proposed="line 3", id="h3"),
         ]
         decisions = {
@@ -365,9 +366,10 @@ class TestApplyHunkDecisions:
 
     def test_rejected_blank_line_removal_keeps_blank(self):
         """Test that rejecting removal of blank line keeps the blank."""
+        # Hunks preserve original line endings (as compute_line_diff produces)
         hunks = [
-            DiffHunk(kind="unchanged", original="line 1", proposed="line 1", id="h1"),
-            DiffHunk(kind="removed", original="", proposed="", id="h2"),  # Blank line being removed
+            DiffHunk(kind="unchanged", original="line 1\n", proposed="line 1\n", id="h1"),
+            DiffHunk(kind="removed", original="\n", proposed="", id="h2"),  # Blank line being removed
             DiffHunk(kind="unchanged", original="line 3", proposed="line 3", id="h3"),
         ]
         decisions = {
@@ -377,6 +379,37 @@ class TestApplyHunkDecisions:
         result = apply_hunk_decisions(hunks, decisions)
         # Should have blank line preserved
         assert result == "line 1\n\nline 3"
+
+    def test_preserves_trailing_newline(self):
+        """Test that trailing newline is preserved on round-trip.
+
+        Regression test: stripping newlines from hunks and rejoining with
+        '\\n'.join() would drop the final trailing newline.
+        """
+        # Content with trailing newline
+        original = "Hello world\n"
+        proposed = "Hello world\n"
+
+        hunks = compute_line_diff(original, proposed, truncate_unchanged=False)
+        annotated = annotate_hunks_with_ids(hunks)
+        decisions = {h.id: HunkDecision(status="accepted") for h in annotated}
+        result = apply_hunk_decisions(annotated, decisions)
+
+        assert result == proposed
+        assert result.endswith("\n")
+
+    def test_no_trailing_newline_preserved(self):
+        """Test that content without trailing newline stays that way."""
+        original = "Hello world"  # No trailing newline
+        proposed = "Hello world"
+
+        hunks = compute_line_diff(original, proposed, truncate_unchanged=False)
+        annotated = annotate_hunks_with_ids(hunks)
+        decisions = {h.id: HunkDecision(status="accepted") for h in annotated}
+        result = apply_hunk_decisions(annotated, decisions)
+
+        assert result == proposed
+        assert not result.endswith("\n")
 
 
 class TestCountChanges:
