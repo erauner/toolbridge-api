@@ -88,9 +88,11 @@ from toolbridge_mcp.ui.remote_dom import note_edits as note_edits_dom
 from toolbridge_mcp.ui.remote_dom.design import Layout, get_chat_metadata
 from toolbridge_mcp.tools.notes import Note
 from toolbridge_mcp.tools.tasks import Task
-from toolbridge_mcp.utils.diff import compute_line_diff
+from toolbridge_mcp.utils.diff import compute_line_diff, annotate_hunks_with_ids, DiffHunk
+from toolbridge_mcp.note_edit_sessions import NoteEditHunkState
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Optional
 import uuid
 
 # Simple in-memory session storage for edit previews
@@ -105,8 +107,68 @@ class MockEditSession:
     proposed_content: str
     summary: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
+    hunks: list[NoteEditHunkState] = field(default_factory=list)
+
+    def get_hunk(self, hunk_id: str) -> Optional[NoteEditHunkState]:
+        """Find a hunk by ID."""
+        return next((h for h in self.hunks if h.id == hunk_id), None)
+
+    def set_hunk_status(
+        self,
+        hunk_id: str,
+        status: str,
+        revised_text: Optional[str] = None,
+    ) -> bool:
+        """Update a hunk's status. Returns True if found."""
+        hunk = self.get_hunk(hunk_id)
+        if hunk is None:
+            return False
+        hunk.status = status
+        hunk.revised_text = revised_text
+        return True
 
 mock_edit_sessions: dict[str, MockEditSession] = {}
+
+MAX_UNCHANGED_LINES_DISPLAY = 5
+
+
+def _truncate_unchanged_for_display(
+    hunks: list[DiffHunk],
+    max_lines: int = MAX_UNCHANGED_LINES_DISPLAY,
+) -> list[DiffHunk]:
+    """
+    Truncate long unchanged sections for display purposes.
+
+    Called AFTER annotate_hunks_with_ids so line ranges are accurate.
+    """
+    result = []
+    for h in hunks:
+        if h.kind == "unchanged" and h.original:
+            lines = h.original.split("\n")
+            if len(lines) > max_lines:
+                half = max_lines // 2
+                truncated = (
+                    "\n".join(lines[:half])
+                    + f"\n... ({len(lines) - max_lines} lines unchanged) ...\n"
+                    + "\n".join(lines[-half:])
+                )
+                result.append(
+                    DiffHunk(
+                        kind=h.kind,
+                        original=truncated,
+                        proposed=truncated,
+                        id=h.id,
+                        orig_start=h.orig_start,
+                        orig_end=h.orig_end,
+                        new_start=h.new_start,
+                        new_end=h.new_end,
+                    )
+                )
+            else:
+                result.append(h)
+        else:
+            result.append(h)
+    return result
 
 
 def get_mock_notes():
@@ -511,7 +573,28 @@ async def edit_note_ui(
     original_content = note.payload.get("content") or ""
     title = (note.payload.get("title") or "Untitled note").strip()
 
-    # Create edit session
+    # Compute diff hunks with full content, annotate line ranges, then truncate for display
+    diff_hunks = compute_line_diff(original_content, new_content, truncate_unchanged=False)
+    diff_hunks = annotate_hunks_with_ids(diff_hunks)
+    diff_hunks = _truncate_unchanged_for_display(diff_hunks)
+
+    # Build per-hunk state (unchanged = accepted, others = pending)
+    hunk_states = [
+        NoteEditHunkState(
+            id=h.id or "",
+            kind=h.kind,
+            original=h.original,
+            proposed=h.proposed,
+            status="accepted" if h.kind == "unchanged" else "pending",
+            orig_start=h.orig_start,
+            orig_end=h.orig_end,
+            new_start=h.new_start,
+            new_end=h.new_end,
+        )
+        for h in diff_hunks
+    ]
+
+    # Create edit session with hunks
     session_id = uuid.uuid4().hex
     session = MockEditSession(
         id=session_id,
@@ -521,16 +604,14 @@ async def edit_note_ui(
         original_content=original_content,
         proposed_content=new_content,
         summary=summary,
+        hunks=hunk_states,
     )
     mock_edit_sessions[session_id] = session
 
-    # Compute diff hunks
-    diff_hunks = compute_line_diff(original_content, new_content)
-
-    # Render Remote DOM diff preview
+    # Render Remote DOM diff preview with per-hunk actions
     remote_dom = note_edits_dom.render_note_edit_diff_dom(
         note=note,
-        diff_hunks=diff_hunks,
+        hunks=hunk_states,
         edit_id=session_id,
         summary=summary,
     )
@@ -667,6 +748,206 @@ async def discard_note_edit(
     )
 
 
+# ============================================================
+# Per-hunk tools (for granular accept/reject/revise)
+# ============================================================
+
+def _get_session_and_note(edit_id: str) -> tuple[MockEditSession | None, Note | None, str | None]:
+    """Helper to get session and note, or return error message."""
+    session = mock_edit_sessions.get(edit_id)
+    if session is None:
+        return None, None, f"Edit session '{edit_id}' not found or expired"
+
+    note_dict = next((n for n in mock_state["notes"] if n["uid"] == session.note_uid), None)
+    if note_dict is None:
+        return session, None, f"Note '{session.note_uid}' not found"
+
+    return session, Note(**note_dict), None
+
+
+def _render_updated_diff(session: MockEditSession, note: Note) -> dict:
+    """Re-render the diff preview with current hunk states."""
+    return note_edits_dom.render_note_edit_diff_dom(
+        note=note,
+        hunks=session.hunks,
+        edit_id=session.id,
+        summary=session.summary,
+    )
+
+
+@mcp.tool()
+async def accept_note_edit_hunk(
+    edit_id: str,
+    hunk_id: str,
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """Accept a specific hunk in a note edit session.
+
+    Called when user clicks "Accept" on a single hunk.
+
+    Args:
+        edit_id: The edit session ID
+        hunk_id: The hunk ID to accept (e.g., "h1", "h2")
+
+    Returns:
+        Updated diff preview UI
+    """
+    logger.info(f"Accepting hunk: edit_id={edit_id}, hunk_id={hunk_id}")
+
+    session, note, error = _get_session_and_note(edit_id)
+    if error:
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error,
+            ui_format=UIFormat.REMOTE_DOM,
+        )
+
+    if not session.set_hunk_status(hunk_id, "accepted"):
+        error = f"Hunk '{hunk_id}' not found in session"
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error,
+            ui_format=UIFormat.REMOTE_DOM,
+        )
+
+    remote_dom = _render_updated_diff(session, note)
+    ui_uri = f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=f"Accepted hunk {hunk_id}",
+        ui_format=UIFormat.REMOTE_DOM,
+        remote_dom_ui_metadata=ui_metadata,
+    )
+
+
+@mcp.tool()
+async def reject_note_edit_hunk(
+    edit_id: str,
+    hunk_id: str,
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """Reject a specific hunk in a note edit session.
+
+    Called when user clicks "Reject" on a single hunk.
+
+    Args:
+        edit_id: The edit session ID
+        hunk_id: The hunk ID to reject (e.g., "h1", "h2")
+
+    Returns:
+        Updated diff preview UI
+    """
+    logger.info(f"Rejecting hunk: edit_id={edit_id}, hunk_id={hunk_id}")
+
+    session, note, error = _get_session_and_note(edit_id)
+    if error:
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error,
+            ui_format=UIFormat.REMOTE_DOM,
+        )
+
+    if not session.set_hunk_status(hunk_id, "rejected"):
+        error = f"Hunk '{hunk_id}' not found in session"
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error,
+            ui_format=UIFormat.REMOTE_DOM,
+        )
+
+    remote_dom = _render_updated_diff(session, note)
+    ui_uri = f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=f"Rejected hunk {hunk_id}",
+        ui_format=UIFormat.REMOTE_DOM,
+        remote_dom_ui_metadata=ui_metadata,
+    )
+
+
+@mcp.tool()
+async def revise_note_edit_hunk(
+    edit_id: str,
+    hunk_id: str,
+    revised_text: str,
+) -> List[Union[TextContent, EmbeddedResource]]:
+    """Revise a specific hunk with custom text.
+
+    Called when user provides custom text for a hunk.
+
+    Args:
+        edit_id: The edit session ID
+        hunk_id: The hunk ID to revise (e.g., "h1", "h2")
+        revised_text: The custom text to use instead
+
+    Returns:
+        Updated diff preview UI
+    """
+    logger.info(f"Revising hunk: edit_id={edit_id}, hunk_id={hunk_id}")
+
+    session, note, error = _get_session_and_note(edit_id)
+    if error:
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error,
+            ui_format=UIFormat.REMOTE_DOM,
+        )
+
+    if not session.set_hunk_status(hunk_id, "revised", revised_text=revised_text):
+        error = f"Hunk '{hunk_id}' not found in session"
+        remote_dom = note_edits_dom.render_note_edit_error_dom(error)
+        return build_ui_with_text_and_dom(
+            uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
+            html=None,
+            remote_dom=remote_dom,
+            text_summary=error,
+            ui_format=UIFormat.REMOTE_DOM,
+        )
+
+    remote_dom = _render_updated_diff(session, note)
+    ui_uri = f"ui://toolbridge/notes/{session.note_uid}/edit/{edit_id}"
+    ui_metadata = get_chat_metadata(
+        frame_style=Layout.CHAT_FRAME_CARD,
+        max_width=Layout.MAX_WIDTH_DETAIL,
+    )
+
+    return build_ui_with_text_and_dom(
+        uri=ui_uri,
+        html=None,
+        remote_dom=remote_dom,
+        text_summary=f"Revised hunk {hunk_id}",
+        ui_format=UIFormat.REMOTE_DOM,
+        remote_dom_ui_metadata=ui_metadata,
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     from starlette.applications import Starlette
@@ -678,7 +959,7 @@ if __name__ == "__main__":
     logger.info("  MCP-UI Test Server (No Authentication)")
     logger.info("=" * 60)
     logger.info("")
-    logger.info("This server has 10 UI tools with mock data for testing MCP-UI.")
+    logger.info("This server has 13 UI tools with mock data for testing MCP-UI.")
     logger.info("Supports both HTML and Remote DOM formats via ui_format parameter.")
     logger.info("")
     logger.info("Tools available:")
@@ -688,6 +969,9 @@ if __name__ == "__main__":
     logger.info("  - edit_note_ui: Propose note edits with diff preview")
     logger.info("  - apply_note_edit: Apply a pending note edit")
     logger.info("  - discard_note_edit: Discard a pending note edit")
+    logger.info("  - accept_note_edit_hunk: Accept a single hunk in diff")
+    logger.info("  - reject_note_edit_hunk: Reject a single hunk in diff")
+    logger.info("  - revise_note_edit_hunk: Revise a single hunk with custom text")
     logger.info("  - list_tasks_ui: List tasks with HTML/Remote DOM rendering")
     logger.info("  - show_task_ui: Show single task with HTML/Remote DOM rendering")
     logger.info("  - process_task_ui: Process task action (start/complete/reopen)")
