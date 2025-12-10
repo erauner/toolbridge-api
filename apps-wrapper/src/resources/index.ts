@@ -125,8 +125,10 @@ export function createWidgetHtml(uri: string, data: unknown): string {
 
   // Bridge script for ChatGPT integration
   const bridgeScript = `
-    // Get data from ChatGPT bridge or fallback
-    const data = window.__MCP_DATA__ || ${dataJson};
+    // Data can come from:
+    // 1. Embedded in template (for embedded resources with data)
+    // 2. Fetched via bridge (for static templates in ChatGPT)
+    let data = ${dataJson};
 
     // Tool call function - uses ChatGPT bridge when available
     async function callTool(name, args) {
@@ -139,6 +141,27 @@ export function createWidgetHtml(uri: string, data: unknown): string {
         tool: name,
         arguments: args
       }, '*');
+    }
+
+    // For static templates, fetch data via bridge on load
+    async function fetchDataIfNeeded() {
+      // Only fetch if we don't have data and bridge is available
+      const hasData = data && (data.items?.length > 0 || data.notes?.length > 0 || data.note || data.uid);
+      if (!hasData && window.__MCP_BRIDGE__?.callTool) {
+        console.log('[Widget] No embedded data, fetching via bridge...');
+        try {
+          const result = await window.__MCP_BRIDGE__.callTool('list_notes', { limit: 20 });
+          if (result?.structuredContent) {
+            data = result.structuredContent;
+          } else if (result?.content?.[0]?.text) {
+            data = JSON.parse(result.content[0].text);
+          }
+          console.log('[Widget] Fetched data:', Object.keys(data || {}));
+          if (typeof render === 'function') render();
+        } catch (e) {
+          console.error('[Widget] Failed to fetch data:', e);
+        }
+      }
     }
   `;
 
@@ -163,15 +186,29 @@ function createNotesListWidget(baseStyles: string, bridgeScript: string, dataJso
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>${baseStyles}</style>
+  <style>
+    ${baseStyles}
+    .loading { text-align: center; padding: 32px; color: #666; }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #f3f3f3; border-top: 3px solid #0066cc; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
   <div id="root"></div>
   <script>
     ${bridgeScript}
 
+    let isLoading = false;
+
     function render() {
       const root = document.getElementById('root');
+
+      // Show loading state
+      if (isLoading) {
+        root.innerHTML = '<div class="loading"><div class="spinner"></div><div style="margin-top:12px">Loading notes...</div></div>';
+        return;
+      }
+
       // Handle both { notes: [...] } and { items: [...] } formats
       const notes = data.notes || data.items || [];
 
@@ -222,7 +259,32 @@ function createNotesListWidget(baseStyles: string, bridgeScript: string, dataJso
       }
     }
 
-    render();
+    // For static templates in ChatGPT, fetch data via bridge
+    async function fetchDataIfNeeded() {
+      const hasData = data && (data.items?.length > 0 || data.notes?.length > 0);
+      if (!hasData && window.__MCP_BRIDGE__?.callTool) {
+        console.log('[NotesListWidget] No embedded data, fetching via bridge...');
+        isLoading = true;
+        render();
+        try {
+          const result = await window.__MCP_BRIDGE__.callTool('list_notes', { limit: 20 });
+          console.log('[NotesListWidget] Bridge result:', result);
+          if (result?.structuredContent) {
+            data = result.structuredContent;
+          } else if (result?.content?.[0]?.text) {
+            data = JSON.parse(result.content[0].text);
+          }
+          console.log('[NotesListWidget] Fetched data keys:', Object.keys(data || {}));
+        } catch (e) {
+          console.error('[NotesListWidget] Failed to fetch data:', e);
+        }
+        isLoading = false;
+      }
+      render();
+    }
+
+    // Initialize: fetch data if needed, then render
+    fetchDataIfNeeded();
   </script>
 </body>
 </html>`;

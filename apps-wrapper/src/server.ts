@@ -264,22 +264,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       });
     }
 
-    // Return with both:
-    // - _meta["openai/outputTemplate"] for ChatGPT (uses static template resource)
-    // - Embedded UI resource for MCP-UI hosts
+    // Return embedded UI resource with data baked in
+    // NOTE: We REPLACE Python's resource with our own embedded resource.
+    // ChatGPT renders the first text/html+skybridge resource it finds,
+    // so we filter out Python's resource and use ours with embedded data.
+
+    // Filter out resource content from Python (keep only text content)
+    const textContent = (result.content || []).filter(
+      (c: { type: string }) => c.type === "text"
+    );
+
+    // Log what we're returning
+    console.error(`[Apps] Returning embedded resource:`, embeddedResource?.resource?.uri);
+
     return {
       content: [
         // Text fallback for non-widget hosts
-        ...(result.content || []),
-        // Embedded UI resource for MCP-UI hosts (they ignore _meta)
+        ...textContent,
+        // Embedded UI resource (no adapter) for MCP-native hosts
+        // ChatGPT will ignore this and use the static template instead
         ...(embeddedResource ? [embeddedResource] : []),
       ],
-      // Structured data for template hydration
+      // Structured data for ChatGPT to hydrate the static template
       structuredContent,
-      // ChatGPT uses this to find the static template resource
-      _meta: {
-        "openai/outputTemplate": toolDef?.outputTemplate,
-      },
     };
   } catch (error) {
     console.error(`[Apps] Tool call failed: ${name}`, error);
