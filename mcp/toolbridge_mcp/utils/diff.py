@@ -53,16 +53,19 @@ def compute_line_diff(
     proposed: str,
     context_lines: int = 3,
     max_unchanged_lines: int = 5,
+    truncate_unchanged: bool = True,
 ) -> List[DiffHunk]:
     """
     Compute line-level diff between original and proposed content.
-    
+
     Args:
         original: Original text content
         proposed: Proposed text content
         context_lines: Number of context lines around changes (unused for now)
         max_unchanged_lines: Maximum lines to show in unchanged hunks
-        
+        truncate_unchanged: If True, truncate long unchanged sections for display.
+            Set to False when computing diffs for content reconstruction.
+
     Returns:
         List of DiffHunk objects representing the changes
     """
@@ -98,28 +101,24 @@ def compute_line_diff(
         new_text = "".join(new_lines[j1:j2]).rstrip("\n")
         
         if tag == "equal":
-            # Unchanged section - truncate if too long
+            # Unchanged section - optionally truncate if too long (for display only)
             if orig_text:
-                lines = orig_text.split("\n")
-                if len(lines) > max_unchanged_lines:
-                    # Show first and last few lines
-                    half = max_unchanged_lines // 2
-                    truncated = (
-                        "\n".join(lines[:half]) +
-                        f"\n... ({len(lines) - max_unchanged_lines} lines unchanged) ...\n" +
-                        "\n".join(lines[-half:])
-                    )
-                    hunks.append(DiffHunk(
-                        kind="unchanged",
-                        original=truncated,
-                        proposed=truncated,
-                    ))
-                else:
-                    hunks.append(DiffHunk(
-                        kind="unchanged",
-                        original=orig_text,
-                        proposed=orig_text,
-                    ))
+                display_text = orig_text
+                if truncate_unchanged:
+                    lines = orig_text.split("\n")
+                    if len(lines) > max_unchanged_lines:
+                        # Show first and last few lines
+                        half = max_unchanged_lines // 2
+                        display_text = (
+                            "\n".join(lines[:half]) +
+                            f"\n... ({len(lines) - max_unchanged_lines} lines unchanged) ...\n" +
+                            "\n".join(lines[-half:])
+                        )
+                hunks.append(DiffHunk(
+                    kind="unchanged",
+                    original=display_text,
+                    proposed=display_text,
+                ))
         
         elif tag == "replace":
             # Modified section

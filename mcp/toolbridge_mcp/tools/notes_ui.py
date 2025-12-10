@@ -474,7 +474,15 @@ async def apply_note_edit(
         if session.current_content is not None:
             merged_content = session.current_content
         else:
-            # Defensive fallback: recompute from hunk decisions
+            # Defensive fallback: recompute from full content to avoid data loss
+            # Session hunks may have truncated unchanged content for display,
+            # so we recompute from full original/proposed content.
+            full_hunks = compute_line_diff(
+                session.original_content,
+                session.proposed_content,
+                truncate_unchanged=False,
+            )
+            full_hunks = annotate_hunks_with_ids(full_hunks)
             diff_hunks = [
                 DiffHunk(
                     kind=h.kind,
@@ -486,7 +494,7 @@ async def apply_note_edit(
                     new_start=h.new_start,
                     new_end=h.new_end,
                 )
-                for h in session.hunks
+                for h in full_hunks
             ]
             decisions = {
                 h.id: HunkDecision(status=h.status, revised_text=h.revised_text)

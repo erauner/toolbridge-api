@@ -78,6 +78,33 @@ class TestComputeLineDiff:
         assert "  indented" in result[0].original
         assert "\ttabbed" in result[0].original
 
+    def test_truncate_unchanged_true_truncates_long_sections(self):
+        """Test that long unchanged sections are truncated by default."""
+        # Create content with more than 5 unchanged lines (default max_unchanged_lines)
+        original = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8"
+        proposed = original  # Same content
+        result = compute_line_diff(original, proposed, truncate_unchanged=True)
+
+        assert len(result) == 1
+        assert result[0].kind == "unchanged"
+        # Should contain truncation marker
+        assert "... (" in result[0].original
+        assert "lines unchanged" in result[0].original
+
+    def test_truncate_unchanged_false_preserves_full_content(self):
+        """Test that truncate_unchanged=False preserves all content."""
+        # Create content with more than 5 unchanged lines
+        original = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8"
+        proposed = original
+        result = compute_line_diff(original, proposed, truncate_unchanged=False)
+
+        assert len(result) == 1
+        assert result[0].kind == "unchanged"
+        # Should NOT contain truncation marker
+        assert "... (" not in result[0].original
+        # Should contain all lines
+        assert result[0].original == original
+
 
 class TestAnnotateHunksWithIds:
     """Tests for annotate_hunks_with_ids function."""

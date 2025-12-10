@@ -16,7 +16,13 @@ from typing import Dict, List, Literal, Optional
 import uuid
 
 from toolbridge_mcp.tools.notes import Note
-from toolbridge_mcp.utils.diff import DiffHunk, HunkDecision, apply_hunk_decisions
+from toolbridge_mcp.utils.diff import (
+    DiffHunk,
+    HunkDecision,
+    apply_hunk_decisions,
+    compute_line_diff,
+    annotate_hunks_with_ids,
+)
 
 
 @dataclass
@@ -213,20 +219,23 @@ def set_hunk_status(
 def _recompute_current_content(session: NoteEditSession) -> None:
     """
     Recompute session.current_content based on hunk statuses.
-    
+
     Only computes if all changed hunks are non-pending.
+
+    IMPORTANT: Uses full original/proposed content to avoid data loss from
+    truncated unchanged regions in display hunks.
     """
     # Check if any changed hunk is still pending
     any_pending = any(
         h.status == "pending" and h.kind != "unchanged"
         for h in session.hunks
     )
-    
+
     if any_pending:
         session.current_content = None
         return
-    
-    # Build decisions map
+
+    # Build decisions map from session hunks
     decisions: Dict[str, HunkDecision] = {}
     for h in session.hunks:
         if h.id:
@@ -234,8 +243,18 @@ def _recompute_current_content(session: NoteEditSession) -> None:
                 status=h.status,
                 revised_text=h.revised_text,
             )
-    
-    # Convert hunk states back to DiffHunks for apply_hunk_decisions
+
+    # Recompute diff from full content (no truncation) to avoid data loss
+    # The session hunks may have truncated unchanged content for display,
+    # but we need full content for reconstruction.
+    full_hunks = compute_line_diff(
+        session.original_content,
+        session.proposed_content,
+        truncate_unchanged=False,
+    )
+    full_hunks = annotate_hunks_with_ids(full_hunks)
+
+    # Convert to DiffHunk objects for apply_hunk_decisions
     diff_hunks: List[DiffHunk] = [
         DiffHunk(
             kind=h.kind,
@@ -247,9 +266,9 @@ def _recompute_current_content(session: NoteEditSession) -> None:
             new_start=h.new_start,
             new_end=h.new_end,
         )
-        for h in session.hunks
+        for h in full_hunks
     ]
-    
+
     try:
         session.current_content = apply_hunk_decisions(diff_hunks, decisions)
     except ValueError:
