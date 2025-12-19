@@ -3,9 +3,13 @@ MCP-UI tools for Note display.
 
 Provides UI-enhanced versions of note tools that return both text fallback
 and interactive HTML/Remote DOM for MCP-UI compatible hosts.
+
+Also supports ChatGPT Apps SDK integration via:
+- Tool _meta: openai/outputTemplate, openai/widgetAccessible, etc.
+- structuredContent: Data payload for Apps SDK widgets
 """
 
-from typing import Annotated, List, Union
+from typing import Annotated, List, Union, Tuple, Dict, Any
 
 from pydantic import Field
 from loguru import logger
@@ -19,6 +23,13 @@ from toolbridge_mcp.tools.notes import (
     update_note as update_note_tool,
     Note,
     NotesListResponse,
+)
+
+# Apps SDK resource URIs for tool meta
+from toolbridge_mcp.ui.apps_resources import (
+    APPS_NOTES_LIST_URI,
+    APPS_NOTE_DETAIL_URI,
+    APPS_NOTE_EDIT_URI,
 )
 
 # Access the underlying async functions from FunctionTool wrappers.
@@ -96,7 +107,14 @@ def _truncate_unchanged_for_display(
     return result
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTES_LIST_URI,
+        "openai/toolInvocation/invoking": "Loading your notes...",
+        "openai/toolInvocation/invoked": "Notes ready",
+        "openai/widgetAccessible": True,
+    }
+)
 async def list_notes_ui(
     limit: Annotated[int, Field(ge=1, le=100, description="Max notes to display")] = 20,
     include_deleted: Annotated[bool, Field(description="Include deleted notes")] = False,
@@ -184,7 +202,14 @@ async def list_notes_ui(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTE_DETAIL_URI,
+        "openai/toolInvocation/invoking": "Loading note...",
+        "openai/toolInvocation/invoked": "Note ready",
+        "openai/widgetAccessible": True,
+    }
+)
 async def show_note_ui(
     uid: Annotated[str, Field(description="UID of the note to display")],
     include_deleted: Annotated[bool, Field(description="Allow deleted notes")] = False,
@@ -255,7 +280,14 @@ async def show_note_ui(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTES_LIST_URI,
+        "openai/toolInvocation/invoking": "Deleting note...",
+        "openai/toolInvocation/invoked": "Note deleted",
+        "openai/widgetAccessible": True,
+    }
+)
 async def delete_note_ui(
     uid: Annotated[str, Field(description="UID of the note to delete")],
     limit: Annotated[int, Field(ge=1, le=100, description="Max notes to display in refreshed list")] = 20,
@@ -328,7 +360,14 @@ async def delete_note_ui(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTE_EDIT_URI,
+        "openai/toolInvocation/invoking": "Preparing edit preview...",
+        "openai/toolInvocation/invoked": "Edit preview ready",
+        "openai/widgetAccessible": True,
+    }
+)
 async def edit_note_ui(
     uid: Annotated[str, Field(description="UID of the note to edit")],
     new_content: Annotated[
@@ -461,7 +500,15 @@ async def edit_note_ui(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTE_EDIT_URI,
+        "openai/toolInvocation/invoking": "Applying changes...",
+        "openai/toolInvocation/invoked": "Changes applied",
+        "openai/widgetAccessible": True,
+        "openai/visibility": "private",
+    }
+)
 async def apply_note_edit(
     edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
     ui_format: Annotated[
@@ -655,7 +702,15 @@ async def apply_note_edit(
         )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTE_EDIT_URI,
+        "openai/toolInvocation/invoking": "Discarding edit...",
+        "openai/toolInvocation/invoked": "Edit discarded",
+        "openai/widgetAccessible": True,
+        "openai/visibility": "private",
+    }
+)
 async def discard_note_edit(
     edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
     ui_format: Annotated[
@@ -715,7 +770,15 @@ async def discard_note_edit(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTE_EDIT_URI,
+        "openai/toolInvocation/invoking": "Accepting change...",
+        "openai/toolInvocation/invoked": "Change accepted",
+        "openai/widgetAccessible": True,
+        "openai/visibility": "private",
+    }
+)
 async def accept_note_edit_hunk(
     edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
     hunk_id: Annotated[str, Field(description="ID of the diff hunk to accept (e.g., 'h1', 'h2')")],
@@ -813,7 +876,15 @@ async def accept_note_edit_hunk(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTE_EDIT_URI,
+        "openai/toolInvocation/invoking": "Rejecting change...",
+        "openai/toolInvocation/invoked": "Change rejected",
+        "openai/widgetAccessible": True,
+        "openai/visibility": "private",
+    }
+)
 async def reject_note_edit_hunk(
     edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
     hunk_id: Annotated[str, Field(description="ID of the diff hunk to reject (e.g., 'h1', 'h2')")],
@@ -911,7 +982,15 @@ async def reject_note_edit_hunk(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_NOTE_EDIT_URI,
+        "openai/toolInvocation/invoking": "Revising change...",
+        "openai/toolInvocation/invoked": "Change revised",
+        "openai/widgetAccessible": True,
+        "openai/visibility": "private",
+    }
+)
 async def revise_note_edit_hunk(
     edit_id: Annotated[str, Field(description="ID of the pending note edit session")],
     hunk_id: Annotated[str, Field(description="ID of the diff hunk to revise (e.g., 'h1', 'h2')")],

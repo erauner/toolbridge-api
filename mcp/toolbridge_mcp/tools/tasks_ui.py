@@ -3,6 +3,10 @@ MCP-UI tools for Task display.
 
 Provides UI-enhanced versions of task tools that return both text fallback
 and interactive HTML/Remote DOM for MCP-UI compatible hosts.
+
+Also supports ChatGPT Apps SDK integration via:
+- Tool _meta: openai/outputTemplate, openai/widgetAccessible, etc.
+- structuredContent: Data payload for Apps SDK widgets
 """
 
 from typing import Annotated, List, Union
@@ -17,8 +21,21 @@ from toolbridge_mcp.ui.resources import build_ui_with_text_and_dom, UIContent, U
 from toolbridge_mcp.ui.templates import tasks as tasks_templates
 from toolbridge_mcp.ui.remote_dom import tasks as tasks_dom_templates
 
+# Apps SDK resource URIs for tool meta
+from toolbridge_mcp.ui.apps_resources import (
+    APPS_TASKS_LIST_URI,
+    APPS_TASK_DETAIL_URI,
+)
 
-@mcp.tool()
+
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASKS_LIST_URI,
+        "openai/toolInvocation/invoking": "Loading your tasks...",
+        "openai/toolInvocation/invoked": "Tasks ready",
+        "openai/widgetAccessible": True,
+    }
+)
 async def list_tasks_ui(
     limit: Annotated[int, Field(ge=1, le=100, description="Max tasks to display")] = 20,
     include_deleted: Annotated[bool, Field(description="Include deleted tasks")] = False,
@@ -107,7 +124,14 @@ async def list_tasks_ui(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASK_DETAIL_URI,
+        "openai/toolInvocation/invoking": "Loading task...",
+        "openai/toolInvocation/invoked": "Task ready",
+        "openai/widgetAccessible": True,
+    }
+)
 async def show_task_ui(
     uid: Annotated[str, Field(description="UID of the task to display")],
     include_deleted: Annotated[bool, Field(description="Allow deleted tasks")] = False,
@@ -187,7 +211,14 @@ async def show_task_ui(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASKS_LIST_URI,
+        "openai/toolInvocation/invoking": "Processing task...",
+        "openai/toolInvocation/invoked": "Task updated",
+        "openai/widgetAccessible": True,
+    }
+)
 async def process_task_ui(
     uid: Annotated[str, Field(description="UID of the task to process")],
     action: Annotated[str, Field(description="Action to perform (start, complete, reopen)")],
@@ -265,7 +296,14 @@ async def process_task_ui(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASKS_LIST_URI,
+        "openai/toolInvocation/invoking": "Archiving task...",
+        "openai/toolInvocation/invoked": "Task archived",
+        "openai/widgetAccessible": True,
+    }
+)
 async def archive_task_ui(
     uid: Annotated[str, Field(description="UID of the task to archive")],
     limit: Annotated[int, Field(ge=1, le=100, description="Max tasks to display in refreshed list")] = 20,
