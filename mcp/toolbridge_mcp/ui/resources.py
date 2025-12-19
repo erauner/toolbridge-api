@@ -3,15 +3,11 @@ MCP-UI resource helpers for ToolBridge.
 
 Provides utilities for creating UIResource content blocks alongside text fallbacks,
 following the MCP-UI specification for interactive UI resources.
-
-Also supports ChatGPT Apps SDK integration via:
-- structuredContent: Data payload for Apps SDK widgets (window.openai.toolOutput)
-- Tool _meta: Apps SDK metadata (openai/outputTemplate, openai/widgetAccessible, etc.)
 """
 
 import json
 from enum import Enum
-from typing import Dict, Any, Optional, List, Union, Tuple
+from typing import Dict, Any, Optional, List, Union
 
 from mcp_ui_server import create_ui_resource
 from mcp.types import TextContent, EmbeddedResource
@@ -19,10 +15,6 @@ from toolbridge_mcp.config import settings
 
 # Type alias for content blocks that include both text and UI
 UIContent = List[Union[TextContent, EmbeddedResource]]
-
-# Type alias for tool results that include structured content for Apps SDK
-# Returns (content_blocks, structured_content) tuple
-UIContentWithStructured = Tuple[UIContent, Dict[str, Any]]
 
 
 # HTML MIME type loaded from settings.
@@ -222,61 +214,3 @@ def build_ui_with_text_and_dom(
         ))
 
     return content
-
-
-def build_ui_with_structured_content(
-    uri: str,
-    html: Optional[str],
-    remote_dom: Optional[Dict[str, Any]],
-    text_summary: str,
-    ui_format: UIFormat,
-    structured_content: Dict[str, Any],
-    remote_dom_ui_metadata: Optional[Dict[str, Any]] = None,
-    remote_dom_metadata: Optional[Dict[str, Any]] = None,
-) -> UIContentWithStructured:
-    """
-    Build UI content with structured content for ChatGPT Apps SDK.
-
-    This function returns both the standard MCP-UI content blocks AND a structured
-    content dictionary that will be passed to Apps SDK widgets via window.openai.toolOutput.
-
-    Args:
-        uri: Stable ui:// URI for caching and identity
-        html: HTML markup (required when ui_format is HTML or BOTH)
-        remote_dom: Remote DOM tree dict (required when ui_format is REMOTE_DOM or BOTH)
-        text_summary: Human-readable explanation for non-UI hosts
-        ui_format: Which format(s) to include in the response
-        structured_content: Data payload for Apps SDK widgets (becomes window.openai.toolOutput)
-        remote_dom_ui_metadata: Optional uiMetadata for Remote DOM resource
-        remote_dom_metadata: Optional metadata for Remote DOM resource
-
-    Returns:
-        Tuple of (content_blocks, structured_content):
-        - content_blocks: List of TextContent and EmbeddedResource for MCP-UI hosts
-        - structured_content: Dict to be included in tool result for Apps SDK
-
-    Example:
-        >>> content, structured = build_ui_with_structured_content(
-        ...     uri="ui://toolbridge/notes/list",
-        ...     html="<ul>...</ul>",
-        ...     remote_dom={"type": "column", "children": [...]},
-        ...     text_summary="Showing 5 notes",
-        ...     ui_format=UIFormat.BOTH,
-        ...     structured_content={
-        ...         "notes": [{"uid": "...", "payload": {...}}],
-        ...         "limit": 20,
-        ...         "include_deleted": False,
-        ...     },
-        ... )
-    """
-    content = build_ui_with_text_and_dom(
-        uri=uri,
-        html=html,
-        remote_dom=remote_dom,
-        text_summary=text_summary,
-        ui_format=ui_format,
-        remote_dom_ui_metadata=remote_dom_ui_metadata,
-        remote_dom_metadata=remote_dom_metadata,
-    )
-
-    return (content, structured_content)

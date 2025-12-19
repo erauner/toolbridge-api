@@ -77,11 +77,7 @@ from toolbridge_mcp.tools import chat_messages  # noqa: F401, E402
 from toolbridge_mcp.tools import notes_ui  # noqa: F401, E402
 from toolbridge_mcp.tools import tasks_ui  # noqa: F401, E402
 
-# Import Apps SDK resources (registers ui://toolbridge/apps/* templates for ChatGPT)
-from toolbridge_mcp.ui import apps_resources  # noqa: F401, E402
-
 logger.info("✓ ToolBridge MCP server initialized with 47 tools (40 data + 7 UI)")
-logger.info("✓ ChatGPT Apps SDK resources registered (5 templates)")
 
 # Note: health_check tool is provided by FastMCP by default
 # No need to register a custom one to avoid "Tool already exists" warnings
