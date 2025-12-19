@@ -60,7 +60,7 @@ mcp:
   # Use OAuth metadata endpoint which is publicly accessible
   livenessProbe:
     httpGet:
-      path: /.well-known/oauth-protected-resource
+      path: /.well-known/oauth-protected-resource/mcp
       port: 8001
     initialDelaySeconds: 10
     periodSeconds: 30
@@ -69,7 +69,7 @@ mcp:
 
   readinessProbe:
     httpGet:
-      path: /.well-known/oauth-protected-resource
+      path: /.well-known/oauth-protected-resource/mcp
       port: 8001
     initialDelaySeconds: 5
     periodSeconds: 10
