@@ -25,6 +25,63 @@ from toolbridge_mcp.tools.notes import (
     NotesListResponse,
 )
 
+
+def _serialize_note(note: Note) -> Dict[str, Any]:
+    """Serialize a Note object to a dict for Apps SDK structuredContent."""
+    return {
+        "uid": note.uid,
+        "version": note.version,
+        "updatedAt": note.updated_at,
+        "deletedAt": note.deleted_at,
+        "payload": note.payload,
+    }
+
+
+def _serialize_notes_list(
+    notes: List[Note],
+    limit: int,
+    include_deleted: bool,
+    next_cursor: str | None = None,
+) -> Dict[str, Any]:
+    """Serialize a notes list response for Apps SDK structuredContent."""
+    return {
+        "notes": [_serialize_note(n) for n in notes],
+        "limit": limit,
+        "includeDeleted": include_deleted,
+        "nextCursor": next_cursor,
+    }
+
+
+def _serialize_hunk(hunk: "NoteEditHunkState") -> Dict[str, Any]:
+    """Serialize a diff hunk for Apps SDK structuredContent."""
+    return {
+        "id": hunk.id,
+        "kind": hunk.kind,
+        "original": hunk.original,
+        "proposed": hunk.proposed,
+        "status": hunk.status,
+        "revisedText": hunk.revised_text,
+        "origStart": hunk.orig_start,
+        "origEnd": hunk.orig_end,
+        "newStart": hunk.new_start,
+        "newEnd": hunk.new_end,
+    }
+
+
+def _serialize_edit_session(
+    edit_id: str,
+    note: Note,
+    hunks: List["NoteEditHunkState"],
+    summary: str | None = None,
+) -> Dict[str, Any]:
+    """Serialize an edit session for Apps SDK structuredContent."""
+    return {
+        "editId": edit_id,
+        "note": _serialize_note(note),
+        "hunks": [_serialize_hunk(h) for h in hunks],
+        "summary": summary,
+    }
+
 # Apps SDK resource URIs for tool meta
 from toolbridge_mcp.ui.apps_resources import (
     APPS_NOTES_LIST_URI,
@@ -125,7 +182,7 @@ async def list_notes_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Display notes with interactive UI (MCP-UI).
 
@@ -143,7 +200,7 @@ async def list_notes_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and UIResource(s) (HTML and/or Remote DOM)
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         # Show recent notes with HTML UI (default)
@@ -193,13 +250,26 @@ async def list_notes_ui(
 
     ui_uri = "ui://toolbridge/notes/list"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
         text_summary=summary,
         ui_format=UIFormat(ui_format),
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_notes_list(
+        notes=notes_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+        next_cursor=notes_response.next_cursor,
+    )
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
 
 
 @mcp.tool(
@@ -220,7 +290,7 @@ async def show_note_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Display a single note with interactive UI (MCP-UI).
 
@@ -235,7 +305,7 @@ async def show_note_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and UIResource(s) (HTML and/or Remote DOM detail view)
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         # Show a specific note with HTML UI
@@ -262,22 +332,32 @@ async def show_note_ui(
 
     # Human-readable summary (guard against null values)
     title = note.payload.get("title") or "Untitled note"
-    content = note.payload.get("content") or ""
-    content_preview = content[:100]
-    if len(content) > 100:
+    content_text = note.payload.get("content") or ""
+    content_preview = content_text[:100]
+    if len(content_text) > 100:
         content_preview += "..."
 
     summary = f"Note: {title}\n\n{content_preview}\n\n(UID: {uid}, version: {note.version})"
 
     ui_uri = f"ui://toolbridge/notes/{uid}"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
         text_summary=summary,
         ui_format=UIFormat(ui_format),
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = {
+        "note": _serialize_note(note),
+    }
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
 
 
 @mcp.tool(
@@ -299,7 +379,7 @@ async def delete_note_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Delete a note and return updated UI (MCP-UI).
 
@@ -312,7 +392,7 @@ async def delete_note_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and UIResource(s) (updated HTML and/or Remote DOM list)
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         >>> await delete_note_ui("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
@@ -351,13 +431,28 @@ async def delete_note_ui(
 
     summary = f"Deleted '{note_title}' - {len(notes_response.items)} note(s) remaining"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri="ui://toolbridge/notes/list",
         html=html,
         remote_dom=remote_dom,
         text_summary=summary,
         ui_format=UIFormat(ui_format),
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_notes_list(
+        notes=notes_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+        next_cursor=notes_response.next_cursor,
+    )
+    # Include deleted note info in structured content
+    structured_content["deletedNote"] = _serialize_note(deleted_note)
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
 
 
 @mcp.tool(
@@ -385,7 +480,7 @@ async def edit_note_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Propose changes to a note and display a diff preview (MCP-UI).
 
@@ -403,8 +498,7 @@ async def edit_note_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and HTML/Remote DOM diff preview
-        with Accept/Discard action buttons
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         # Propose a rewrite with summary (HTML default)
@@ -486,7 +580,7 @@ async def edit_note_ui(
         max_width=Layout.MAX_WIDTH_DETAIL,
     ) if ui_format in ("remote-dom", "both") else None
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
@@ -498,6 +592,19 @@ async def edit_note_ui(
             "edit_id": session.id,
         } if ui_format in ("remote-dom", "both") else None,
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_edit_session(
+        edit_id=session.id,
+        note=note,
+        hunks=session.hunks,
+        summary=summary,
+    )
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
 
 
 @mcp.tool(
@@ -518,7 +625,7 @@ async def apply_note_edit(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Apply a pending note edit session.
 
@@ -533,7 +640,7 @@ async def apply_note_edit(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and HTML/Remote DOM confirmation
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Raises:
         ValueError: If session not found or expired
@@ -542,20 +649,28 @@ async def apply_note_edit(
     logger.info(f"Applying note edit: edit_id={edit_id}")
 
     # Helper to build error response with both formats
-    def build_error_response(error_msg: str, uri: str, note_uid: str | None = None):
+    def build_error_response(error_msg: str, uri: str, note_uid: str | None = None) -> Dict[str, Any]:
         html = None
         remote_dom = None
         if ui_format in ("html", "both"):
             html = note_edits_templates.render_note_edit_error_html(error_msg, note_uid)
         if ui_format in ("remote-dom", "both"):
             remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg, note_uid)
-        return build_ui_with_text_and_dom(
+        content = build_ui_with_text_and_dom(
             uri=uri,
             html=html,
             remote_dom=remote_dom,
             text_summary=error_msg,
             ui_format=UIFormat(ui_format),
         )
+        return {
+            "content": content,
+            "structuredContent": {
+                "error": error_msg,
+                "editId": edit_id,
+                "noteUid": note_uid,
+            },
+        }
 
     # Retrieve session
     session = get_session(edit_id)
@@ -675,7 +790,7 @@ async def apply_note_edit(
             max_width=Layout.MAX_WIDTH_DETAIL,
         ) if ui_format in ("remote-dom", "both") else None
 
-        return build_ui_with_text_and_dom(
+        content = build_ui_with_text_and_dom(
             uri=ui_uri,
             html=html,
             remote_dom=remote_dom,
@@ -683,6 +798,18 @@ async def apply_note_edit(
             ui_format=UIFormat(ui_format),
             remote_dom_ui_metadata=ui_metadata,
         )
+
+        # Build structuredContent for Apps SDK widgets
+        structured_content = {
+            "success": True,
+            "editId": edit_id,
+            "note": _serialize_note(updated),
+        }
+
+        return {
+            "content": content,
+            "structuredContent": structured_content,
+        }
 
     except httpx.HTTPStatusError as e:
         error_msg = f"Failed to update note: {e.response.status_code} - {e.response.text}"
@@ -720,7 +847,7 @@ async def discard_note_edit(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Discard a pending note edit session.
 
@@ -735,7 +862,7 @@ async def discard_note_edit(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and HTML/Remote DOM confirmation
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
     """
     logger.info(f"Discarding note edit: edit_id={edit_id}")
 
@@ -745,9 +872,11 @@ async def discard_note_edit(
         # Already discarded or expired
         title = "note"
         text_summary = f"Edit session '{edit_id}' was already discarded or expired."
+        note_uid = None
     else:
         title = session.title
         text_summary = f"Discarded pending edit session for '{title}'."
+        note_uid = session.note_uid
 
     # Build confirmation UI
     html: str | None = None
@@ -761,13 +890,26 @@ async def discard_note_edit(
 
     ui_uri = f"ui://toolbridge/notes/edit/{edit_id}/discarded"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
         text_summary=text_summary,
         ui_format=UIFormat(ui_format),
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = {
+        "discarded": True,
+        "editId": edit_id,
+        "noteUid": note_uid,
+        "title": title,
+    }
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
 
 
 @mcp.tool(
@@ -789,7 +931,7 @@ async def accept_note_edit_hunk(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Accept a specific diff hunk in a pending note edit session.
 
@@ -805,7 +947,7 @@ async def accept_note_edit_hunk(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and updated HTML/Remote DOM diff preview
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
     """
     logger.info(f"Accepting hunk: edit_id={edit_id}, hunk_id={hunk_id}")
 
@@ -821,13 +963,17 @@ async def accept_note_edit_hunk(
         if ui_format in ("remote-dom", "both"):
             remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
 
-        return build_ui_with_text_and_dom(
+        content = build_ui_with_text_and_dom(
             uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
             html=html,
             remote_dom=remote_dom,
             text_summary=error_msg,
             ui_format=UIFormat(ui_format),
         )
+        return {
+            "content": content,
+            "structuredContent": {"error": error_msg, "editId": edit_id},
+        }
 
     # Get current counts for summary
     counts = get_hunk_counts(edit_id)
@@ -866,7 +1012,7 @@ async def accept_note_edit_hunk(
         max_width=Layout.MAX_WIDTH_DETAIL,
     ) if ui_format in ("remote-dom", "both") else None
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
@@ -874,6 +1020,21 @@ async def accept_note_edit_hunk(
         ui_format=UIFormat(ui_format),
         remote_dom_ui_metadata=ui_metadata,
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_edit_session(
+        edit_id=edit_id,
+        note=note,
+        hunks=session.hunks,
+        summary=session.summary,
+    )
+    structured_content["hunkAction"] = {"hunkId": hunk_id, "action": "accepted"}
+    structured_content["counts"] = counts
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
 
 
 @mcp.tool(
@@ -895,7 +1056,7 @@ async def reject_note_edit_hunk(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Reject a specific diff hunk in a pending note edit session.
 
@@ -911,7 +1072,7 @@ async def reject_note_edit_hunk(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and updated HTML/Remote DOM diff preview
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
     """
     logger.info(f"Rejecting hunk: edit_id={edit_id}, hunk_id={hunk_id}")
 
@@ -927,13 +1088,17 @@ async def reject_note_edit_hunk(
         if ui_format in ("remote-dom", "both"):
             remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
 
-        return build_ui_with_text_and_dom(
+        content = build_ui_with_text_and_dom(
             uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
             html=html,
             remote_dom=remote_dom,
             text_summary=error_msg,
             ui_format=UIFormat(ui_format),
         )
+        return {
+            "content": content,
+            "structuredContent": {"error": error_msg, "editId": edit_id},
+        }
 
     # Get current counts for summary
     counts = get_hunk_counts(edit_id)
@@ -972,7 +1137,7 @@ async def reject_note_edit_hunk(
         max_width=Layout.MAX_WIDTH_DETAIL,
     ) if ui_format in ("remote-dom", "both") else None
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
@@ -980,6 +1145,21 @@ async def reject_note_edit_hunk(
         ui_format=UIFormat(ui_format),
         remote_dom_ui_metadata=ui_metadata,
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_edit_session(
+        edit_id=edit_id,
+        note=note,
+        hunks=session.hunks,
+        summary=session.summary,
+    )
+    structured_content["hunkAction"] = {"hunkId": hunk_id, "action": "rejected"}
+    structured_content["counts"] = counts
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
 
 
 @mcp.tool(
@@ -1002,7 +1182,7 @@ async def revise_note_edit_hunk(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Revise a specific diff hunk in a pending note edit session.
 
@@ -1020,7 +1200,7 @@ async def revise_note_edit_hunk(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and updated HTML/Remote DOM diff preview
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
     """
     logger.info(f"Revising hunk: edit_id={edit_id}, hunk_id={hunk_id}")
 
@@ -1036,13 +1216,17 @@ async def revise_note_edit_hunk(
         if ui_format in ("remote-dom", "both"):
             remote_dom = note_edits_dom.render_note_edit_error_dom(error_msg)
 
-        return build_ui_with_text_and_dom(
+        content = build_ui_with_text_and_dom(
             uri=f"ui://toolbridge/notes/edit/{edit_id}/error",
             html=html,
             remote_dom=remote_dom,
             text_summary=error_msg,
             ui_format=UIFormat(ui_format),
         )
+        return {
+            "content": content,
+            "structuredContent": {"error": error_msg, "editId": edit_id},
+        }
 
     # Get current counts for summary
     counts = get_hunk_counts(edit_id)
@@ -1081,7 +1265,7 @@ async def revise_note_edit_hunk(
         max_width=Layout.MAX_WIDTH_DETAIL,
     ) if ui_format in ("remote-dom", "both") else None
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
@@ -1089,3 +1273,18 @@ async def revise_note_edit_hunk(
         ui_format=UIFormat(ui_format),
         remote_dom_ui_metadata=ui_metadata,
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_edit_session(
+        edit_id=edit_id,
+        note=note,
+        hunks=session.hunks,
+        summary=session.summary,
+    )
+    structured_content["hunkAction"] = {"hunkId": hunk_id, "action": "revised", "revisedText": revised_text}
+    structured_content["counts"] = counts
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
