@@ -3,9 +3,13 @@ MCP-UI tools for Task display.
 
 Provides UI-enhanced versions of task tools that return both text fallback
 and interactive HTML/Remote DOM for MCP-UI compatible hosts.
+
+Also supports ChatGPT Apps SDK integration via:
+- Tool _meta: openai/outputTemplate, openai/widgetAccessible, etc.
+- structuredContent: Data payload for Apps SDK widgets
 """
 
-from typing import Annotated, List, Union
+from typing import Annotated, List, Union, Dict, Any
 
 from pydantic import Field
 from loguru import logger
@@ -17,8 +21,47 @@ from toolbridge_mcp.ui.resources import build_ui_with_text_and_dom, UIContent, U
 from toolbridge_mcp.ui.templates import tasks as tasks_templates
 from toolbridge_mcp.ui.remote_dom import tasks as tasks_dom_templates
 
+# Apps SDK resource URIs for tool meta
+from toolbridge_mcp.ui.apps_resources import (
+    APPS_TASKS_LIST_URI,
+    APPS_TASK_DETAIL_URI,
+)
 
-@mcp.tool()
+
+def _serialize_task(task: Task) -> Dict[str, Any]:
+    """Serialize a Task object to a dict for Apps SDK structuredContent."""
+    return {
+        "uid": task.uid,
+        "version": task.version,
+        "updatedAt": task.updated_at,
+        "deletedAt": task.deleted_at,
+        "payload": task.payload,
+    }
+
+
+def _serialize_tasks_list(
+    tasks: List[Task],
+    limit: int,
+    include_deleted: bool,
+    next_cursor: str | None = None,
+) -> Dict[str, Any]:
+    """Serialize a tasks list response for Apps SDK structuredContent."""
+    return {
+        "tasks": [_serialize_task(t) for t in tasks],
+        "limit": limit,
+        "includeDeleted": include_deleted,
+        "nextCursor": next_cursor,
+    }
+
+
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASKS_LIST_URI,
+        "openai/toolInvocation/invoking": "Loading your tasks...",
+        "openai/toolInvocation/invoked": "Tasks ready",
+        "openai/widgetAccessible": True,
+    }
+)
 async def list_tasks_ui(
     limit: Annotated[int, Field(ge=1, le=100, description="Max tasks to display")] = 20,
     include_deleted: Annotated[bool, Field(description="Include deleted tasks")] = False,
@@ -29,7 +72,7 @@ async def list_tasks_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Display tasks with interactive UI (MCP-UI).
 
@@ -48,7 +91,7 @@ async def list_tasks_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and UIResource(s) (HTML and/or Remote DOM)
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         # Show recent tasks with HTML UI (default)
@@ -98,7 +141,7 @@ async def list_tasks_ui(
 
     ui_uri = "ui://toolbridge/tasks/list"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
@@ -106,8 +149,28 @@ async def list_tasks_ui(
         ui_format=UIFormat(ui_format),
     )
 
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_tasks_list(
+        tasks=tasks_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+        next_cursor=tasks_response.next_cursor,
+    )
 
-@mcp.tool()
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
+
+
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASK_DETAIL_URI,
+        "openai/toolInvocation/invoking": "Loading task...",
+        "openai/toolInvocation/invoked": "Task ready",
+        "openai/widgetAccessible": True,
+    }
+)
 async def show_task_ui(
     uid: Annotated[str, Field(description="UID of the task to display")],
     include_deleted: Annotated[bool, Field(description="Allow deleted tasks")] = False,
@@ -118,7 +181,7 @@ async def show_task_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Display a single task with interactive UI (MCP-UI).
 
@@ -135,7 +198,7 @@ async def show_task_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and UIResource(s) (HTML and/or Remote DOM detail view)
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         # Show a specific task with HTML UI
@@ -178,7 +241,7 @@ async def show_task_ui(
 
     ui_uri = f"ui://toolbridge/tasks/{uid}"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri=ui_uri,
         html=html,
         remote_dom=remote_dom,
@@ -186,8 +249,25 @@ async def show_task_ui(
         ui_format=UIFormat(ui_format),
     )
 
+    # Build structuredContent for Apps SDK widgets
+    structured_content = {
+        "task": _serialize_task(task),
+    }
 
-@mcp.tool()
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
+
+
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASKS_LIST_URI,
+        "openai/toolInvocation/invoking": "Processing task...",
+        "openai/toolInvocation/invoked": "Task updated",
+        "openai/widgetAccessible": True,
+    }
+)
 async def process_task_ui(
     uid: Annotated[str, Field(description="UID of the task to process")],
     action: Annotated[str, Field(description="Action to perform (start, complete, reopen)")],
@@ -200,7 +280,7 @@ async def process_task_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Process a task action and return updated UI (MCP-UI).
 
@@ -215,7 +295,7 @@ async def process_task_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and UIResource(s) (updated HTML and/or Remote DOM list)
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         # Complete a task with HTML UI
@@ -256,7 +336,7 @@ async def process_task_ui(
     action_emoji = {"complete": "Done", "start": "Started", "reopen": "Reopened"}.get(action, action.capitalize())
     summary = f"{action_emoji} '{task_title}' - {len(tasks_response.items)} task(s) total"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri="ui://toolbridge/tasks/list",
         html=html,
         remote_dom=remote_dom,
@@ -264,8 +344,31 @@ async def process_task_ui(
         ui_format=UIFormat(ui_format),
     )
 
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_tasks_list(
+        tasks=tasks_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+        next_cursor=tasks_response.next_cursor,
+    )
+    # Include processed task info
+    structured_content["processedTask"] = _serialize_task(updated_task)
+    structured_content["action"] = action
 
-@mcp.tool()
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
+
+
+@mcp.tool(
+    meta={
+        "openai/outputTemplate": APPS_TASKS_LIST_URI,
+        "openai/toolInvocation/invoking": "Archiving task...",
+        "openai/toolInvocation/invoked": "Task archived",
+        "openai/widgetAccessible": True,
+    }
+)
 async def archive_task_ui(
     uid: Annotated[str, Field(description="UID of the task to archive")],
     limit: Annotated[int, Field(ge=1, le=100, description="Max tasks to display in refreshed list")] = 20,
@@ -277,7 +380,7 @@ async def archive_task_ui(
             pattern="^(html|remote-dom|both)$",
         ),
     ] = "html",
-) -> List[Union[TextContent, EmbeddedResource]]:
+) -> Dict[str, Any]:
     """
     Archive a task and return updated UI (MCP-UI).
 
@@ -290,7 +393,7 @@ async def archive_task_ui(
         ui_format: UI format to return - 'html' (default), 'remote-dom', or 'both'
 
     Returns:
-        List containing TextContent (summary) and UIResource(s) (updated HTML and/or Remote DOM list)
+        Dict with content blocks (TextContent, UIResource) and structuredContent for Apps SDK
 
     Examples:
         >>> await archive_task_ui("c1d9b7dc-a1b2-4c3d-9e8f-7a6b5c4d3e2f")
@@ -329,10 +432,25 @@ async def archive_task_ui(
 
     summary = f"Archived '{task_title}' - {len(tasks_response.items)} task(s) remaining"
 
-    return build_ui_with_text_and_dom(
+    content = build_ui_with_text_and_dom(
         uri="ui://toolbridge/tasks/list",
         html=html,
         remote_dom=remote_dom,
         text_summary=summary,
         ui_format=UIFormat(ui_format),
     )
+
+    # Build structuredContent for Apps SDK widgets
+    structured_content = _serialize_tasks_list(
+        tasks=tasks_response.items,
+        limit=limit,
+        include_deleted=include_deleted,
+        next_cursor=tasks_response.next_cursor,
+    )
+    # Include archived task info
+    structured_content["archivedTask"] = _serialize_task(archived_task)
+
+    return {
+        "content": content,
+        "structuredContent": structured_content,
+    }
