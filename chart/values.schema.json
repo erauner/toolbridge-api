@@ -432,6 +432,64 @@
           "type": "string",
           "enum": ["supervised", "unsupervised"],
           "description": "Primary instance update strategy"
+        },
+        "backup": {
+          "$ref": "#/definitions/CnpgBackupConfig"
+        }
+      }
+    },
+    "CnpgBackupConfig": {
+      "type": "object",
+      "description": "CNPG backup configuration for Barman Object Store",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable CNPG native backups to S3-compatible storage"
+        },
+        "destinationPath": {
+          "type": "string",
+          "description": "S3 bucket path (e.g., s3://bucket-name/cnpg/appname/)"
+        },
+        "endpointURL": {
+          "type": "string",
+          "description": "S3-compatible endpoint URL (e.g., https://s3.us-east-005.backblazeb2.com)"
+        },
+        "retentionPolicy": {
+          "type": "string",
+          "description": "Backup retention period (e.g., '7d', '30d')"
+        },
+        "s3Credentials": {
+          "type": "object",
+          "description": "S3 credential references",
+          "properties": {
+            "accessKeyId": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Secret name containing AWS_ACCESS_KEY_ID"
+                },
+                "key": {
+                  "type": "string",
+                  "description": "Key within the secret"
+                }
+              }
+            },
+            "secretAccessKey": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Secret name containing AWS_SECRET_ACCESS_KEY"
+                },
+                "key": {
+                  "type": "string",
+                  "description": "Key within the secret"
+                }
+              }
+            }
+          }
         }
       }
     },
