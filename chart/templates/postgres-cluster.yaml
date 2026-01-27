@@ -34,6 +34,13 @@ spec:
   # High availability
   primaryUpdateStrategy: {{ .Values.postgresql.primaryUpdateStrategy }}
 
+  # Recovery timeout settings
+  # These control how long CNPG waits before taking action on stuck pods
+  startDelay: {{ .Values.postgresql.startDelay | default 300 }}
+  stopDelay: {{ .Values.postgresql.stopDelay | default 300 }}
+  switchoverDelay: {{ .Values.postgresql.switchoverDelay | default 600 }}
+  failoverDelay: {{ .Values.postgresql.failoverDelay | default 0 }}
+
   {{- if .Values.postgresql.backup.enabled }}
   # Backup configuration
   backup:

@@ -184,6 +184,28 @@ postgresql:
   # High availability
   primaryUpdateStrategy: unsupervised
 
+  # Recovery timeout settings (seconds)
+  # These control how long CNPG waits before taking action on stuck pods
+  # Defaults are much faster than CNPG's built-in defaults (3600s/1800s)
+  startDelay: 300        # Time to wait for pod to start (default: 5 min, CNPG default: 1 hour)
+  stopDelay: 300         # Time for graceful shutdown (default: 5 min, CNPG default: 30 min)
+  switchoverDelay: 600   # Time to wait during switchover (default: 10 min, CNPG default: 1 hour)
+  failoverDelay: 0       # Time to wait before failover (default: immediate)
+
+  # Backup configuration (optional)
+  # backup:
+  #   enabled: false
+  #   destinationPath: ""
+  #   endpointURL: ""
+  #   s3Credentials:
+  #     accessKeyId:
+  #       name: ""
+  #       key: ""
+  #     secretAccessKey:
+  #       name: ""
+  #       key: ""
+  #   retentionPolicy: "7d"
+
 # Migration job configuration
 migration:
   enabled: true
