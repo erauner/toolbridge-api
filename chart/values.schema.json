@@ -433,6 +433,26 @@
           "enum": ["supervised", "unsupervised"],
           "description": "Primary instance update strategy"
         },
+        "startDelay": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Time in seconds to wait for pod to start before taking action (default: 300, CNPG default: 3600)"
+        },
+        "stopDelay": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Time in seconds for graceful shutdown before force kill (default: 300, CNPG default: 1800)"
+        },
+        "switchoverDelay": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Time in seconds to wait during primary switchover (default: 600, CNPG default: 3600)"
+        },
+        "failoverDelay": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Time in seconds to wait before automatic failover (default: 0 for immediate)"
+        },
         "backup": {
           "$ref": "#/definitions/CnpgBackupConfig"
         }
