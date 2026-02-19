@@ -7,7 +7,7 @@ import (
 
 	"github.com/erauner12/toolbridge-api/internal/auth"
 	"github.com/erauner12/toolbridge-api/internal/service/syncservice"
-	"github.com/erauner12/toolbridge-api/internal/syncx"
+	"github.com/erauner/toolbridge-sync/go/syncx"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/erauner12/toolbridge-api/internal/syncx"
+	"github.com/erauner/toolbridge-sync/go/syncx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
